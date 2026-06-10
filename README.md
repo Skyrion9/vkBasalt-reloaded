@@ -91,6 +91,39 @@ The config file will be searched for in the following locations:
 
 If you want to make changes for one game only, you can create a file named `vkBasalt.conf` in the working directory of the game and change the values there.
 
+#### Clarity Configuration
+Here's how to configure clarity's VKBasalt implementation in vkBasalt.conf:
+
+The clarity effect has **two configurable parameters** defined in `effect_clarity.cpp`:
+
+### 1. `clarityStrength` (default: 0.4)
+- **Purpose**: Controls the amount of contrast enhancement
+- **Range**: 0.0 (no effect) to 1.0 (maximum enhancement)
+- **Default**: 0.4 (good default value)
+
+### 2. `clarityRadius` (default: 2.5)
+- **Purpose**: Controls the radius of the local contrast effect in pixels
+- **Range**: Recommended 1.0 - 5.0
+- **Larger values**: Affect a wider area but may introduce haloing artifacts
+
+## How to Enable and Configure
+
+In your `~/.config/vkBasalt/vkBasalt.conf` file (or wherever the final config is installed), modify:
+
+```ini
+# Enable clarity effect - replace 'cas' with 'clarity'
+effects = clarity
+
+# Or combine multiple effects (they run left to right):
+# effects = clarity:cas
+
+# Adjust the clarity parameters:
+clarityStrength = 0.4   # Try 0.3-0.6 for different intensity
+clarityRadius = 2.5     # Try 1.0-4.0 for different radius
+```
+
+The shader (`clarity.frag.glsl`) implements a high-performance 9-tap sparse grid sampling for local contrast enhancement using an Overlay blend mode. The `strength` parameter controls how much of the enhanced contrast is blended into the final image, while `radius` determines how far from each pixel the blur samples are taken.
+
 #### Reshade Fx shaders
 
 To run reshade fx shaders e.g. shaders from the [reshade repo](https://github.com/crosire/reshade-shaders), you have to set `reshadeTexturePath` and `reshadeIncludePath` to the matching dirctories from the repo. To then use a specific shader you need to set a custom effect name to the shader path and then add that effect name to `effects` like every other effect.

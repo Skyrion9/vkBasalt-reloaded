@@ -9,6 +9,10 @@ namespace vkBasalt
 #include "cas.frag.h"
     };
 
+    const std::vector<uint32_t> clarity_frag = {
+#include "clarity.frag.h"
+    };
+
     const std::vector<uint32_t> deband_frag = {
 #include "deband.frag.h"
     };
