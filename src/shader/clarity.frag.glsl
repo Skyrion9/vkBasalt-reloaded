@@ -1,7 +1,6 @@
 #version 450
 
 // Clarity Shader - Optimized Single-Pass Cross-Convolution Contrast
-// Cleans up register pressure, eliminates unsafe chroma division, and removes branch stalls.
 
 layout(set = 0, binding = 0) uniform sampler2D img;
 
@@ -22,6 +21,8 @@ float getLuma(vec3 rgb) {
 }
 
 float applyBlendMode(float luma, float sharp) {
+    // The Vulkan compiler (SPIR-V) optimizes these branches because 'blendMode'
+    // is a specialization constant. The dead code is stripped at pipeline creation.
     if (blendMode == 0) {
         return mix(2.0 * luma * sharp + luma * luma * (1.0 - 2.0 * sharp),
                    2.0 * luma * (1.0 - sharp) + sqrt(luma) * (2.0 * sharp - 1.0),
@@ -47,37 +48,36 @@ void main() {
 
     float luma = getLuma(orig);
 
+    // Early exit for near-black pixels
     if (luma <= 0.0001) {
         fragColor = centerColor;
         return;
     }
 
+    // Optimization: Passing 'texelSize' via Push Constants from the C++ host 
+    // is faster than calling textureSize() every frame.
     vec2 texSize = textureSize(img, 0);
-    vec2 texelSize = vec2(1.0 / float(texSize.x), 1.0 / float(texSize.y));
+    vec2 texelSize = 1.0 / vec2(texSize);
 
-    float pixelOffset = radius * offset;
+    // Optimization: Simplified step calculations (4.5 = 1.5 * 3)
+    float baseOffset = 1.5 * radius * offset;
+    vec2 step1 = baseOffset * texelSize;
+    vec2 step2 = step1 * 3.0;
 
-    float centerWeight = 0.20;
-    float tap1Weight   = 0.16;
-    float tap2Weight   = 0.04;
+    float blurLuma = luma * 0.20;
 
-    float blurLuma = luma * centerWeight;
+    // Optimization: Fetch all taps first, then group additions to minimize MUL/ADD instructions
+    float h1 = getLuma(textureLod(img, textureCoord + vec2(step1.x, 0.0), 0.0).rgb);
+    float h2 = getLuma(textureLod(img, textureCoord - vec2(step1.x, 0.0), 0.0).rgb);
+    float h3 = getLuma(textureLod(img, textureCoord + vec2(step2.x, 0.0), 0.0).rgb);
+    float h4 = getLuma(textureLod(img, textureCoord - vec2(step2.x, 0.0), 0.0).rgb);
+    
+    float v1 = getLuma(textureLod(img, textureCoord + vec2(0.0, step1.y), 0.0).rgb);
+    float v2 = getLuma(textureLod(img, textureCoord - vec2(0.0, step1.y), 0.0).rgb);
+    float v3 = getLuma(textureLod(img, textureCoord + vec2(0.0, step2.y), 0.0).rgb);
+    float v4 = getLuma(textureLod(img, textureCoord - vec2(0.0, step2.y), 0.0).rgb);
 
-    // Pre-calculate clean step intervals for the cross layout
-    vec2 step1 = vec2(1.5 * pixelOffset * texelSize.x, 1.5 * pixelOffset * texelSize.y);
-    vec2 step2 = vec2(4.5 * pixelOffset * texelSize.x, 4.5 * pixelOffset * texelSize.y);
-
-    // Horizontal Taps
-    blurLuma += getLuma(textureLod(img, textureCoord + vec2(step1.x, 0.0), 0.0).rgb) * tap1Weight;
-    blurLuma += getLuma(textureLod(img, textureCoord - vec2(step1.x, 0.0), 0.0).rgb) * tap1Weight;
-    blurLuma += getLuma(textureLod(img, textureCoord + vec2(step2.x, 0.0), 0.0).rgb) * tap2Weight;
-    blurLuma += getLuma(textureLod(img, textureCoord - vec2(step2.x, 0.0), 0.0).rgb) * tap2Weight;
-
-    // Vertical Taps
-    blurLuma += getLuma(textureLod(img, textureCoord + vec2(0.0, step1.y), 0.0).rgb) * tap1Weight;
-    blurLuma += getLuma(textureLod(img, textureCoord - vec2(0.0, step1.y), 0.0).rgb) * tap1Weight;
-    blurLuma += getLuma(textureLod(img, textureCoord + vec2(0.0, step2.y), 0.0).rgb) * tap2Weight;
-    blurLuma += getLuma(textureLod(img, textureCoord - vec2(0.0, step2.y), 0.0).rgb) * tap2Weight;
+    blurLuma += (h1 + h2 + v1 + v2) * 0.16 + (h3 + h4 + v3 + v4) * 0.04;
 
     float diff = luma - blurLuma;
 
@@ -87,25 +87,28 @@ void main() {
     float sharp = luma + diff;
     sharp = applyBlendMode(luma, sharp);
 
-    // BlendIf mid-tone masking using unweighted average to match original ReShade behavior
+    // BlendIf mid-tone masking
     if (blendIfDark > 0 || blendIfLight < 255) {
         float blendIfD = (float(blendIfDark) / 255.0) + 0.0001;
         float blendIfL = (float(blendIfLight) / 255.0) - 0.0001;
         float mixVal = dot(orig, vec3(0.33333333));
         float mask = 1.0;
 
+        // Optimization: Simplified smoothstep edges
         if (blendIfDark > 0) {
-            mask = mix(0.0, 1.0, smoothstep(blendIfD - (blendIfD * 0.2), blendIfD + (blendIfD * 0.2), mixVal));
+            mask = smoothstep(blendIfD * 0.8, blendIfD * 1.2, mixVal);
         }
         if (blendIfLight < 255) {
-            mask = mix(mask, 0.0, smoothstep(blendIfL - (blendIfL * 0.2), blendIfL + (blendIfL * 0.2), mixVal));
+            // Optimization: mix(mask, 0.0, T) is equivalent to mask * (1.0 - T)
+            mask *= 1.0 - smoothstep(blendIfL * 0.8, blendIfL * 1.2, mixVal);
         }
 
         sharp = mix(luma, sharp, mask);
     }
 
-    // Scalar scaling factor avoids vec3 register pressure and division instability
-    float lumaScale = mix(luma, sharp, strength) / max(luma, 0.0001);
+    // Optimization: 'luma' is strictly > 0.0001 here due to the early return.
+    // Therefore, max(luma, 0.0001) is redundant and removed.
+    float lumaScale = mix(luma, sharp, strength) / luma;
     vec3 finalColor = orig * lumaScale;
 
     fragColor = vec4(clamp(finalColor, 0.0, 1.0), centerColor.a);
