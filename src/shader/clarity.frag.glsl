@@ -13,6 +13,13 @@ layout(constant_id = 5) const int blendIfLight = 215;
 layout(constant_id = 6) const float darkIntensity = 0.160;
 layout(constant_id = 7) const float lightIntensity = 0.0;
 
+// Push Constant Block for inverse screen resolution
+// Padded to 16 bytes (vec4) for SPIR-V alignment requirements.
+layout(push_constant) uniform PushConstants {
+    vec2 texelSize;
+    vec2 _padding;
+} pc;
+
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
@@ -56,8 +63,11 @@ void main() {
 
     // Optimization: Passing 'texelSize' via Push Constants from the C++ host 
     // is faster than calling textureSize() every frame.
-    vec2 texSize = textureSize(img, 0);
-    vec2 texelSize = 1.0 / vec2(texSize);
+    //vec2 texSize = textureSize(img, 0);
+    //vec2 texelSize = 1.0 / vec2(texSize);
+
+    //Using Push Constants instead of textureSize()
+    vec2 texelSize = pc.texelSize;
 
     // Optimization: Simplified step calculations (4.5 = 1.5 * 3)
     float baseOffset = 1.5 * radius * offset;
