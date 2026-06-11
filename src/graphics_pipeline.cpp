@@ -4,14 +4,22 @@ namespace vkBasalt
 {
     VkPipelineLayout createGraphicsPipelineLayout(LogicalDevice* pLogicalDevice, std::vector<VkDescriptorSetLayout> descriptorSetLayouts)
     {
+        // Define the push constant range (vec4 = 4 floats = 16 bytes for SPIR-V alignment)
+        VkPushConstantRange pushConstantRange = {};
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = sizeof(float) * 4;
+
         VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
         pipelineLayoutCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutCreateInfo.pNext                  = nullptr;
         pipelineLayoutCreateInfo.flags                  = 0;
         pipelineLayoutCreateInfo.setLayoutCount         = descriptorSetLayouts.size();
         pipelineLayoutCreateInfo.pSetLayouts            = descriptorSetLayouts.data();
-        pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-        pipelineLayoutCreateInfo.pPushConstantRanges    = nullptr;
+        
+        // Attach the push constant range
+        pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+        pipelineLayoutCreateInfo.pPushConstantRanges    = &pushConstantRange;
 
         VkPipelineLayout pipelineLayout;
         VkResult result = pLogicalDevice->vkd.CreatePipelineLayout(pLogicalDevice->device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);

@@ -141,6 +141,30 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
         Logger::debug("after bind pipeliene");
 
+        // =====================================================================
+        // PUSH CONSTANT INJECTION
+        // =====================================================================
+        // Pushes the inverse screen resolution (texelSize).
+        // Shaders that declare a push_constant block (like Clarity) will read this.
+        // Shaders that don't (like CAS) will safely ignore it without crashing.
+        // Padded to 16 bytes (vec4) for SPIR-V alignment requirements.
+        float texelSize[4] = { 
+            1.0f / static_cast<float>(imageExtent.width), 
+            1.0f / static_cast<float>(imageExtent.height),
+            0.0f,
+            0.0f
+        };
+
+        pLogicalDevice->vkd.CmdPushConstants(
+            commandBuffer, 
+            pipelineLayout,              
+            VK_SHADER_STAGE_FRAGMENT_BIT, 
+            0,                           
+            sizeof(texelSize),           
+            texelSize                    
+        );
+        // =====================================================================
+
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         Logger::debug("after draw");
 

@@ -24,6 +24,7 @@
     FORVKFUNC(CmdDraw) \
     FORVKFUNC(CmdEndRenderPass) \
     FORVKFUNC(CmdPipelineBarrier) \
+    FORVKFUNC(CmdPushConstants) \
     FORVKFUNC(CreateBuffer) \
     FORVKFUNC(CreateCommandPool) \
     FORVKFUNC(CreateDescriptorPool) \
