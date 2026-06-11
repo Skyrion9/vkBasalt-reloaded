@@ -110,13 +110,44 @@ namespace vkBasalt
             int32_t maxSearchSteps;
             int32_t maxSearchStepsDiag;
             int32_t cornerRounding;
+            int32_t disableDiagDetection;
         };
 
         SmaaOptions smaaOptions;
-        smaaOptions.threshold          = pConfig->getOption<float>("smaaThreshold", 0.05f);
-        smaaOptions.maxSearchSteps     = pConfig->getOption<int32_t>("smaaMaxSearchSteps", 32);
-        smaaOptions.maxSearchStepsDiag = pConfig->getOption<int32_t>("smaaMaxSearchStepsDiag", 16);
-        smaaOptions.cornerRounding     = pConfig->getOption<int32_t>("smaaCornerRounding", 25);
+
+        // Apply SMAA presets first if specified, ignore individual settings when preset is used
+        std::string preset = pConfig->getOption<std::string>("smaaPreset", "");
+
+        if (preset == "low") {
+            smaaOptions.threshold          = 0.15f;
+            smaaOptions.maxSearchSteps     = 4;
+            smaaOptions.maxSearchStepsDiag = 0;
+            smaaOptions.cornerRounding     = 25;
+            smaaOptions.disableDiagDetection = 1; // Disable diagonal detection for low preset
+        } else if (preset == "medium") {
+            smaaOptions.threshold          = 0.10f;
+            smaaOptions.maxSearchSteps     = 8;
+            smaaOptions.maxSearchStepsDiag = 0;
+            smaaOptions.cornerRounding     = 25;
+            smaaOptions.disableDiagDetection = 1; // Disable diagonal detection for medium preset
+        } else if (preset == "high") {
+            smaaOptions.threshold          = 0.10f;
+            smaaOptions.maxSearchSteps     = 16;
+            smaaOptions.maxSearchStepsDiag = 8;
+            smaaOptions.cornerRounding     = 25;
+        } else if (preset == "ultra") {
+            smaaOptions.threshold          = 0.05f;
+            smaaOptions.maxSearchSteps     = 32;
+            smaaOptions.maxSearchStepsDiag = 16;
+            smaaOptions.cornerRounding     = 25;
+        } else {
+            // No preset or unknown preset, use individual settings
+            smaaOptions.threshold          = pConfig->getOption<float>("smaaThreshold", 0.05f);
+            smaaOptions.maxSearchSteps     = pConfig->getOption<int32_t>("smaaMaxSearchSteps", 32);
+            smaaOptions.maxSearchStepsDiag = pConfig->getOption<int32_t>("smaaMaxSearchStepsDiag", 16);
+            smaaOptions.cornerRounding     = pConfig->getOption<int32_t>("smaaCornerRounding", 25);
+            smaaOptions.disableDiagDetection = pConfig->getOption<int32_t>("smaaDisableDiagDetection", 0);
+        }
 
         createShaderModule(pLogicalDevice, smaa_edge_vert, &edgeVertexModule);
 
@@ -139,7 +170,7 @@ namespace vkBasalt
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {imageSamplerDescriptorSetLayout};
         pipelineLayout                                          = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
 
-        std::vector<VkSpecializationMapEntry> specMapEntrys(8);
+        std::vector<VkSpecializationMapEntry> specMapEntrys(9);
         for (uint32_t i = 0; i < specMapEntrys.size(); i++)
         {
             specMapEntrys[i].constantID = i;

@@ -50,7 +50,7 @@
  *
  * The shader has three passes, chained together as follows:
  *
- *                           |input|------------------·
+ *                           |input|------------------ï¿½
  *                              v                     |
  *                    [ SMAA*EdgeDetection ]          |
  *                              v                     |
@@ -60,7 +60,7 @@
  *                              v                     |
  *                          |blendTex|                |
  *                              v                     |
- *                [ SMAANeighborhoodBlending ] <------·
+ *                [ SMAANeighborhoodBlending ] <------ï¿½
  *                              v
  *                           |output|
  *
@@ -828,8 +828,6 @@ float2 SMAADepthEdgeDetectionPS(float2 texcoord,
 //-----------------------------------------------------------------------------
 // Diagonal Search Functions
 
-#if !defined(SMAA_DISABLE_DIAG_DETECTION)
-
 /**
  * Allows to decode two binary values from a bilinear-filtered access.
  */
@@ -983,7 +981,6 @@ float2 SMAACalculateDiagWeights(SMAATexture2D(edgesTex), SMAATexture2D(areaTex),
 
     return weights;
 }
-#endif
 
 //-----------------------------------------------------------------------------
 // Horizontal/Vertical Search Functions
@@ -1155,57 +1152,55 @@ float4 SMAABlendingWeightCalculationPS(float2 texcoord,
 
     SMAA_BRANCH
     if (e.g > 0.0) { // Edge at north
-        #if !defined(SMAA_DISABLE_DIAG_DETECTION)
         // Diagonals have both north and west edges, so searching for them in
         // one of the boundaries is enough.
-        weights.rg = SMAACalculateDiagWeights(SMAATexturePass2D(edgesTex), SMAATexturePass2D(areaTex), texcoord, e, subsampleIndices);
+        // Only perform diagonal detection if not disabled via runtime config.
+        if (disableDiagDetection == 0) {
+            weights.rg = SMAACalculateDiagWeights(SMAATexturePass2D(edgesTex), SMAATexturePass2D(areaTex), texcoord, e, subsampleIndices);
+        }
 
         // We give priority to diagonals, so if we find a diagonal we skip 
         // horizontal/vertical processing.
         SMAA_BRANCH
-        if (weights.r == -weights.g) { // weights.r + weights.g == 0.0
-        #endif
+        if (disableDiagDetection == 0 && weights.r == -weights.g) { // weights.r + weights.g == 0.0
+            // Skip horizontal/vertical processing, diagonal was found
+        } else {
+            float2 d;
 
-        float2 d;
+            // Find the distance to the left:
+            float3 coords;
+            coords.x = SMAASearchXLeft(SMAATexturePass2D(edgesTex), SMAATexturePass2D(searchTex), offset[0].xy, offset[2].x);
+            coords.y = offset[1].y; // offset[1].y = texcoord.y - 0.25 * SMAA_RT_METRICS.y (@CROSSING_OFFSET)
+            d.x = coords.x;
 
-        // Find the distance to the left:
-        float3 coords;
-        coords.x = SMAASearchXLeft(SMAATexturePass2D(edgesTex), SMAATexturePass2D(searchTex), offset[0].xy, offset[2].x);
-        coords.y = offset[1].y; // offset[1].y = texcoord.y - 0.25 * SMAA_RT_METRICS.y (@CROSSING_OFFSET)
-        d.x = coords.x;
+            // Now fetch the left crossing edges, two at a time using bilinear
+            // filtering. Sampling at -0.25 (see @CROSSING_OFFSET) enables to
+            // discern what value each edge has:
+            float e1 = SMAASampleLevelZero(edgesTex, coords.xy).r;
 
-        // Now fetch the left crossing edges, two at a time using bilinear
-        // filtering. Sampling at -0.25 (see @CROSSING_OFFSET) enables to
-        // discern what value each edge has:
-        float e1 = SMAASampleLevelZero(edgesTex, coords.xy).r;
+            // Find the distance to the right:
+            coords.z = SMAASearchXRight(SMAATexturePass2D(edgesTex), SMAATexturePass2D(searchTex), offset[0].zw, offset[2].y);
+            d.y = coords.z;
 
-        // Find the distance to the right:
-        coords.z = SMAASearchXRight(SMAATexturePass2D(edgesTex), SMAATexturePass2D(searchTex), offset[0].zw, offset[2].y);
-        d.y = coords.z;
+            // We want the distances to be in pixel units (doing this here allow to
+            // better interleave arithmetic and memory accesses):
+            d = abs(round(mad(SMAA_RT_METRICS.zz, d, -pixcoord.xx)));
 
-        // We want the distances to be in pixel units (doing this here allow to
-        // better interleave arithmetic and memory accesses):
-        d = abs(round(mad(SMAA_RT_METRICS.zz, d, -pixcoord.xx)));
+            // SMAAArea below needs a sqrt, as the areas texture is compressed
+            // quadratically:
+            float2 sqrt_d = sqrt(d);
 
-        // SMAAArea below needs a sqrt, as the areas texture is compressed
-        // quadratically:
-        float2 sqrt_d = sqrt(d);
+            // Fetch the right crossing edges:
+            float e2 = SMAASampleLevelZeroOffset(edgesTex, coords.zy, int2(1, 0)).r;
 
-        // Fetch the right crossing edges:
-        float e2 = SMAASampleLevelZeroOffset(edgesTex, coords.zy, int2(1, 0)).r;
+            // Ok, we know how this pattern looks like, now it is time for getting
+            // the actual area:
+            weights.rg = SMAAArea(SMAATexturePass2D(areaTex), sqrt_d, e1, e2, subsampleIndices.y);
 
-        // Ok, we know how this pattern looks like, now it is time for getting
-        // the actual area:
-        weights.rg = SMAAArea(SMAATexturePass2D(areaTex), sqrt_d, e1, e2, subsampleIndices.y);
-
-        // Fix corners:
-        coords.y = texcoord.y;
-        SMAADetectHorizontalCornerPattern(SMAATexturePass2D(edgesTex), weights.rg, coords.xyzy, d);
-
-        #if !defined(SMAA_DISABLE_DIAG_DETECTION)
-        } else
-            e.r = 0.0; // Skip vertical processing.
-        #endif
+            // Fix corners:
+            coords.y = texcoord.y;
+            SMAADetectHorizontalCornerPattern(SMAATexturePass2D(edgesTex), weights.rg, coords.xyzy, d);
+        }
     }
 
     SMAA_BRANCH
