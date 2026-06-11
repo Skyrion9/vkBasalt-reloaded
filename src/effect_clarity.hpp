@@ -18,11 +18,11 @@ namespace vkBasalt
     {
     public:
         ClarityEffect(LogicalDevice*       pLogicalDevice,
-                      VkFormat             format,
-                      VkExtent2D           imageExtent,
-                      std::vector<VkImage> inputImages,
-                      std::vector<VkImage> outputImages,
-                      Config*              pConfig);
+                    VkFormat             format,
+                    VkExtent2D           imageExtent,
+                    std::vector<VkImage> inputImages,
+                    std::vector<VkImage> outputImages,
+                    Config*              pConfig);
         ~ClarityEffect();
     };
 } // namespace vkBasalt

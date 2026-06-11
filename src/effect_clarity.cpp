@@ -16,32 +16,50 @@
 namespace vkBasalt
 {
     ClarityEffect::ClarityEffect(LogicalDevice*       pLogicalDevice,
-                                  VkFormat             format,
-                                  VkExtent2D           imageExtent,
-                                  std::vector<VkImage> inputImages,
-                                  std::vector<VkImage> outputImages,
-                                  Config*              pConfig)
+                                 VkFormat             format,
+                                 VkExtent2D           imageExtent,
+                                 std::vector<VkImage> inputImages,
+                                 std::vector<VkImage> outputImages,
+                                 Config*              pConfig)
     {
-        float clarityStrength = pConfig->getOption<float>("clarityStrength", 0.4f);
-        float clarityRadius   = pConfig->getOption<float>("clarityRadius", 2.5f);
+        Logger::debug("in creating ClarityEffect");
 
-        float specData[2] = {clarityStrength, clarityRadius};
+        // Get all config options
+        float clarityStrength    = pConfig->getOption<float>("clarityStrength", 0.160f);
+        float clarityRadius      = pConfig->getOption<float>("clarityRadius", 1.0f);  // Now a float for scaling
+        float clarityOffset      = pConfig->getOption<float>("clarityOffset", 1.0f);
+        int32_t clarityBlendMode = pConfig->getOption<int32_t>("clarityBlendMode", 6);
+        int32_t clarityBlendIfDark = pConfig->getOption<int32_t>("clarityBlendIfDark", 50);
+        int32_t clarityBlendIfLight = pConfig->getOption<int32_t>("clarityBlendIfLight", 215);
+        float clarityDarkIntensity = pConfig->getOption<float>("clarityDarkIntensity", 0.160f);
+        float clarityLightIntensity = pConfig->getOption<float>("clarityLightIntensity", 0.0f);
+
+        // Prepare specialization constants
+        float specData[8] = {
+            clarityStrength,
+            clarityRadius,
+            clarityOffset,
+            float(clarityBlendMode),
+            float(clarityBlendIfDark),
+            float(clarityBlendIfLight),
+            clarityDarkIntensity,
+            clarityLightIntensity
+        };
 
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = clarity_frag;
 
-        VkSpecializationMapEntry mapEntries[2];
-        mapEntries[0].constantID = 0;
-        mapEntries[0].offset     = 0;
-        mapEntries[0].size       = sizeof(float);
-        mapEntries[1].constantID = 1;
-        mapEntries[1].offset     = sizeof(float);
-        mapEntries[1].size       = sizeof(float);
+        VkSpecializationMapEntry mapEntries[8];
+        for (int i = 0; i < 8; i++) {
+            mapEntries[i].constantID = i;
+            mapEntries[i].offset     = sizeof(float) * i;
+            mapEntries[i].size       = sizeof(float);
+        }
 
         VkSpecializationInfo fragmentSpecializationInfo;
-        fragmentSpecializationInfo.mapEntryCount = 2;
+        fragmentSpecializationInfo.mapEntryCount = 8;
         fragmentSpecializationInfo.pMapEntries   = mapEntries;
-        fragmentSpecializationInfo.dataSize      = sizeof(float) * 2;
+        fragmentSpecializationInfo.dataSize      = sizeof(float) * 8;
         fragmentSpecializationInfo.pData         = specData;
 
         pVertexSpecInfo   = nullptr;
