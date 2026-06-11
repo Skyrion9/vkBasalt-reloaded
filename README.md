@@ -1,4 +1,3 @@
-```markdown
 # Custom VKBasalt GLSL Clarity Implementation
 > * **Integrated Custom Clarity Effect:** Added a native, single-pass GLSL implementation of the local contrast enhancement filter directly into the built-in effects stack.
 > * **Axis-Aligned Cross-Convolution:** Replaced high-overhead multi-pass methods from legacy `Clarity.fx` with a branchless, 8-tap horizontal/vertical cross-convolution layout to match axis-aligned game geometry perfectly while maintaining matching image quality.
@@ -8,7 +7,6 @@
 > * **Branchless Pipeline Flattening:** Swapped the conditional if/else runtime forks found in `Clarity.fx` for a branchless ternary selection pattern. This compiles directly into hardware execution predicates (`CSEL`), completely preventing thread stalls inside the GPU execution warp.
 > * **Exposed Full 8 Parameter Configuration in VKBasalt.conf:** Staying faithful to the original shader this is fully configurable with all the knobs.
 
----
 
 ## Building with scripts (Optimized flags)
 1. Simply clone, or downlaod as zip and extract this repo.  
