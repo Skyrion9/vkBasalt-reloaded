@@ -9,8 +9,11 @@
 
 #include "vulkan_include.hpp"
 
+#include "effect.hpp"
 #include "effect_simple.hpp"
 #include "config.hpp"
+
+#include "logical_device.hpp"
 
 namespace vkBasalt
 {
@@ -18,11 +21,11 @@ namespace vkBasalt
     {
     public:
         ClarityEffect(LogicalDevice*       pLogicalDevice,
-                    VkFormat             format,
-                    VkExtent2D           imageExtent,
-                    std::vector<VkImage> inputImages,
-                    std::vector<VkImage> outputImages,
-                    Config*              pConfig);
+                      VkFormat             format,
+                      VkExtent2D           imageExtent,
+                      std::vector<VkImage> inputImages,
+                      std::vector<VkImage> outputImages,
+                      Config*              pConfig);
         ~ClarityEffect();
     };
 } // namespace vkBasalt
