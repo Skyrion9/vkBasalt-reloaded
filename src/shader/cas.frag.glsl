@@ -1,3 +1,5 @@
+#version 450
+
 // LICENSE
 // =======
 // Copyright (c) 2017-2019 Advanced Micro Devices, Inc. All rights reserved.
@@ -14,36 +16,35 @@
 // WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR
 // COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
-#version 450
+
+// AMD FidelityFX CAS - Algebraically Reduced & Optimized
 
 layout(set=0, binding=0) uniform sampler2D img;
 
-layout (constant_id = 0) const float sharpness = 0.4;
+layout(constant_id = 0) const float sharpness = 0.4;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
-#define textureLod0Offset(img, coord, offset) textureLodOffset(img, coord, 0.0f, offset)
-#define textureLod0(img, coord) textureLod(img, coord, 0.0f)
-
 void main()
 {
-    // fetch a 3x3 neighborhood around the pixel 'e',
+        // fetch a 3x3 neighborhood around the pixel 'e',
     //  a b c
     //  d(e)f
     //  g h i
-    vec4 inputColor = textureLod0(img,textureCoord);
+    vec4 inputColor = textureLod(img, textureCoord, 0.0);
     float alpha = inputColor.a;
-
-    vec3 a = textureLod0Offset(img, textureCoord, ivec2(-1,-1)).rgb;
-    vec3 b = textureLod0Offset(img, textureCoord, ivec2( 0,-1)).rgb;
-    vec3 c = textureLod0Offset(img, textureCoord, ivec2( 1,-1)).rgb;
-    vec3 d = textureLod0Offset(img, textureCoord, ivec2(-1, 0)).rgb;
     vec3 e = inputColor.rgb;
-    vec3 f = textureLod0Offset(img, textureCoord, ivec2( 1, 0)).rgb;
-    vec3 g = textureLod0Offset(img, textureCoord, ivec2(-1, 1)).rgb;
-    vec3 h = textureLod0Offset(img, textureCoord, ivec2( 0, 1)).rgb;
-    vec3 i = textureLod0Offset(img, textureCoord, ivec2( 1, 1)).rgb;
+
+    // Hardware-accelerated offset fetches
+    vec3 a = textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb;
+    vec3 b = textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb;
+    vec3 c = textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb;
+    vec3 d = textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb;
+    vec3 f = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb;
+    vec3 g = textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb;
+    vec3 h = textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb;
+    vec3 i = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb;
 
     // Soft min and max.
     //  a b c             b
@@ -59,23 +60,27 @@ void main()
     vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
     mxRGB += mxRGB2;
 
-    // Smooth minimum distance to signal limit divided by smooth max.
+    // Prevent divide-by-zero on pure black pixels
+    vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
 
-    vec3 rcpMxRGB = vec3(1)/mxRGB;
-    vec3 ampRGB = clamp((min(mnRGB,2.0-mxRGB) * rcpMxRGB),0,1);
-
-    // Shaping amount of sharpening.
-    ampRGB = inversesqrt(ampRGB);
     float peak = 8.0 - 3.0 * sharpness;
-    vec3 wRGB = -vec3(1)/(ampRGB * peak);
-    vec3 rcpWeightRGB = vec3(1)/(1.0 + 4.0 * wRGB);
 
     //                          0 w 0
     //  Filter shape:           w 1 w
     //                          0 w 0  
-
+    
+    // Prevent divide-by-zero in inversesqrt
+    vec3 invAmp = inversesqrt(max(ampRGB, vec3(0.0001)));
+    
+    // ALGEBRAIC REDUCTION:
+    // Original AMD CAS: w = -1/(invAmp*peak), rcpWeight = 1/(1+4w), out = (window*w + e)*rcpWeight
+    // Mathematically simplifies perfectly to: out = (e * P - window) / (P - 4.0)
+    // This eliminates 1 division and 1 multiplication per pixel!
+    vec3 P = invAmp * peak;
     vec3 window = (b + d) + (f + h);
-    vec3 outColor = clamp((window * wRGB + e) * rcpWeightRGB,0,1);
+    
+    // P is always >= 5.0, so (P - 4.0) is always >= 1.0. No divide-by-zero possible.
+    vec3 outColor = clamp((e * P - window) / (P - 4.0), 0.0, 1.0);
 
-    fragColor = vec4(outColor,alpha);
+    fragColor = vec4(outColor, alpha);
 }
