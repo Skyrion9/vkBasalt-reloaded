@@ -1,3 +1,37 @@
+```markdown
+# Custom VKBasalt GLSL Clarity Implementation
+> * **Integrated Custom Clarity Effect:** Added a native, single-pass GLSL implementation of the local contrast enhancement filter directly into the built-in effects stack.
+> * **Axis-Aligned Cross-Convolution:** Replaced high-overhead multi-pass methods from legacy `Clarity.fx` with a branchless, 8-tap horizontal/vertical cross-convolution layout to match axis-aligned game geometry perfectly while maintaining matching image quality.
+> * **Zero-Intermediate Texture Allocation:** Completely eliminated the half-resolution auxiliary render targets (`ClarityTex` and `ClarityTex2`) utilized by traditional `Clarity.fx` for downsample and blur passes. Running strictly in a textureless single pass avoids intermediate frame-buffer blits and drastically cuts VRAM bandwidth consumption and overheads.Negating Clarity's perhaps the only downside.
+> * **Hardware Bilinear Exploitation:** Utilizes fractional sample strides (`1.5` and `4.5` texels out) to offload interpolation to the GPU's native hardware bilinear filtering units, securing wide-radius blurring footprints with zero extra ALU performance cost.
+> * **Scalar Luma Reconstruction:** Abandoned the traditional ReShade method of splitting color vectors into explicit chrominance arrays (`color / luma`). By executing operations entirely through a late-stage single float multiplier (`lumaScale`), the implementation alleviates vector register pressure and maximizes GPU wavefront occupancy.
+> * **Branchless Pipeline Flattening:** Swapped the conditional if/else runtime forks found in `Clarity.fx` for a branchless ternary selection pattern. This compiles directly into hardware execution predicates (`CSEL`), completely preventing thread stalls inside the GPU execution warp.
+> * **Exposed Full 8 Parameter Configuration in VKBasalt.conf:** Staying faithful to the original shader this is fully configurable with all the knobs.
+
+---
+
+## Building with scripts (Optimized flags)
+1. Simply clone, or downlaod as zip and extract this repo.  
+2. Run either script below. Rminder it prompts for su password as it's a system-wide lib 
+
+Both come with march native optimized compiler flags and Thin LTO.
+
+Open project folder in terminal and run:
+
+### Fish
+```
+chmod +x ./build_vkbasalt_native_optimized.fish
+./build_vkbasalt_native_optimized.fish
+```
+
+Or
+
+### Bash
+```
+chmod +x ./build_vkbasalt_native_optimized.sh
+./build_vkbasalt_native_optimized.sh
+```
+
 # vkBasalt
 vkBasalt is a Vulkan post processing layer to enhance the visual graphics of games.
 
@@ -7,6 +41,7 @@ Currently, the build in effects are:
 - Fast Approximate Anti-Aliasing
 - Enhanced Subpixel Morphological Anti-Aliasing
 - 3D color LookUp Table
+**- Clarity (Optimized Single-Pass Local Contrast Enhancement)**
 
 It is also possible to use Reshade Fx shaders.
 
@@ -94,17 +129,45 @@ If you want to make changes for one game only, you can create a file named `vkBa
 #### Clarity Configuration
 Here's how to configure clarity's VKBasalt implementation in vkBasalt.conf:
 
-The clarity effect has **two configurable parameters** defined in `effect_clarity.cpp`:
+**The newly expanded clarity effect has eight fully configurable parameters parsed natively by the pipeline:**
 
-### 1. `clarityStrength` (default: 0.4)
-- **Purpose**: Controls the amount of contrast enhancement
-- **Range**: 0.0 (no effect) to 1.0 (maximum enhancement)
-- **Default**: 0.4 (good default value)
+### 1. `clarityStrength` (default: **0.60**)
 
-### 2. `clarityRadius` (default: 2.5)
-- **Purpose**: Controls the radius of the local contrast effect in pixels
-- **Range**: Recommended 1.0 - 5.0
-- **Larger values**: Affect a wider area but may introduce haloing artifacts
+* **Purpose**: Controls the amount of contrast enhancement
+* **Range**: 0.0 (no effect) to 1.0 (maximum enhancement)
+* **Default**: **1.00 (Recommend 0.6 if it's too much for you :) )**
+
+### 2. `clarityRadius` (default: **2**)
+
+* **Purpose**: Controls the base component radius of the local contrast effect in pixels
+* **Range**: Recommended 1 - **5**
+
+**### 3. clarityOffset (default: 1.50)**
+
+* **Purpose: Fine-tunes the physical sampling step size of the sparse cross-convolution footprint. Paired with native GPU bilinear texture filtering, fractional offsets (e.g., 1.5 and 4.5) stretch the sampling area efficiently across wider pixel zones without introducing cash misses or extra texture fetch instructions.**
+
+**### 4. clarityBlendMode (default: 1)**
+
+* **Purpose: Changes the mathematical equation used to composite the contrast mask.**
+* **Supported Operational Constants:**
+* **0: Soft Light (Highly subtle local variance)**
+* **1: Overlay (Default: Ideal balance using a smooth S-curve blend model to preserve native tone distributions)**
+* **2: Hard Light**
+* **3: Multiply**
+* **4: Vivid Light**
+* **5: Linear Light**
+* **6: Addition (Raw value stack; can lead to clipping if used with extreme radius configurations)**
+
+
+
+**### 5. clarityBlendIfDark (default: 40) & clarityBlendIfLight (default: 220)**
+
+* **Purpose: Hardware mid-tone luminance masking gates. Coordinates with an unweighted average function to isolate the effect from deep crushing blacks (values below BlendIfDark) or clipping stark highlights/skyboxes (values above BlendIfLight). Values scale on a traditional 0-255 depth spectrum.**
+
+**### 6. clarityDarkIntensity (default: 0.16) & clarityLightIntensity (default: 0.16)**
+
+* **Purpose: Symmetrical halo attenuation parameters.**
+* **Crucial Pipeline Details: These parameters act as subtractive inversion weights inside the math engine ($1.0 - \text{Intensity}$). Pushing these coefficients closer to 1.0 filters out thick black and white rings near extreme contrast thresholds, localizing the clarity effect directly to native game texture structures. However it will make the contrast less punchy. The default is a delicate balance. Recommended ranges 0.1 - 0.3**
 
 ## How to Enable and Configure
 
@@ -118,11 +181,18 @@ effects = clarity
 # effects = clarity:cas
 
 # Adjust the clarity parameters:
-clarityStrength = 0.4   # Try 0.3-0.6 for different intensity
-clarityRadius = 2.5     # Try 1.0-4.0 for different radius
+**clarityStrength = 1.0**
+**clarityRadius = 2**
+**clarityOffset = 1.50**
+**clarityBlendMode = 1**
+**clarityBlendIfDark = 40**
+**clarityBlendIfLight = 220**
+**clarityDarkIntensity = 0.16**
+**clarityLightIntensity = 0.16**
+
 ```
 
-The shader (`clarity.frag.glsl`) implements a high-performance 9-tap sparse grid sampling for local contrast enhancement using an Overlay blend mode. The `strength` parameter controls how much of the enhanced contrast is blended into the final image, while `radius` determines how far from each pixel the blur samples are taken.
+The shader (`clarity.frag.glsl`) implements a **highly optimized 8-tap axis-aligned sparse cross-convolution pattern** for local contrast enhancement using **scalar luma reconstruction, keeping register allocation low to ensure maximum performance across handhelds and low-end GPUs**. The `strength` parameter controls how much of the enhanced contrast is blended into the final image, while `radius` determines how far from each pixel the blur samples are taken.
 
 #### Reshade Fx shaders
 
