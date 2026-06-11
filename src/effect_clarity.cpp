@@ -1,6 +1,7 @@
 #include "effect_clarity.hpp"
 
 #include <cstring>
+#include <cstddef> // Required for offsetof
 
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
@@ -17,58 +18,66 @@
 namespace vkBasalt
 {
     ClarityEffect::ClarityEffect(LogicalDevice*       pLogicalDevice,
-                                  VkFormat             format,
-                                  VkExtent2D           imageExtent,
-                                  std::vector<VkImage> inputImages,
-                                  std::vector<VkImage> outputImages,
-                                  Config*              pConfig)
+                                 VkFormat             format,
+                                 VkExtent2D           imageExtent,
+                                 std::vector<VkImage> inputImages,
+                                 std::vector<VkImage> outputImages,
+                                 Config*              pConfig)
     {
         Logger::debug("in creating ClarityEffect");
 
-        // Get all config options
-        float clarityStrength    = pConfig->getOption<float>("clarityStrength", 0.160f);
-        float clarityRadius      = pConfig->getOption<float>("clarityRadius", 1.0f);
-        float clarityOffset      = pConfig->getOption<float>("clarityOffset", 1.0f);
-        int32_t clarityBlendMode = pConfig->getOption<int32_t>("clarityBlendMode", 6);
-        int32_t clarityBlendIfDark = pConfig->getOption<int32_t>("clarityBlendIfDark", 50);
-        int32_t clarityBlendIfLight = pConfig->getOption<int32_t>("clarityBlendIfLight", 215);
-        float clarityDarkIntensity = pConfig->getOption<float>("clarityDarkIntensity", 0.160f);
-        float clarityLightIntensity = pConfig->getOption<float>("clarityLightIntensity", 0.0f);
+        struct ClaritySpecData {
+            float radius;
+            float offset;
+            float strength;
+            int32_t blendMode;
+            int32_t blendIfDark;
+            int32_t blendIfLight;
+            float darkIntensity;
+            float lightIntensity;
+        };
+
+        // Populate with config values
+        ClaritySpecData specData;
+        specData.radius         = pConfig->getOption<float>("clarityRadius", 1.0f);
+        specData.offset         = pConfig->getOption<float>("clarityOffset", 1.0f);
+        specData.strength       = pConfig->getOption<float>("clarityStrength", 0.160f);
+        specData.blendMode      = pConfig->getOption<int32_t>("clarityBlendMode", 6);
+        specData.blendIfDark    = pConfig->getOption<int32_t>("clarityBlendIfDark", 50);
+        specData.blendIfLight   = pConfig->getOption<int32_t>("clarityBlendIfLight", 215);
+        specData.darkIntensity  = pConfig->getOption<float>("clarityDarkIntensity", 0.160f);
+        specData.lightIntensity = pConfig->getOption<float>("clarityLightIntensity", 0.0f);
 
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = clarity_frag;
 
-        // Prepare specialization constants for all 8 parameters
-        float specData[8] = {
-            clarityRadius,
-            clarityOffset,
-            clarityStrength,
-            float(clarityBlendMode),
-            float(clarityBlendIfDark),
-            float(clarityBlendIfLight),
-            clarityDarkIntensity,
-            clarityLightIntensity
+        // 3Map struct fields to GLSL constant IDs using offsetof
+        VkSpecializationMapEntry mapEntries[8] = {
+            {0, offsetof(ClaritySpecData, radius),         sizeof(float)},
+            {1, offsetof(ClaritySpecData, offset),         sizeof(float)},
+            {2, offsetof(ClaritySpecData, strength),       sizeof(float)},
+            {3, offsetof(ClaritySpecData, blendMode),      sizeof(int32_t)},
+            {4, offsetof(ClaritySpecData, blendIfDark),    sizeof(int32_t)},
+            {5, offsetof(ClaritySpecData, blendIfLight),   sizeof(int32_t)},
+            {6, offsetof(ClaritySpecData, darkIntensity),  sizeof(float)},
+            {7, offsetof(ClaritySpecData, lightIntensity), sizeof(float)}
         };
 
-        VkSpecializationMapEntry mapEntries[8];
-        for (int i = 0; i < 8; i++) {
-            mapEntries[i].constantID = i;
-            mapEntries[i].offset     = sizeof(float) * i;
-            mapEntries[i].size       = sizeof(float);
-        }
-
+        // 4. Setup specialization info with correct data size
         VkSpecializationInfo specializationInfo;
         specializationInfo.mapEntryCount = 8;
         specializationInfo.pMapEntries   = mapEntries;
-        specializationInfo.dataSize      = sizeof(float) * 8;
-        specializationInfo.pData         = specData;
+        specializationInfo.dataSize      = sizeof(ClaritySpecData);
+        specializationInfo.pData         = &specData;
 
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &specializationInfo;
 
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
     }
+
     ClarityEffect::~ClarityEffect()
     {
     }
+
 } // namespace vkBasalt
