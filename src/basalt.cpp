@@ -33,6 +33,7 @@
 #include "effect_fxaa.hpp"
 #include "effect_cas.hpp"
 #include "effect_clarity.hpp"
+#include "effect_claritycas.hpp"
 #include "effect_dls.hpp"
 #include "effect_smaa.hpp"
 #include "effect_deband.hpp"
@@ -472,6 +473,12 @@ namespace vkBasalt
                 pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
                     new ClarityEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
                 Logger::debug("created ClarityEffect");
+            }
+            else if (effectStrings[i] == std::string("claritycas"))
+            {
+                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
+                    new ClarityCasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
+                Logger::debug("created ClarityCasEffect");
             }
             else
             {
