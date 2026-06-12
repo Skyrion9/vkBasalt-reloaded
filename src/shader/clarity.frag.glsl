@@ -4,12 +4,13 @@
 
 layout(set = 0, binding = 0) uniform sampler2D img;
 
+// Defaulted back to Overlay as it uses a proper S-curve that preserves the natural gamma curve.
 layout(constant_id = 0) const float radius = 1.0;
 layout(constant_id = 1) const float offset = 5.0;
 layout(constant_id = 2) const float strength = 1.0;
-layout(constant_id = 3) const int blendMode = 6;
-layout(constant_id = 4) const int blendIfDark = 50;
-layout(constant_id = 5) const int blendIfLight = 215;
+layout(constant_id = 3) const int blendMode = 1; 
+layout(constant_id = 4) const int blendIfDark = 40;
+layout(constant_id = 5) const int blendIfLight = 220;
 layout(constant_id = 6) const float darkIntensity = 0.160;
 layout(constant_id = 7) const float lightIntensity = 0.0;
 
@@ -85,6 +86,12 @@ void main() {
     float isLight = step(0.0, diff);
     float choke = mix(1.0 - darkIntensity, 1.0 - lightIntensity, isLight);
     diff *= choke;
+
+    // Drops the contrast boost to 0.0 as the pixel approaches pure black or white. (Gamma fix)
+    // This prevents the S-curve from artificially crushing shadows or blowing out highlights, preserving the natural gamma roll-off of the original image.
+    float distFromMid = abs(luma - 0.5) * 2.0; 
+    float extremesMask = clamp(1.0 - (distFromMid * distFromMid), 0.0, 1.0); 
+    diff *= extremesMask;
 
     float sharp = luma + diff;
     sharp = applyBlendMode(luma, sharp);
