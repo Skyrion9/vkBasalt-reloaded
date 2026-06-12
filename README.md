@@ -25,7 +25,8 @@ This fork extends the original vkBasalt with push constant support, native Steam
 > * **Hardware Bilinear Exploitation:** Utilizes fractional sample strides (`1.5` and `4.5` texels out) to offload interpolation to the GPU's native hardware bilinear filtering units, securing wide-radius blurring footprints with zero extra ALU performance cost.
 > * **Scalar Luma Reconstruction:** Abandoned the traditional ReShade method of splitting color vectors into explicit chrominance arrays (`color / luma`). By executing operations entirely through a late-stage single float multiplier (`lumaScale`), the implementation alleviates vector register pressure and maximizes GPU wavefront occupancy.
 > * **Branchless Pipeline Flattening:** Swapped the conditional if/else runtime forks found in `Clarity.fx` for a branchless ternary selection pattern. This compiles directly into hardware execution predicates (`CSEL`), completely preventing thread stalls inside the GPU execution warp.
-> * **Gamma Shift Resolution:** Properly clamp and respect the original gamma ensuring pixels don't overshoot black or whites in the extremes..
+> * **Gamma Shift Resolution:** Properly clamp and respect the original gamma ensuring pixels don't overshoot black or whites in the extremes. 
+NOTE : Unlike the ClarityCAS hydbrid shader, Clarity has to substract intensity from white/black halos and is very prone to causing strong haloing effect. I highly recommend using ClarityCAS instead due to its more intelligent bilateral nature that's free of artifacts.
 
 ---
 
