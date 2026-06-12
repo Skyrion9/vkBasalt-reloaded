@@ -16,7 +16,7 @@ layout(constant_id = 0) const float radius = 2.0;
 layout(constant_id = 1) const float offset = 1.5;
 layout(constant_id = 2) const float clarityStrength = 1.0;
 layout(constant_id = 3) const int blendMode = 1;
-layout(constant_id = 4) const int blendIfDark =40;
+layout(constant_id = 4) const int blendIfDark = 40;
 layout(constant_id = 5) const int blendIfLight = 220;
 layout(constant_id = 6) const float casSharpness = 1.0; 
 layout(constant_id = 7) const float casStrength = 1.0; 
@@ -70,17 +70,19 @@ void main() {
     // =====================================================================
     vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
     vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
-    mnRGB = mnRGB2; // Removes corrupt ADD instruction
+    mnRGB += mnRGB2;
 
     vec3 mxRGB  = max(max(max(d,e),max(f,b)),h);
     vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
-    mxRGB = mxRGB2; // Removes corrupt ADD instruction
+    mxRGB += mxRGB2;
 
     vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, 0.0001), 0.0, 1.0);
     float peak = 8.0 - 3.0 * casSharpness;
     
     vec3 invAmp = inversesqrt(max(ampRGB, 0.0001));
     vec3 den = 4.0 - peak * invAmp;
+    
+    // Clamp prevents zero-crossing instability on extreme synthetic edges
     vec3 W_RGB = clamp(vec3(1.0) / den, 0.0, 1.0);
 
     vec3 tightWindow = (b + d) + (f + h);
