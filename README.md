@@ -1,3 +1,16 @@
+## vkBasalt extended with push constant support
+This reduces some repetitive calls such as fetching screen size on each shader iteration. Instead it's readily available information to the shader. Increases performance in Clarity and ClarityCAS hybrid shaders, but other shaders can take advantage of this.
+
+And lots of performance optimizations! Even for the existing shader CAS. More settings & knobs so you may more granularly control the visual fidelity.
+
+# Custom VKBasalt GLSL ClarityCAS (Hybrid) Implementation
+> * **Unified Single-Pass Hybrid Engine:** Seamlessly merges the macro-contrast enhancement of Clarity with the micro-detail acutance of AMD's FidelityFX CAS into a single, highly optimized render pass.
+> * **Bilateral Delta Accumulation:** Replaces traditional blur-and-subtract methods with direct delta weighting. By evaluating luminance differences on the fly, the shader physically prevents wide-radius blurs from crossing high-contrast boundaries, completely eliminating "15-pixel ghosting" and haloing artifacts around UI text and sharp edges.
+> * **CAS Zero-Crossing Protection:** Implements a strict mathematical clamp on CAS adaptive weights to prevent inversion and instability on extreme contrast edges, ensuring text and sharp geometry remain pristine without "reprojection" bleeding.
+> * **Extremes Masking & Branchless Choking:** Utilizes a parabolic extremes stopper and branchless SIMD instructions to protect pure blacks and whites from S-curve overshoot, preserving native tone distributions while enhancing mid-tone texture.
+> * **Zero Intermediate Framebuffers:** Like the custom Clarity pass, the hybrid engine executes entirely in textureless L1 registers, requiring only 17 texture taps and zero VRAM bandwidth overhead for auxiliary render targets.
+> * **Exposed Full 8 Parameter Configuration:** Fully configurable via `vkBasalt.conf`, allowing independent tuning of both the Clarity macro-contrast and CAS micro-sharpening components. (Halo intensity params removed as they're essentially useless due to the nature of this implementation not necessary anymore.)
+
 # Custom VKBasalt GLSL Clarity Implementation
 > * **Integrated Custom Clarity Effect:** Added a native, single-pass GLSL implementation of the local contrast enhancement filter directly into the built-in effects stack.
 > * **Axis-Aligned Cross-Convolution:** Replaced high-overhead multi-pass methods from legacy `Clarity.fx` with a branchless, 8-tap horizontal/vertical cross-convolution layout to match axis-aligned game geometry perfectly while maintaining matching image quality.
@@ -11,13 +24,14 @@
 ## Building with scripts (Optimized flags)
 1. Simply clone, or downlaod as zip and extract this repo.  
 2. Run either script below. Rminder it prompts for su password as it's a system-wide lib 
+3. Use command line option (env flag) when launching game to point to your new and shiny libvkbasalt.so or replace it in your Linux lib folders (Varies by distro, just use the flag.)
 
 Both come with march native optimized compiler flags and Thin LTO.
 
 Open project folder in terminal and run:
 
 ### Fish
-```
+```fish
 chmod +x ./build_vkbasalt_native_optimized.fish
 ./build_vkbasalt_native_optimized.fish
 ```
@@ -25,21 +39,27 @@ chmod +x ./build_vkbasalt_native_optimized.fish
 Or
 
 ### Bash
-```
+```bash
 chmod +x ./build_vkbasalt_native_optimized.sh
 ./build_vkbasalt_native_optimized.sh
+```
+
+#### Then run the game/app with:
+```
+LD_PRELOAD="/run/media/USERNAME/Home/vkBasalt/build/src/libvkbasalt.so" ENABLE_VKBASALT=1 %command
 ```
 
 # vkBasalt
 vkBasalt is a Vulkan post processing layer to enhance the visual graphics of games.
 
 Currently, the build in effects are:
-- Contrast Adaptive Sharpening
+- Contrast Adaptive Sharpening (**Enhanced performance identical Image Quality**)
 - Denoised Luma Sharpening
 - Fast Approximate Anti-Aliasing
-- Enhanced Subpixel Morphological Anti-Aliasing
+- Enhanced Subpixel Morphological Anti-Aliasing (**Extended SMAA configuration so you can maximize your quality or performance!**)
 - 3D color LookUp Table
-**- Clarity (Optimized Single-Pass Local Contrast Enhancement)**
+- **Clarity (Optimized Single-Pass Local Contrast Enhancement)**
+- **ClarityCAS (Optimized Single-Pass Hybrid Contrast & Sharpening)**
 
 It is also possible to use Reshade Fx shaders.
 
@@ -62,21 +82,21 @@ Before building, you will need:
 
 In general, prefer using distro provided packages.
 
-```
+```bash
 git clone https://github.com/DadSchoorse/vkBasalt.git
 cd vkBasalt
 ```
 
 #### 64bit
 
-```
+```bash
 meson setup --buildtype=release --prefix=/usr builddir
 ninja -C builddir install
 ```
 #### 32bit
 
 Make sure that `PKG_CONFIG_PATH=/usr/lib32/pkgconfig` and `--libdir=lib32` are correct for your distro and change them if needed. On Debian based distros you need to replace `lib32` with `lib/i386-linux-gnu`, for example.
-```
+```bash
 ASFLAGS=--32 CFLAGS=-m32 CXXFLAGS=-m32 PKG_CONFIG_PATH=/usr/lib32/pkgconfig meson setup --prefix=/usr --buildtype=release --libdir=lib32 -Dwith_json=false builddir.32
 ninja -C builddir.32 install
 ```
@@ -129,65 +149,122 @@ Here's how to configure clarity's VKBasalt implementation in vkBasalt.conf:
 
 **The newly expanded clarity effect has eight fully configurable parameters parsed natively by the pipeline:**
 
-### 1. `clarityStrength` (default: **0.60**)
-
+### 1. `clarityStrength` (default: **1.00**)
 * **Purpose**: Controls the amount of contrast enhancement
 * **Range**: 0.0 (no effect) to 1.0 (maximum enhancement)
 * **Default**: **1.00 (Recommend 0.6 if it's too much for you :) )**
 
 ### 2. `clarityRadius` (default: **2**)
-
 * **Purpose**: Controls the base component radius of the local contrast effect in pixels
 * **Range**: Recommended 1 - **5**
 
-**### 3. clarityOffset (default: 1.50)**
+### 3. `clarityOffset` (default: **1.50**)
+* **Purpose**: Fine-tunes the physical sampling step size of the sparse cross-convolution footprint. Paired with native GPU bilinear texture filtering, fractional offsets (e.g., 1.5 and 4.5) stretch the sampling area efficiently across wider pixel zones without introducing cash misses or extra texture fetch instructions.
 
-* **Purpose: Fine-tunes the physical sampling step size of the sparse cross-convolution footprint. Paired with native GPU bilinear texture filtering, fractional offsets (e.g., 1.5 and 4.5) stretch the sampling area efficiently across wider pixel zones without introducing cash misses or extra texture fetch instructions.**
-
-**### 4. clarityBlendMode (default: 1)**
-
-* **Purpose: Changes the mathematical equation used to composite the contrast mask.**
+### 4. `clarityBlendMode` (default: **1**)
+* **Purpose**: Changes the mathematical equation used to composite the contrast mask.
 * **Supported Operational Constants:**
-* **0: Soft Light (Highly subtle local variance)**
-* **1: Overlay (Default: Ideal balance using a smooth S-curve blend model to preserve native tone distributions)**
-* **2: Hard Light**
-* **3: Multiply**
-* **4: Vivid Light**
-* **5: Linear Light**
-* **6: Addition (Raw value stack; can lead to clipping if used with extreme radius configurations)**
+  * **0: Soft Light** (Highly subtle local variance)
+  * **1: Overlay** (Default: Ideal balance using a smooth S-curve blend model to preserve native tone distributions)
+  * **2: Hard Light**
+  * **3: Multiply**
+  * **4: Vivid Light**
+  * **5: Linear Light**
+  * **6: Addition** (Raw value stack; can lead to clipping if used with extreme radius configurations)
 
+### 5. `clarityBlendIfDark` (default: **40**) & `clarityBlendIfLight` (default: **220**)
+* **Purpose**: Hardware mid-tone luminance masking gates. Coordinates with an unweighted average function to isolate the effect from deep crushing blacks (values below BlendIfDark) or clipping stark highlights/skyboxes (values above BlendIfLight). Values scale on a traditional 0-255 depth spectrum.
 
+### 6. `clarityDarkIntensity` (default: **0.16**) & `clarityLightIntensity` (default: **0.16**)
 
-**### 5. clarityBlendIfDark (default: 40) & clarityBlendIfLight (default: 220)**
+Note that clarity can seemingly affect gamma, it's very minor and you'd have to be toggling it off and on to notice but PRs are welcome if anyone bothers to fix this.
 
-* **Purpose: Hardware mid-tone luminance masking gates. Coordinates with an unweighted average function to isolate the effect from deep crushing blacks (values below BlendIfDark) or clipping stark highlights/skyboxes (values above BlendIfLight). Values scale on a traditional 0-255 depth spectrum.**
+* **Purpose**: Symmetrical halo attenuation parameters.
+* **Crucial Pipeline Details**: These parameters act as subtractive inversion weights inside the math engine ($1.0 - \text{Intensity}$). Pushing these coefficients closer to 1.0 filters out thick black and white rings near extreme contrast thresholds, localizing the clarity effect directly to native game texture structures. However it will make the contrast less punchy. The default is a delicate balance. Recommended ranges 0.1 - 0.3
 
-**### 6. clarityDarkIntensity (default: 0.16) & clarityLightIntensity (default: 0.16)**
+#### ClarityCAS (Hybrid) Configuration
+Here's how to configure the hybrid ClarityCAS effect in `vkBasalt.conf`:
 
-* **Purpose: Symmetrical halo attenuation parameters.**
-* **Crucial Pipeline Details: These parameters act as subtractive inversion weights inside the math engine ($1.0 - \text{Intensity}$). Pushing these coefficients closer to 1.0 filters out thick black and white rings near extreme contrast thresholds, localizing the clarity effect directly to native game texture structures. However it will make the contrast less punchy. The default is a delicate balance. Recommended ranges 0.1 - 0.3**
+**The hybrid effect exposes eight fully configurable parameters, combining the best of both Clarity and CAS:**
+
+### 1. `clarityCasStrength` (default: **1.0**)
+* **Purpose**: Controls the amount of macro-contrast enhancement (Clarity component).
+* **Range**: 0.0 (no effect) to 1.0 (maximum enhancement).
+
+### 2. `clarityCasRadius` (default: **2**) & `clarityCasOffset` (default: **1.5**)
+* **Purpose**: Controls the base radius and fractional sampling step size of the local contrast effect.
+* **Note**: Lower radii (1 or 2) are recommended to prevent macro-halos around UI elements.
+
+### 3. `clarityCasBlendMode` (default: **1**)
+* **Purpose**: Changes the mathematical equation used to composite the contrast mask.
+* **Recommendation**: **0 (Soft Light)** is highly recommended for the hybrid shader to prevent harsh contrast spikes on bright text compared to Overlay.
+
+### 4. `clarityCasBlendIfDark` (default: **40**) & `clarityCasBlendIfLight` (default: **220**)
+* **Purpose**: Mid-tone luminance masking gates to isolate the effect from deep blacks and stark highlights.
+
+### 5. `clarityCasCasSharpness` (default: **1.0**) & `clarityCasCasStrength` (default: **1.0**)
+* **Purpose**: Controls the micro-detail acutance (CAS component). 
+* **Note**: `0.4` is AMD's official mathematical sweet spot for CAS sharpness. `0.7` strength provides beautiful micro-detail without creating edge ringing.
+
+#### Extended SMAA Configuration
+This fork expands the standard vkBasalt SMAA implementation with granular control over diagonal edge detection and quality presets, allowing you to fine-tune the balance between performance and anti-aliasing quality.
+
+### 1. `smaaDisableDiagDetection` (default: **0**)
+* **Purpose**: Controls whether diagonal edge detection is enabled.
+* **Values**:
+  * **0**: Enabled (Default). Provides better quality for diagonal edges but costs slightly more performance.
+  * **1**: Disabled. Provides better performance, similar to the `SMAA_PRESET_MEDIUM` behavior.
+
+### 2. `smaaPreset` (Optional)
+* **Purpose**: Allows you to use predefined quality presets **instead** of configuring individual SMAA settings. 
+* **Note**: Presets and individual settings are mutually exclusive. If a preset is specified, individual settings (like `smaaThreshold`, `smaaMaxSearchSteps`, etc.) are ignored.
+* **Available Presets**:
+  * **`low`** (~60% quality): `smaaThreshold = 0.15`, `smaaMaxSearchSteps = 4`, `smaaMaxSearchStepsDiag = 0`, `smaaCornerRounding = 25`
+  * **`medium`** (~80% quality): `smaaThreshold = 0.10`, `smaaMaxSearchSteps = 8`, `smaaMaxSearchStepsDiag = 0`, `smaaCornerRounding = 25`
+  * **`high`** (~95% quality): `smaaThreshold = 0.10`, `smaaMaxSearchSteps = 16`, `smaaMaxSearchStepsDiag = 8`, `smaaCornerRounding = 25`
+  * **`ultra`** (~99% quality): `smaaThreshold = 0.05`, `smaaMaxSearchSteps = 32`, `smaaMaxSearchStepsDiag = 16`, `smaaCornerRounding = 25`
+
+Perceptually there's very little difference between medium and high. Ultra is useless and heavy.
 
 ## How to Enable and Configure
 
 In your `~/.config/vkBasalt/vkBasalt.conf` file (or wherever the final config is installed), modify:
 
 ```ini
-# Enable clarity effect - replace 'cas' with 'clarity'
+# Enable standard clarity effect:
 effects = clarity
 
+# OR Enable the hybrid effect:
+effects = claritycas
+
 # Or combine multiple effects (they run left to right):
-# effects = clarity:cas
+# effects = smaa:claritycas
+# note that effects = clarity:cas is 2 seperate effects and effects = claritycas is a single hybrid effect. (Highly Recommended, running them seperately is 4x+ more expensive on my system and is an artifact fest without hybrid considerations.)
 
-# Adjust the clarity parameters:
-**clarityStrength = 1.0**
-**clarityRadius = 2**
-**clarityOffset = 1.50**
-**clarityBlendMode = 1**
-**clarityBlendIfDark = 40**
-**clarityBlendIfLight = 220**
-**clarityDarkIntensity = 0.16**
-**clarityLightIntensity = 0.16**
+# Adjust the standard clarity parameters:
+clarityStrength = 1.0
+clarityRadius = 2
+clarityOffset = 1.50
+clarityBlendMode = 1
+clarityBlendIfDark = 40
+clarityBlendIfLight = 220
+clarityDarkIntensity = 0.16
+clarityLightIntensity = 0.16
 
+# Adjust the hybrid parameters (Using Hybrid is highly recommended):
+clarityCasStrength = 0.5
+clarityCasRadius = 1
+clarityCasOffset = 2.0
+clarityCasBlendMode = 0
+clarityCasBlendIfDark = 20
+clarityCasBlendIfLight = 240
+clarityCasCasSharpness = 0.4
+clarityCasCasStrength = 0.7
+
+# Extended SMAA Settings (Optional):
+# Uncomment to use a preset (ignores individual SMAA settings) or tweak diagonal detection:
+# smaaPreset = ultra
+# smaaDisableDiagDetection = 0
 ```
 
 The shader (`clarity.frag.glsl`) implements a **highly optimized 8-tap axis-aligned sparse cross-convolution pattern** for local contrast enhancement using **scalar luma reconstruction, keeping register allocation low to ensure maximum performance across handhelds and low-end GPUs**. The `strength` parameter controls how much of the enhanced contrast is blended into the final image, while `radius` determines how far from each pixel the blur samples are taken.
