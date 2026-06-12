@@ -3,20 +3,20 @@
 # 1. Clean previous state cleanly
 rm -rf builddir build
 
-# 2. Enforce Clang toolchain and LLD Linker using Bash exports
+# 2. Enforce Clang toolchain and LLD Linker
 export CC=clang
 export CXX=clang++
 export CC_LD=lld
 export CXX_LD=lld
 
-# 3. Configure with ThinLTO, LLD, and native CPU optimizations packed into compiler args
-meson setup build --buildtype=release \
-  -Db_lto=true \
-  -Db_lto_mode=thin \
-  -Dc_args='-O3 -march=native' \
-  -Dcpp_args='-O3 -march=native'
+# 3. Configure. 
+# Note: -march=native is passed here. All other optimizations (ThinLTO, O3, C++20, C17, ndebug) 
+# are now baked into the root meson.build default_options!
+meson setup build --prefix=/usr \
+  -Dc_args='-march=native' \
+  -Dcpp_args='-march=native'
 
-# 4. Compile using all available CPU threads via the Ninja backend
+# 4. Compile
 if meson compile -C build; then
     echo ""
     echo "========================================="
@@ -24,13 +24,24 @@ if meson compile -C build; then
     echo "========================================="
     echo ""
 
-    # 5. Prompt for immediate system installation
-    read -p "Do you want to install vkBasalt right now? [y/N]: " confirm
+    read -p "Do you want to install vkBasalt system-wide right now? [y/N]: " confirm
 
     case "$confirm" in
         y|Y|yes|Yes|YES)
             echo "Running system installation..."
             sudo meson install -C build
+            sudo ldconfig
+
+            # Patch the Vulkan Manifest to guarantee Proton finds it
+            JSON_PATH="/usr/share/vulkan/implicit_layer.d/vkBasalt.json"
+            if [ -f "$JSON_PATH" ]; then
+                sudo sed -i 's|"library_path":.*|"library_path": "/usr/lib/libvkbasalt.so",|g' "$JSON_PATH"
+                echo "Patched Vulkan manifest to point to /usr/lib/libvkbasalt.so"
+            fi
+
+            echo ""
+            echo "Installation complete!"
+            echo "Please FULLY restart Steam (Right-click tray -> Exit) so the Proton container re-reads the manifest."
             ;;
         *)
             echo "Skipping installation. You can deploy it later using: sudo meson install -C build"

@@ -3,20 +3,19 @@
 # 1. Clean previous state cleanly
 rm -rf builddir build
 
-# 2. Enforce Clang toolchain and LLD Linker using Fish global exports
+# 2. Enforce Clang toolchain and LLD Linker
 set -gx CC clang
 set -gx CXX clang++
 set -gx CC_LD lld
 set -gx CXX_LD lld
 
-# 3. Configure with ThinLTO, LLD, and native CPU optimizations packed into compiler args
-meson setup build --buildtype=release \
-  -Db_lto=true \
-  -Db_lto_mode=thin \
-  -Dc_args='-O3 -march=native' \
-  -Dcpp_args='-O3 -march=native'
+# 3. Configure. 
+# Note: -march=native is passed here. All other optimizations are baked into root meson.build!
+meson setup build --prefix=/usr \
+  -Dc_args='-march=native' \
+  -Dcpp_args='-march=native'
 
-# 4. Compile using all available CPU threads via the Ninja backend
+# 4. Compile
 if meson compile -C build
     echo ""
     echo "========================================="
@@ -24,13 +23,24 @@ if meson compile -C build
     echo "========================================="
     echo ""
 
-    # 5. Prompt for immediate system installation
-    read -l -P "Do you want to install vkBasalt right now? [y/N]: " confirm
+    read -l -P "Do you want to install vkBasalt system-wide right now? [y/N]: " confirm
 
     switch $confirm
         case y Y yes Yes YES
             echo "Running system installation..."
             sudo meson install -C build
+            sudo ldconfig
+
+            set json_path "/usr/share/vulkan/implicit_layer.d/vkBasalt.json"
+            if test -f $json_path
+                sudo sed -i 's|"library_path":.*|"library_path": "/usr/lib/libvkbasalt.so",|g' $json_path
+                echo "Patched Vulkan manifest to point to /usr/lib/libvkbasalt.so"
+            end
+
+            echo ""
+            echo "Installation complete!"
+            echo "Please FULLY restart Steam (Right-click tray -> Exit) so the Proton container re-reads the manifest."
+
         case '*'
             echo "Skipping installation. You can deploy it later using: sudo meson install -C build"
     end
