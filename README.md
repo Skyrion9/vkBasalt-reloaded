@@ -1,7 +1,14 @@
-## vkBasalt extended with push constant support
-This reduces some repetitive calls such as fetching screen size on each shader iteration. Instead it's readily available information to the shader. Increases performance in Clarity and ClarityCAS hybrid shaders, but other shaders can take advantage of this.
+Contributions are welcome as the original repo is seemingly abandoned? Over time I'd like to have a collection of vkBasalt implemented GLSL shaders since this is a highly optimized solution as compared to Reshade. I had to turn down my upscaling to be able to run Clarity.fx through Reshade and it cost me about 20 Watts (60 fps limit) to toggle that + CAS. Now it's just about 4-5 Watts in 4k.
 
-And lots of performance optimizations! Even for the existing shader CAS. More settings & knobs so you may more granularly control the visual fidelity.
+# vkBasalt Extended: Push Constants, Native Proton Support & Optimized Shaders
+
+This fork extends the original vkBasalt with push constant support, native Steam/Proton integration, a modernized build system, and heavily optimized custom GLSL shaders. 
+
+* **Push Constant Support:** Reduces repetitive calls like fetching screen size (`textureSize`) on each shader iteration. Instead, `texelSize` is readily available to the shader via push constants, increasing performance in Clarity and ClarityCAS.
+* **Native Steam/Proton Integration:** Build scripts automatically patch the Vulkan implicit layer manifest to use absolute paths. This allows the Steam Linux Runtime (Pressure Vessel) to natively map the layer into game containers, completely eliminating the need for `LD_PRELOAD` hacks.
+* **Modernized Build Pipeline:** Upgraded to C++20 and C17, utilizing ThinLTO and stripping debug assertions (`b_ndebug=if-release`) for a smaller, cache-efficient binary (>100 KB smaller 3.5 MB to 3.4 MB).
+* **Custom Shaders (Clarity & ClarityCAS):** Meticulously optimized, single-pass implementations featuring bilateral edge-stopping, gamma protection, and algebraic reductions. More settings & knobs so you may more granularly control the visual fidelity.
+
 
 # Custom VKBasalt GLSL ClarityCAS (Hybrid) Implementation
 > * **Unified Single-Pass Hybrid Engine:** Seamlessly merges the macro-contrast enhancement of Clarity with the micro-detail acutance of AMD's FidelityFX CAS into a single, highly optimized render pass.
@@ -9,24 +16,27 @@ And lots of performance optimizations! Even for the existing shader CAS. More se
 > * **CAS Zero-Crossing Protection:** Implements a strict mathematical clamp on CAS adaptive weights to prevent inversion and instability on extreme contrast edges, ensuring text and sharp geometry remain pristine without "reprojection" bleeding.
 > * **Extremes Masking & Branchless Choking:** Utilizes a parabolic extremes stopper and branchless SIMD instructions to protect pure blacks and whites from S-curve overshoot, preserving native tone distributions while enhancing mid-tone texture.
 > * **Zero Intermediate Framebuffers:** Like the custom Clarity pass, the hybrid engine executes entirely in textureless L1 registers, requiring only 17 texture taps and zero VRAM bandwidth overhead for auxiliary render targets.
-> * **Exposed Full 8 Parameter Configuration:** Fully configurable via `vkBasalt.conf`, allowing independent tuning of both the Clarity macro-contrast and CAS micro-sharpening components. (Halo intensity params removed as they're essentially useless due to the nature of this implementation not necessary anymore.)
+> * **Exposed Full 8 Parameter Configuration:** Fully configurable via `vkBasalt.conf`, allowing independent tuning of both the Clarity macro-contrast and CAS micro-sharpening components. *(Halo intensity params are invalid for the hybrid shader as they are unnecessary due to the bilateral nature of this implementation).*
 
 # Custom VKBasalt GLSL Clarity Implementation
 > * **Integrated Custom Clarity Effect:** Added a native, single-pass GLSL implementation of the local contrast enhancement filter directly into the built-in effects stack.
 > * **Axis-Aligned Cross-Convolution:** Replaced high-overhead multi-pass methods from legacy `Clarity.fx` with a branchless, 8-tap horizontal/vertical cross-convolution layout to match axis-aligned game geometry perfectly while maintaining matching image quality.
-> * **Zero-Intermediate Texture Allocation:** Completely eliminated the half-resolution auxiliary render targets (`ClarityTex` and `ClarityTex2`) utilized by traditional `Clarity.fx` for downsample and blur passes. Running strictly in a textureless single pass avoids intermediate frame-buffer blits and drastically cuts VRAM bandwidth consumption and overheads.Negating Clarity's perhaps the only downside.
+> * **Zero-Intermediate Texture Allocation:** Completely eliminated the half-resolution auxiliary render targets (`ClarityTex` and `ClarityTex2`) utilized by traditional `Clarity.fx` for downsample and blur passes. Running strictly in a textureless single pass avoids intermediate frame-buffer blits and drastically cuts VRAM bandwidth consumption.
 > * **Hardware Bilinear Exploitation:** Utilizes fractional sample strides (`1.5` and `4.5` texels out) to offload interpolation to the GPU's native hardware bilinear filtering units, securing wide-radius blurring footprints with zero extra ALU performance cost.
 > * **Scalar Luma Reconstruction:** Abandoned the traditional ReShade method of splitting color vectors into explicit chrominance arrays (`color / luma`). By executing operations entirely through a late-stage single float multiplier (`lumaScale`), the implementation alleviates vector register pressure and maximizes GPU wavefront occupancy.
 > * **Branchless Pipeline Flattening:** Swapped the conditional if/else runtime forks found in `Clarity.fx` for a branchless ternary selection pattern. This compiles directly into hardware execution predicates (`CSEL`), completely preventing thread stalls inside the GPU execution warp.
-> * **Exposed Full 8 Parameter Configuration in VKBasalt.conf:** Staying faithful to the original shader this is fully configurable with all the knobs.
+> * **Gamma Shift Resolution:** Properly clamp and respect the original gamma ensuring pixels don't overshoot black or whites in the extremes..
 
+---
 
 ## Building with scripts (Optimized flags)
-1. Simply clone, or downlaod as zip and extract this repo.  
-2. Run either script below. Rminder it prompts for su password as it's a system-wide lib 
-3. Use command line option (env flag) when launching game to point to your new and shiny libvkbasalt.so or replace it in your Linux lib folders (Varies by distro, just use the flag.)
+1. Simply clone, or download as zip and extract this repo.  
+2. Run either script below. It will prompt for your `sudo` password to install the library system-wide and automatically patch the Vulkan manifest for native Proton support.
+3. Launch your game normally using `ENABLE_VKBASALT=1 %command%` in Steam. **No `LD_PRELOAD` required!** but you can also use that if you prefer. 
 
-Both come with march native optimized compiler flags and Thin LTO.
+Remember if you don't preload or install properly and try to use an effect (Clarity, ClarityCAS) that doesn't exist in the original vkBasalt the game will not launch! This is the same behavior as entering effects = donkeykong in the vkbasalt.conf file as it can't find such effect and halts vulkan.
+
+Both scripts automatically apply `-march=native`, while the Meson build system handles ThinLTO, O3, C++20, and assertion stripping for a performant library.
 
 Open project folder in terminal and run:
 
@@ -44,19 +54,23 @@ chmod +x ./build_vkbasalt_native_optimized.sh
 ./build_vkbasalt_native_optimized.sh
 ```
 
-#### Then run the game/app with:
+---
+
+#### If you want to preload per-app instead of installing system-wide:
+Not recommended, only do this if you know what you're doing, install system-wide with the scripts instead.
 ```
 LD_PRELOAD="/run/media/USERNAME/Home/vkBasalt/build/src/libvkbasalt.so" ENABLE_VKBASALT=1 %command
 ```
 
+
 # vkBasalt
 vkBasalt is a Vulkan post processing layer to enhance the visual graphics of games.
 
-Currently, the build in effects are:
-- Contrast Adaptive Sharpening (**Enhanced performance identical Image Quality**)
+Currently, the built-in effects are:
+- Contrast Adaptive Sharpening (**Enhanced performance via algebraic reduction, identical Image Quality**)
 - Denoised Luma Sharpening
 - Fast Approximate Anti-Aliasing
-- Enhanced Subpixel Morphological Anti-Aliasing (**Extended SMAA configuration so you can maximize your quality or performance!**)
+- Enhanced Subpixel Morphological Anti-Aliasing (**Extended SMAA configuration so you can maximize quality or performance!**)
 - 3D color LookUp Table
 - **Clarity (Optimized Single-Pass Local Contrast Enhancement)**
 - **ClarityCAS (Optimized Single-Pass Hybrid Contrast & Sharpening)**
@@ -66,11 +80,11 @@ It is also possible to use Reshade Fx shaders.
 ## Disclaimer
 This is one of my first projects ever, so expect it to have bugs. Use it at your own risk.
 
-## Building from Source
+## Building from Source (Manual)
 
 ### Dependencies
 Before building, you will need:
-- GCC >= 9
+- GCC >= 9 (or Clang)
 - X11 development files
 - glslang
 - SPIR-V Headers
@@ -78,9 +92,9 @@ Before building, you will need:
 
 ### Building
 
-**These instructions use `--prefix=/usr`, which is generally not recommened since vkBasalt will be installed in directories that are meant for the package manager. The alternative is not setting the prefix, it will then be installed in `/usr/local`. But you need to make sure that `ld` finds the library since /usr/local is very likely not in the default path.** 
+**These instructions use `--prefix=/usr`, which is generally not recommended since vkBasalt will be installed in directories that are meant for the package manager. The alternative is not setting the prefix, it will then be installed in `/usr/local`. But you need to make sure that `ld` finds the library since /usr/local is very likely not in the default path.** 
 
-In general, prefer using distro provided packages.
+In general, prefer using distro provided packages (for our shaders you need to use the build scripts provided above instead)
 
 ```bash
 git clone https://github.com/DadSchoorse/vkBasalt.git
@@ -134,7 +148,7 @@ ENABLE_VKBASALT=1 %command%
 
 Settings like the CAS sharpening strength can be changed in the config file.
 The config file will be searched for in the following locations:
-* a file set with the environment variable`VKBASALT_CONFIG_FILE=/path/to/vkBasalt.conf`
+* a file set with the environment variable `VKBASALT_CONFIG_FILE=/path/to/vkBasalt.conf`
 * `vkBasalt.conf` in the working directory of the game
 * `$XDG_CONFIG_HOME/vkBasalt/vkBasalt.conf` or `~/.config/vkBasalt/vkBasalt.conf` if `XDG_CONFIG_HOME` is not set
 * `$XDG_DATA_HOME/vkBasalt/vkBasalt.conf` or `~/.local/share/vkBasalt/vkBasalt.conf` if `XDG_DATA_HOME` is not set
@@ -145,7 +159,7 @@ The config file will be searched for in the following locations:
 If you want to make changes for one game only, you can create a file named `vkBasalt.conf` in the working directory of the game and change the values there.
 
 #### Clarity Configuration
-Here's how to configure clarity's VKBasalt implementation in vkBasalt.conf:
+Here's how to configure clarity's VKBasalt implementation in `vkBasalt.conf`:
 
 **The newly expanded clarity effect has eight fully configurable parameters parsed natively by the pipeline:**
 
@@ -159,7 +173,7 @@ Here's how to configure clarity's VKBasalt implementation in vkBasalt.conf:
 * **Range**: Recommended 1 - **5**
 
 ### 3. `clarityOffset` (default: **1.50**)
-* **Purpose**: Fine-tunes the physical sampling step size of the sparse cross-convolution footprint. Paired with native GPU bilinear texture filtering, fractional offsets (e.g., 1.5 and 4.5) stretch the sampling area efficiently across wider pixel zones without introducing cash misses or extra texture fetch instructions.
+* **Purpose**: Fine-tunes the physical sampling step size of the sparse cross-convolution footprint. Paired with native GPU bilinear texture filtering, fractional offsets (e.g., 1.5 and 4.5) stretch the sampling area efficiently across wider pixel zones without introducing cache misses or extra texture fetch instructions.
 
 ### 4. `clarityBlendMode` (default: **1**)
 * **Purpose**: Changes the mathematical equation used to composite the contrast mask.
@@ -175,12 +189,11 @@ Here's how to configure clarity's VKBasalt implementation in vkBasalt.conf:
 ### 5. `clarityBlendIfDark` (default: **40**) & `clarityBlendIfLight` (default: **220**)
 * **Purpose**: Hardware mid-tone luminance masking gates. Coordinates with an unweighted average function to isolate the effect from deep crushing blacks (values below BlendIfDark) or clipping stark highlights/skyboxes (values above BlendIfLight). Values scale on a traditional 0-255 depth spectrum.
 
-### 6. `clarityDarkIntensity` (default: **0.16**) & `clarityLightIntensity` (default: **0.16**)
-
-Note that clarity can seemingly affect gamma, it's very minor and you'd have to be toggling it off and on to notice but PRs are welcome if anyone bothers to fix this.
-
+### 6. `clarityDarkIntensity` (default: **0.16**) & `clarityLightIntensity` (default: **0.0**)
 * **Purpose**: Symmetrical halo attenuation parameters.
-* **Crucial Pipeline Details**: These parameters act as subtractive inversion weights inside the math engine ($1.0 - \text{Intensity}$). Pushing these coefficients closer to 1.0 filters out thick black and white rings near extreme contrast thresholds, localizing the clarity effect directly to native game texture structures. However it will make the contrast less punchy. The default is a delicate balance. Recommended ranges 0.1 - 0.3
+* **Note on Gamma/Tone:** Features a gamma protection update that keeps pure blacks and whites from S-curve overshoot, and by defaulting to the Overlay blend mode. The intensity parameters cleanly control halo choking without destroying the image's natural gamma roll-off. Pushing these coefficients closer to 1.0 filters out thick black and white rings near extreme contrast thresholds. Recommended ranges 0.1 - 0.3.
+
+This isn't even needed on the hybrid configuration as it's clean and without big halos due to its bilateral heuristics.
 
 #### ClarityCAS (Hybrid) Configuration
 Here's how to configure the hybrid ClarityCAS effect in `vkBasalt.conf`:
@@ -224,7 +237,7 @@ This fork expands the standard vkBasalt SMAA implementation with granular contro
   * **`high`** (~95% quality): `smaaThreshold = 0.10`, `smaaMaxSearchSteps = 16`, `smaaMaxSearchStepsDiag = 8`, `smaaCornerRounding = 25`
   * **`ultra`** (~99% quality): `smaaThreshold = 0.05`, `smaaMaxSearchSteps = 32`, `smaaMaxSearchStepsDiag = 16`, `smaaCornerRounding = 25`
 
-Perceptually there's very little difference between medium and high. Ultra is useless and heavy.
+*Perceptually there's very little difference between medium and high. Ultra is mostly useless and heavy.*
 
 ## How to Enable and Configure
 
@@ -239,7 +252,8 @@ effects = claritycas
 
 # Or combine multiple effects (they run left to right):
 # effects = smaa:claritycas
-# note that effects = clarity:cas is 2 seperate effects and effects = claritycas is a single hybrid effect. (Highly Recommended, running them seperately is 4x+ more expensive on my system and is an artifact fest without hybrid considerations.)
+# Note: 'effects = clarity:cas' runs 2 separate effects. 'effects = claritycas' runs the single hybrid effect. 
+# (Highly Recommended: running them separately is 4x+ more expensive and is an artifact fest without hybrid considerations.)
 
 # Adjust the standard clarity parameters:
 clarityStrength = 1.0
@@ -271,7 +285,7 @@ The shader (`clarity.frag.glsl`) implements a **highly optimized 8-tap axis-alig
 
 #### Reshade Fx shaders
 
-To run reshade fx shaders e.g. shaders from the [reshade repo](https://github.com/crosire/reshade-shaders), you have to set `reshadeTexturePath` and `reshadeIncludePath` to the matching dirctories from the repo. To then use a specific shader you need to set a custom effect name to the shader path and then add that effect name to `effects` like every other effect.
+To run reshade fx shaders e.g. shaders from the [reshade repo](https://github.com/crosire/reshade-shaders), you have to set `reshadeTexturePath` and `reshadeIncludePath` to the matching directories from the repo. To then use a specific shader you need to set a custom effect name to the shader path and then add that effect name to `effects` like every other effect.
 
 ```ini
 effects = colorfulness:denoise
@@ -313,4 +327,4 @@ No. Shaders that need multiple techniques do not work, there might still be prob
 #### You said that "depth buffer access isn't ready yet", what does this mean?
 There is a wip version that you can enable with `depthCapture = on`. It will lead to many problems especially on non nvidia hardware. Also the selected depth buffer isn't always the one you would want.
 #### Is there a way to change settings for reshade shaders?
-There is some support for it [#46](https://github.com/DadSchoorse/vkBasalt/pull/46). One easy way so to simply edit the shader file.
+There is some support for it [#46](https://github.com/DadSchoorse/vkBasalt/pull/46). One easy way is to simply edit the shader file.
