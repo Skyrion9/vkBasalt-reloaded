@@ -30,29 +30,18 @@ float getLuma(vec3 rgb) {
 float applyBlendMode(float luma, float sharp) {
     // The Vulkan compiler (SPIR-V) optimizes these branches because 'blendMode'
     // is a specialization constant. The dead code is stripped at pipeline creation.
-    if (blendMode == 0) {
-        return mix(2.0 * luma * sharp + luma * luma * (1.0 - 2.0 * sharp),
-                   2.0 * luma * (1.0 - sharp) + sqrt(luma) * (2.0 * sharp - 1.0),
-                   step(0.49, sharp));
-    } else if (blendMode == 1) {
-        return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, luma));
-    } else if (blendMode == 2) {
-        return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, sharp));
-    } else if (blendMode == 3) {
-        return clamp(2.0 * luma * sharp, 0.0, 1.0);
-    } else if (blendMode == 4) {
-        return mix(2.0 * luma * sharp, luma / max(2.0 * (1.0 - sharp), 0.0001), step(0.50, sharp));
-    } else if (blendMode == 5) {
-        return luma + 2.0 * sharp - 1.0;
-    } else {
-        return clamp(luma + (sharp - 0.5), 0.0, 1.0);
-    }
+    if (blendMode == 0) return mix(2.0 * luma * sharp + luma * luma * (1.0 - 2.0 * sharp), 2.0 * luma * (1.0 - sharp) + sqrt(luma) * (2.0 * sharp - 1.0), step(0.49, sharp));
+    else if (blendMode == 1) return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, luma));
+    else if (blendMode == 2) return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, sharp));
+    else if (blendMode == 3) return clamp(2.0 * luma * sharp, 0.0, 1.0);
+    else if (blendMode == 4) return mix(2.0 * luma * sharp, luma / max(2.0 * (1.0 - sharp), 0.0001), step(0.50, sharp));
+    else if (blendMode == 5) return luma + 2.0 * sharp - 1.0;
+    else return clamp(luma + (sharp - 0.5), 0.0, 1.0);
 }
 
 void main() {
     vec4 centerColor = textureLod(img, textureCoord, 0.0);
     vec3 orig = centerColor.rgb;
-
     float luma = getLuma(orig);
 
     // Early exit for near-black pixels
@@ -88,36 +77,31 @@ void main() {
     float v4 = getLuma(textureLod(img, textureCoord - vec2(0.0, step2.y), 0.0).rgb);
 
     blurLuma += (h1 + h2 + v1 + v2) * 0.16 + (h3 + h4 + v3 + v4) * 0.04;
-
     float diff = luma - blurLuma;
 
-    // Flattened branch logic using ternary selection
-    diff *= (diff < 0.0) ? (1.0 - darkIntensity) : (1.0 - lightIntensity);
+    // OPTIMIZATION: Branchless Halo Choke
+    // Replaces the ternary operator to prevent GPU warp divergence. (Might be causing slight gamma shift?)
+    // old implementation : diff *= (diff < 0.0) ? (1.0 - darkIntensity) : (1.0 - lightIntensity);
+    float isLight = step(0.0, diff);
+    float choke = mix(1.0 - darkIntensity, 1.0 - lightIntensity, isLight);
+    diff *= choke;
 
     float sharp = luma + diff;
     sharp = applyBlendMode(luma, sharp);
 
-    // BlendIf mid-tone masking
+    // BlendIf mid-tone masking, stripped at compile-time by SPIR-V based on specialization constants
     if (blendIfDark > 0 || blendIfLight < 255) {
         float blendIfD = (float(blendIfDark) / 255.0) + 0.0001;
         float blendIfL = (float(blendIfLight) / 255.0) - 0.0001;
         float mixVal = dot(orig, vec3(0.33333333));
         float mask = 1.0;
 
-        // Optimization: Simplified smoothstep edges
-        if (blendIfDark > 0) {
-            mask = smoothstep(blendIfD * 0.8, blendIfD * 1.2, mixVal);
-        }
-        if (blendIfLight < 255) {
-            // Optimization: mix(mask, 0.0, T) is equivalent to mask * (1.0 - T)
-            mask *= 1.0 - smoothstep(blendIfL * 0.8, blendIfL * 1.2, mixVal);
-        }
+        if (blendIfDark > 0) mask = smoothstep(blendIfD * 0.8, blendIfD * 1.2, mixVal);
+        if (blendIfLight < 255) mask *= 1.0 - smoothstep(blendIfL * 0.8, blendIfL * 1.2, mixVal);
 
         sharp = mix(luma, sharp, mask);
     }
 
-    // Optimization: 'luma' is strictly > 0.0001 here due to the early return.
-    // Therefore, max(luma, 0.0001) is redundant and removed.
     float lumaScale = mix(luma, sharp, strength) / luma;
     vec3 finalColor = orig * lumaScale;
 
