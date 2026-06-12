@@ -1,4 +1,14 @@
-project('vkBasalt', ['c', 'cpp'], default_options: ['c_std=c11', 'cpp_std=c++2a'])
+project('vkBasalt', ['c', 'cpp'], 
+    default_options: [
+        'c_std=c17', 
+        'cpp_std=c++20',
+        'buildtype=release',
+        'b_ndebug=if-release',
+        'b_lto=true',
+        'b_lto_mode=thin',
+        'optimization=3'
+    ]
+)
 
 cpp = meson.get_compiler('cpp')
 
