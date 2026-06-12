@@ -20,7 +20,6 @@
 // AMD FidelityFX CAS - Algebraically Reduced & Optimized
 
 layout(set=0, binding=0) uniform sampler2D img;
-
 layout(constant_id = 0) const float sharpness = 0.4;
 
 layout(location = 0) in vec2 textureCoord;
@@ -28,12 +27,11 @@ layout(location = 0) out vec4 fragColor;
 
 void main()
 {
-        // fetch a 3x3 neighborhood around the pixel 'e',
+    // fetch a 3x3 neighborhood around the pixel 'e',
     //  a b c
     //  d(e)f
     //  g h i
     vec4 inputColor = textureLod(img, textureCoord, 0.0);
-    float alpha = inputColor.a;
     vec3 e = inputColor.rgb;
 
     // Hardware-accelerated offset fetches
@@ -46,23 +44,21 @@ void main()
     vec3 h = textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb;
     vec3 i = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb;
 
+    // AMD's intentional "soft min/max" bias. 
     // Soft min and max.
     //  a b c             b
     //  d e f * 0.5  +  d e f * 0.5
     //  g h i             h
-    // These are 2.0x bigger (factored out the extra multiply).
-
     vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
     vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
-    mnRGB += mnRGB2;
+    mnRGB += mnRGB2; 
 
     vec3 mxRGB  = max(max(max(d,e),max(f,b)),h);
     vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
-    mxRGB += mxRGB2;
+    mxRGB += mxRGB2; 
 
     // Prevent divide-by-zero on pure black pixels
     vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
-
     float peak = 8.0 - 3.0 * sharpness;
 
     //                          0 w 0
@@ -73,14 +69,12 @@ void main()
     vec3 invAmp = inversesqrt(max(ampRGB, vec3(0.0001)));
     
     // ALGEBRAIC REDUCTION:
-    // Original AMD CAS: w = -1/(invAmp*peak), rcpWeight = 1/(1+4w), out = (window*w + e)*rcpWeight
-    // Mathematically simplifies perfectly to: out = (e * P - window) / (P - 4.0)
-    // This eliminates 1 division and 1 multiplication per pixel!
+    // P is always >= 5.0, so (P - 4.0) is always >= 1.0. Perfectly stable.
     vec3 P = invAmp * peak;
     vec3 window = (b + d) + (f + h);
     
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. No divide-by-zero possible.
     vec3 outColor = clamp((e * P - window) / (P - 4.0), 0.0, 1.0);
 
-    fragColor = vec4(outColor, alpha);
+    fragColor = vec4(outColor, inputColor.a);
 }
