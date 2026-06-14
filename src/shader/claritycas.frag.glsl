@@ -80,13 +80,10 @@ void main() {
     float peak = 8.0 - 3.0 * casSharpness;
     
     vec3 invAmp = inversesqrt(max(ampRGB, 0.0001));
-    vec3 den = 4.0 - peak * invAmp;
+    vec3 P = invAmp * peak;
     
-    // Clamp prevents zero-crossing instability on extreme synthetic edges
-    vec3 W_RGB = clamp(vec3(1.0) / den, 0.0, 1.0);
-
     vec3 tightWindow = (b + d) + (f + h);
-    vec3 casDeltaRGB = W_RGB * (tightWindow - 4.0 * e);
+    vec3 casDeltaRGB = ((4.0 * e - tightWindow) / (P - 4.0)) * casStrength;
 
     // =====================================================================
     // 3. CLARITY WIDE FETCHES (8 Fetches - Must be individual for non-adjacent taps)
