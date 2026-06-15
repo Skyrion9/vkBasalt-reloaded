@@ -1,21 +1,17 @@
 #version 450
 
-// Clarity Shader - Optimized Single-Pass Cross-Convolution Contrast
+// Clarity Shader - Optimized Single-Pass Cross-Convolution Contrast (Bilateral Edge-Aware)
 
 layout(set = 0, binding = 0) uniform sampler2D img;
 
-// Defaulted back to Overlay as it uses a proper S-curve that preserves the natural gamma curve.
+// 6 Specialization Constants (darkIntensity and lightIntensity removed due to bilateral edge-stopping)
 layout(constant_id = 0) const float radius = 1.0;
 layout(constant_id = 1) const float offset = 5.0;
 layout(constant_id = 2) const float strength = 1.0;
 layout(constant_id = 3) const int blendMode = 1; 
 layout(constant_id = 4) const int blendIfDark = 40;
 layout(constant_id = 5) const int blendIfLight = 220;
-layout(constant_id = 6) const float darkIntensity = 0.160;
-layout(constant_id = 7) const float lightIntensity = 0.0;
 
-// Push Constant Block for inverse screen resolution
-// Padded to 16 bytes (vec4) for SPIR-V alignment requirements.
 layout(push_constant) uniform PushConstants {
     vec2 texelSize;
     vec2 _padding;
@@ -29,8 +25,6 @@ float getLuma(vec3 rgb) {
 }
 
 float applyBlendMode(float luma, float sharp) {
-    // The Vulkan compiler (SPIR-V) optimizes these branches because 'blendMode'
-    // is a specialization constant. The dead code is stripped at pipeline creation.
     if (blendMode == 0) return mix(2.0 * luma * sharp + luma * luma * (1.0 - 2.0 * sharp), 2.0 * luma * (1.0 - sharp) + sqrt(luma) * (2.0 * sharp - 1.0), step(0.49, sharp));
     else if (blendMode == 1) return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, luma));
     else if (blendMode == 2) return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, sharp));
@@ -51,22 +45,12 @@ void main() {
         return;
     }
 
-    // Optimization: Passing 'texelSize' via Push Constants from the C++ host 
-    // is faster than calling textureSize() every frame.
-    //vec2 texSize = textureSize(img, 0);
-    //vec2 texelSize = 1.0 / vec2(texSize);
-
-    //Using Push Constants instead of textureSize()
     vec2 texelSize = pc.texelSize;
-
-    // Optimization: Simplified step calculations (4.5 = 1.5 * 3)
     float baseOffset = 1.5 * radius * offset;
     vec2 step1 = baseOffset * texelSize;
     vec2 step2 = step1 * 3.0;
 
-    float blurLuma = luma * 0.20;
-
-    // Optimization: Fetch all taps first, then group additions to minimize MUL/ADD instructions
+    // Raw samples for bilateral delta accumulation
     float h1 = getLuma(textureLod(img, textureCoord + vec2(step1.x, 0.0), 0.0).rgb);
     float h2 = getLuma(textureLod(img, textureCoord - vec2(step1.x, 0.0), 0.0).rgb);
     float h3 = getLuma(textureLod(img, textureCoord + vec2(step2.x, 0.0), 0.0).rgb);
@@ -77,18 +61,26 @@ void main() {
     float v3 = getLuma(textureLod(img, textureCoord + vec2(0.0, step2.y), 0.0).rgb);
     float v4 = getLuma(textureLod(img, textureCoord - vec2(0.0, step2.y), 0.0).rgb);
 
-    blurLuma += (h1 + h2 + v1 + v2) * 0.16 + (h3 + h4 + v3 + v4) * 0.04;
-    float diff = luma - blurLuma;
+    // =====================================================================
+    // BILATERAL DELTA ACCUMULATION (Edge-Aware)
+    // =====================================================================
+    float edgeThreshLow = 0.05;
+    float edgeThreshHigh = 0.25;
 
-    // OPTIMIZATION: Branchless Halo Choke
-    // Replaces the ternary operator to prevent GPU warp divergence. (Might be causing slight gamma shift?)
-    // old implementation : diff *= (diff < 0.0) ? (1.0 - darkIntensity) : (1.0 - lightIntensity);
-    float isLight = step(0.0, diff);
-    float choke = mix(1.0 - darkIntensity, 1.0 - lightIntensity, isLight);
-    diff *= choke;
+    float d_h1 = luma - h1; float w_h1 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h1));
+    float d_h2 = luma - h2; float w_h2 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h2));
+    float d_h3 = luma - h3; float w_h3 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h3));
+    float d_h4 = luma - h4; float w_h4 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h4));
+    
+    float d_v1 = luma - v1; float w_v1 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v1));
+    float d_v2 = luma - v2; float w_v2 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v2));
+    float d_v3 = luma - v3; float w_v3 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v3));
+    float d_v4 = luma - v4; float w_v4 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v4));
 
-    // Drops the contrast boost to 0.0 as the pixel approaches pure black or white. (Gamma fix)
-    // This prevents the S-curve from artificially crushing shadows or blowing out highlights, preserving the natural gamma roll-off of the original image.
+    float diff = (d_h1 * w_h1 + d_h2 * w_h2 + d_v1 * w_v1 + d_v2 * w_v2) * 0.16 + 
+                 (d_h3 * w_h3 + d_h4 * w_h4 + d_v3 * w_v3 + d_v4 * w_v4) * 0.04;
+
+    // Extremes Stopper (Gamma fix)
     float distFromMid = abs(luma - 0.5) * 2.0; 
     float extremesMask = clamp(1.0 - (distFromMid * distFromMid), 0.0, 1.0); 
     diff *= extremesMask;
@@ -96,7 +88,7 @@ void main() {
     float sharp = luma + diff;
     sharp = applyBlendMode(luma, sharp);
 
-    // BlendIf mid-tone masking, stripped at compile-time by SPIR-V based on specialization constants
+    // BlendIf mid-tone masking
     if (blendIfDark > 0 || blendIfLight < 255) {
         float blendIfD = (float(blendIfDark) / 255.0) + 0.0001;
         float blendIfL = (float(blendIfLight) / 255.0) - 0.0001;
