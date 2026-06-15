@@ -59,8 +59,8 @@ namespace vkBasalt
             {3, offsetof(ClarityCasSpecData, blendMode),       sizeof(int32_t)},
             {4, offsetof(ClarityCasSpecData, blendIfDark),     sizeof(int32_t)},
             {5, offsetof(ClarityCasSpecData, blendIfLight),    sizeof(int32_t)},
-            {8, offsetof(ClarityCasSpecData, casSharpness),    sizeof(float)},
-            {9, offsetof(ClarityCasSpecData, casStrength),     sizeof(float)}
+            {6, offsetof(ClarityCasSpecData, casSharpness),    sizeof(float)},
+            {7, offsetof(ClarityCasSpecData, casStrength),     sizeof(float)}
         };
 
         // Setup specialization info with correct data size
