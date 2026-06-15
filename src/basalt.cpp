@@ -34,6 +34,7 @@
 #include "effect_cas.hpp"
 #include "effect_clarity.hpp"
 #include "effect_claritycas.hpp"
+#include "effect_clarityrcas.hpp"
 #include "effect_dls.hpp"
 #include "effect_smaa.hpp"
 #include "effect_deband.hpp"
@@ -76,8 +77,8 @@ namespace vkBasalt
     }
 
     VkResult VKAPI_CALL vkBasalt_CreateInstance(const VkInstanceCreateInfo*  pCreateInfo,
-                                                const VkAllocationCallbacks* pAllocator,
-                                                VkInstance*                  pInstance)
+                                                 const VkAllocationCallbacks* pAllocator,
+                                                 VkInstance*                  pInstance)
     {
         VkLayerInstanceCreateInfo* layerCreateInfo = (VkLayerInstanceCreateInfo*) pCreateInfo->pNext;
 
@@ -160,9 +161,9 @@ namespace vkBasalt
     }
 
     VkResult VKAPI_CALL vkBasalt_CreateDevice(VkPhysicalDevice             physicalDevice,
-                                              const VkDeviceCreateInfo*    pCreateInfo,
-                                              const VkAllocationCallbacks* pAllocator,
-                                              VkDevice*                    pDevice)
+                                               const VkDeviceCreateInfo*    pCreateInfo,
+                                               const VkAllocationCallbacks* pAllocator,
+                                               VkDevice*                    pDevice)
     {
         scoped_lock l(globalLock);
         Logger::trace("vkCreateDevice");
@@ -316,9 +317,9 @@ namespace vkBasalt
     }
 
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateSwapchainKHR(VkDevice                        device,
-                                                               const VkSwapchainCreateInfoKHR* pCreateInfo,
-                                                               const VkAllocationCallbacks*    pAllocator,
-                                                               VkSwapchainKHR*                 pSwapchain)
+                                                                 const VkSwapchainCreateInfoKHR* pCreateInfo,
+                                                                 const VkAllocationCallbacks*    pAllocator,
+                                                                 VkSwapchainKHR*                 pSwapchain)
     {
         scoped_lock l(globalLock);
 
@@ -340,7 +341,7 @@ namespace vkBasalt
         if (pLogicalDevice->supportsMutableFormat)
         {
             modifiedCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                            | VK_IMAGE_USAGE_SAMPLED_BIT; // we want to use the swapchain images as output of the graphics pipeline
+                                             | VK_IMAGE_USAGE_SAMPLED_BIT; // we want to use the swapchain images as output of the graphics pipeline
             modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
             // TODO what if the application already uses multiple formats for the swapchain?
 
@@ -370,9 +371,9 @@ namespace vkBasalt
     }
 
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_GetSwapchainImagesKHR(VkDevice       device,
-                                                                  VkSwapchainKHR swapchain,
-                                                                  uint32_t*      pCount,
-                                                                  VkImage*       pSwapchainImages)
+                                                                   VkSwapchainKHR swapchain,
+                                                                   uint32_t*      pCount,
+                                                                   VkImage*       pSwapchainImages)
     {
         scoped_lock l(globalLock);
         Logger::trace("vkGetSwapchainImagesKHR " + std::to_string(*pCount));
@@ -420,15 +421,15 @@ namespace vkBasalt
             if (i == effectStrings.size() - 1)
             {
                 secondImages = pLogicalDevice->supportsMutableFormat
-                                   ? pLogicalSwapchain->images
-                                   : std::vector<VkImage>(pLogicalSwapchain->fakeImages.end() - pLogicalSwapchain->imageCount,
-                                                          pLogicalSwapchain->fakeImages.end());
+                                 ? pLogicalSwapchain->images
+                                 : std::vector<VkImage>(pLogicalSwapchain->fakeImages.end() - pLogicalSwapchain->imageCount,
+                                                         pLogicalSwapchain->fakeImages.end());
                 Logger::debug("using swapchain images as second images");
             }
             else
             {
                 secondImages = std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 1),
-                                                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 2));
+                                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 2));
                 Logger::debug("not using swapchain images as second images");
             }
             Logger::debug(std::to_string(secondImages.size()) + " images in secondImages");
@@ -480,15 +481,21 @@ namespace vkBasalt
                     new ClarityCasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
                 Logger::debug("created ClarityCasEffect");
             }
+            else if (effectStrings[i] == std::string("clarityrcas"))
+            {
+                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
+                    new ClarityRcasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
+                Logger::debug("created ClarityRcasEffect");
+            }
             else
             {
                 pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new ReshadeEffect(pLogicalDevice,
-                                                                                               pLogicalSwapchain->format,
-                                                                                               pLogicalSwapchain->imageExtent,
-                                                                                               firstImages,
-                                                                                               secondImages,
-                                                                                               pConfig.get(),
-                                                                                               effectStrings[i])));
+                                                                                                 pLogicalSwapchain->format,
+                                                                                                 pLogicalSwapchain->imageExtent,
+                                                                                                 firstImages,
+                                                                                                 secondImages,
+                                                                                                 pConfig.get(),
+                                                                                                 effectStrings[i])));
                 Logger::debug("created ReshadeEffect");
             }
         }
@@ -640,9 +647,9 @@ namespace vkBasalt
     }
 
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateImage(VkDevice                     device,
-                                                        const VkImageCreateInfo*     pCreateInfo,
-                                                        const VkAllocationCallbacks* pAllocator,
-                                                        VkImage*                     pImage)
+                                                         const VkImageCreateInfo*     pCreateInfo,
+                                                         const VkAllocationCallbacks* pAllocator,
+                                                         VkImage*                     pImage)
     {
         scoped_lock l(globalLock);
 
@@ -681,10 +688,10 @@ namespace vkBasalt
         {
             Logger::debug("before creating depth image view");
             VkImageView depthImageView = createImageViews(pLogicalDevice,
-                                                          pLogicalDevice->depthFormats[pLogicalDevice->depthImages.size() - 1],
-                                                          {image},
-                                                          VK_IMAGE_VIEW_TYPE_2D,
-                                                          VK_IMAGE_ASPECT_DEPTH_BIT)[0];
+                                                            pLogicalDevice->depthFormats[pLogicalDevice->depthImages.size() - 1],
+                                                            {image},
+                                                            VK_IMAGE_VIEW_TYPE_2D,
+                                                            VK_IMAGE_ASPECT_DEPTH_BIT)[0];
 
             VkFormat depthFormat = pLogicalDevice->depthFormats[pLogicalDevice->depthImages.size() - 1];
 
@@ -703,9 +710,9 @@ namespace vkBasalt
                     if (pLogicalSwapchain->commandBuffersEffect.size())
                     {
                         pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device,
-                                                               pLogicalDevice->commandPool,
-                                                               pLogicalSwapchain->commandBuffersEffect.size(),
-                                                               pLogicalSwapchain->commandBuffersEffect.data());
+                                                                 pLogicalDevice->commandPool,
+                                                                 pLogicalSwapchain->commandBuffersEffect.size(),
+                                                                 pLogicalSwapchain->commandBuffersEffect.data());
                         pLogicalSwapchain->commandBuffersEffect.clear();
                         pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
                         Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it.first));
@@ -753,9 +760,9 @@ namespace vkBasalt
                         if (pLogicalSwapchain->commandBuffersEffect.size())
                         {
                             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device,
-                                                                   pLogicalDevice->commandPool,
-                                                                   pLogicalSwapchain->commandBuffersEffect.size(),
-                                                                   pLogicalSwapchain->commandBuffersEffect.data());
+                                                                     pLogicalDevice->commandPool,
+                                                                     pLogicalSwapchain->commandBuffersEffect.size(),
+                                                                     pLogicalSwapchain->commandBuffersEffect.data());
                             pLogicalSwapchain->commandBuffersEffect.clear();
                             pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
                             Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it.first));
@@ -796,15 +803,15 @@ namespace vkBasalt
     }
 
     VkResult VKAPI_CALL vkBasalt_EnumerateDeviceLayerProperties(VkPhysicalDevice   physicalDevice,
-                                                                uint32_t*          pPropertyCount,
-                                                                VkLayerProperties* pProperties)
+                                                                 uint32_t*          pPropertyCount,
+                                                                 VkLayerProperties* pProperties)
     {
         return vkBasalt_EnumerateInstanceLayerProperties(pPropertyCount, pProperties);
     }
 
     VkResult VKAPI_CALL vkBasalt_EnumerateInstanceExtensionProperties(const char*            pLayerName,
-                                                                      uint32_t*              pPropertyCount,
-                                                                      VkExtensionProperties* pProperties)
+                                                                       uint32_t*              pPropertyCount,
+                                                                       VkExtensionProperties* pProperties)
     {
         if (pLayerName == NULL || std::strcmp(pLayerName, VKBASALT_NAME))
         {
@@ -820,9 +827,9 @@ namespace vkBasalt
     }
 
     VkResult VKAPI_CALL vkBasalt_EnumerateDeviceExtensionProperties(VkPhysicalDevice       physicalDevice,
-                                                                    const char*            pLayerName,
-                                                                    uint32_t*              pPropertyCount,
-                                                                    VkExtensionProperties* pProperties)
+                                                                     const char*            pLayerName,
+                                                                     uint32_t*              pPropertyCount,
+                                                                     VkExtensionProperties* pProperties)
     {
         // pass through any queries that aren't to us
         if (pLayerName == NULL || std::strcmp(pLayerName, VKBASALT_NAME))

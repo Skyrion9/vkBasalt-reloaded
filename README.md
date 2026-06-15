@@ -10,6 +10,15 @@ This fork extends the original vkBasalt with push constant support, native Steam
 * **Custom Shaders (Clarity & ClarityCAS):** Meticulously optimized, single-pass implementations featuring bilateral edge-stopping, gamma protection, and algebraic reductions. More settings & knobs so you may more granularly control the visual fidelity.
 
 
+# Custom VKBasalt GLSL ClarityRCAS (Hybrid) Implementation
+> * **5-Tap RCAS Cross-Neighborhood:** Uses only 4 cross-neighbor fetches (b, d, f, h) instead of 8, saving 4 texture fetches compared to standard CAS while maintaining quality.
+> * **RCAS Clamp for Zero Haloing:** Implements strict delta clamping (`clamp(sharpDelta, mnRGB - e, mxRGB - e)`) that mathematically guarantees zero haloing/clipping on top of the Clarity S-curve.
+> * **Unified Single-Pass Hybrid Engine:** Seamlessly merges the macro-contrast enhancement of Clarity with the micro-detail acutance of AMD's FidelityFX CAS into a single, highly optimized render pass.
+> * **Bilateral Delta Accumulation:** Replaces traditional blur-and-subtract methods with direct delta weighting. By evaluating luminance differences on the fly, the shader physically prevents wide-radius blurs from crossing high-contrast boundaries, completely eliminating "15-pixel ghosting" and haloing artifacts around UI text and sharp edges.
+> * **Extremes Masking & Branchless Choking:** Utilizes a parabolic extremes stopper and branchless SIMD instructions to protect pure blacks and whites from S-curve overshoot, preserving native tone distributions while enhancing mid-tone texture.
+> * **Zero Intermediate Framebuffers:** Like the custom Clarity pass, the hybrid engine executes entirely in textureless L1 registers, requiring only 13 texture taps and zero VRAM bandwidth overhead for auxiliary render targets.
+> * **Exposed Full 8 Parameter Configuration:** Fully configurable via `vkBasalt.conf`, allowing independent tuning of both the Clarity macro-contrast and RCAS micro-sharpening components.
+
 # Custom VKBasalt GLSL ClarityCAS (Hybrid) Implementation
 > * **Unified Single-Pass Hybrid Engine:** Seamlessly merges the macro-contrast enhancement of Clarity with the micro-detail acutance of AMD's FidelityFX CAS into a single, highly optimized render pass.
 > * **Bilateral Delta Accumulation:** Replaces traditional blur-and-subtract methods with direct delta weighting. By evaluating luminance differences on the fly, the shader physically prevents wide-radius blurs from crossing high-contrast boundaries, completely eliminating "15-pixel ghosting" and haloing artifacts around UI text and sharp edges.
@@ -26,7 +35,7 @@ This fork extends the original vkBasalt with push constant support, native Steam
 > * **Scalar Luma Reconstruction:** Abandoned the traditional ReShade method of splitting color vectors into explicit chrominance arrays (`color / luma`). By executing operations entirely through a late-stage single float multiplier (`lumaScale`), the implementation alleviates vector register pressure and maximizes GPU wavefront occupancy.
 > * **Branchless Pipeline Flattening:** Swapped the conditional if/else runtime forks found in `Clarity.fx` for a branchless ternary selection pattern. This compiles directly into hardware execution predicates (`CSEL`), completely preventing thread stalls inside the GPU execution warp.
 > * **Gamma Shift Resolution:** Properly clamp and respect the original gamma ensuring pixels don't overshoot black or whites in the extremes. 
-NOTE : Unlike the ClarityCAS hydbrid shader, Clarity has to substract intensity from white/black halos and is very prone to causing strong haloing effect. I highly recommend using ClarityCAS instead due to its more intelligent bilateral nature that's free of artifacts.
+> NOTE : Unlike the ClarityCAS hydbrid shader, Clarity has to substract intensity from white/black halos and is very prone to causing strong haloing effect. I highly recommend using ClarityCAS or ClarityRCAS instead due to its more intelligent bilateral nature that's free of artifacts.
 
 ---
 
@@ -35,7 +44,7 @@ NOTE : Unlike the ClarityCAS hydbrid shader, Clarity has to substract intensity 
 2. Run either script below. It will prompt for your `sudo` password to install the library system-wide and automatically patch the Vulkan manifest for native Proton support.
 3. Launch your game normally using `ENABLE_VKBASALT=1 %command%` in Steam. **No `LD_PRELOAD` required!** but you can also use that if you prefer. 
 
-Remember if you don't preload or install properly and try to use an effect (Clarity, ClarityCAS) that doesn't exist in the original vkBasalt the game will not launch! This is the same behavior as entering effects = donkeykong in the vkbasalt.conf file as it can't find such effect and halts vulkan.
+Remember if you don't preload or install properly and try to use an effect (Clarity, ClarityCAS, ClarityRCAS) that doesn't exist in the original vkBasalt the game will not launch! This is the same behavior as entering effects = donkeykong in the vkbasalt.conf file as it can't find such effect and halts vulkan.
 
 Both scripts automatically apply `-march=native`, while the Meson build system handles ThinLTO, O3, C++20, and assertion stripping for a performant library.
 
@@ -75,6 +84,7 @@ Currently, the built-in effects are:
 - 3D color LookUp Table
 - **Clarity (Optimized Single-Pass Local Contrast Enhancement)**
 - **ClarityCAS (Optimized Single-Pass Hybrid Contrast & Sharpening)**
+- **ClarityRCAS (Optimized 5-Tap RCAS Hybrid with Zero Haloing)**
 
 It is also possible to use Reshade Fx shaders.
 
@@ -220,6 +230,19 @@ Here's how to configure the hybrid ClarityCAS effect in `vkBasalt.conf`:
 * **Purpose**: Controls the micro-detail acutance (CAS component). 
 * **Note**: `0.4` is AMD's official mathematical sweet spot for CAS sharpness. `0.7` strength provides beautiful micro-detail without creating edge ringing.
 
+
+#### ClarityRCAS (Hybrid) Configuration
+Robust CAS is what AMD uses in FSR to minimize artifacting as the upscaling process introduces artifacts. "Normal" CAS introduces micro-contrast which gives a perception of higher detail or sharpness. As a side effect it boosts the visibility of any artifact on screen. RCAS is more selective in this and clams this contrast boost to prevent color crushing. For purists this is higher quality.
+
+For our purposes of using with Clarity, I prefer this method as it was engineered to minimize artifact-boosting where halos, ringing artifacts etc. might be exaggerated. Although our bilateral clarity approach minimizes artifacts, this is the preffered method when applying multiple sharpness filters and expecting a not-so-clear input such as smudgy TAA or frame generation artifacts.
+
+**The ClarityRCAS effect uses a 5-tap RCAS cross-neighborhood with strict delta clamping for zero haloing:**
+
+Shares the same variables as ClarityCAS except these two below.
+
+### `clarityRcasCasSharpness` (default: **0.4**) & `clarityRcasCasStrength` (default: **1.0**)
+* **Purpose**: Controls the micro-detail acutance (RCAS component). Similar to above but minimal artifacting, clean  sharp.
+
 #### Extended SMAA Configuration
 This fork expands the standard vkBasalt SMAA implementation with granular control over diagonal edge detection and quality presets, allowing you to fine-tune the balance between performance and anti-aliasing quality.
 
@@ -248,12 +271,15 @@ In your `~/.config/vkBasalt/vkBasalt.conf` file (or wherever the final config is
 # Enable standard clarity effect:
 effects = clarity
 
-# OR Enable the hybrid effect:
+# OR Enable the hybrid effect (ClarityCAS):
 effects = claritycas
 
+# OR Enable the RCAS hybrid effect (ClarityRCAS - optimized, zero haloing):
+effects = clarityrcas
+
 # Or combine multiple effects (they run left to right):
-# effects = smaa:claritycas
-# Note: 'effects = clarity:cas' runs 2 separate effects. 'effects = claritycas' runs the single hybrid effect. 
+# effects = smaa:clarityrcas
+# Note: 'effects = clarity:cas' runs 2 separate effects. 'effects = clarityrcas' runs the single hybrid effect. 
 # (Highly Recommended: running them separately is 4x+ more expensive and is an artifact fest without hybrid considerations.)
 
 # Adjust the standard clarity parameters:
@@ -266,15 +292,20 @@ clarityBlendIfLight = 220
 clarityDarkIntensity = 0.16
 clarityLightIntensity = 0.16
 
-# Adjust the hybrid parameters (Using Hybrid is highly recommended):
+# Adjust the ClarityCAS hybrid parameters:
 clarityCasStrength = 0.5
 clarityCasRadius = 1
 clarityCasOffset = 2.0
 clarityCasBlendMode = 0
 clarityCasBlendIfDark = 20
 clarityCasBlendIfLight = 240
+
 clarityCasCasSharpness = 0.4
 clarityCasCasStrength = 0.7
+
+# Adjust the ClarityRCAS hybrid parameters:
+clarityRcasCasSharpness = 0.4
+clarityRcasCasStrength = 0.7
 
 # Extended SMAA Settings (Optional):
 # Uncomment to use a preset (ignores individual SMAA settings) or tweak diagonal detection:
@@ -291,7 +322,7 @@ To run reshade fx shaders e.g. shaders from the [reshade repo](https://github.co
 ```ini
 effects = colorfulness:denoise
 
-colorfulness = /home/user/reshade-shaders/Shaders/Colourfulness.fx
+colourfulness = /home/user/reshade-shaders/Shaders/Colourfulness.fx
 denoise = /home/user/reshade-shaders/Shaders/Denoise.fx
 reshadeTexturePath = /home/user/reshade-shaders/Textures
 reshadeIncludePath = /home/user/reshade-shaders/Shaders

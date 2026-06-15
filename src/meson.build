@@ -10,6 +10,7 @@ vkBasalt_src = [
     'effect_cas.cpp',
     'effect_clarity.cpp',
     'effect_claritycas.cpp',
+    'effect_clarityrcas.cpp',
     'effect.cpp',
     'effect_deband.cpp',
     'effect_dls.cpp',
