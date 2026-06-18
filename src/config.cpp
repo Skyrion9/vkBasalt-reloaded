@@ -12,14 +12,17 @@ namespace vkBasalt
         const char* tmpConfEnv       = std::getenv("VKBASALT_CONFIG_FILE");
         std::string customConfigFile = tmpConfEnv ? std::string(tmpConfEnv) : "";
 
-        // User config file path
-        const char* tmpHomeEnv     = std::getenv("XDG_DATA_HOME");
+        // Fixed: Safely check if HOME environment variable exists to prevent std::logic_error crash
+        const char* tmpHomeEnv = std::getenv("XDG_DATA_HOME");
+        const char* homeEnv    = std::getenv("HOME");
+        std::string homeStr    = homeEnv ? std::string(homeEnv) : "";
+
         std::string userConfigFile = tmpHomeEnv ? std::string(tmpHomeEnv) + "/vkBasalt/vkBasalt.conf"
-                                                : std::string(std::getenv("HOME")) + "/.local/share/vkBasalt/vkBasalt.conf";
+                                                : (homeStr.empty() ? "" : homeStr + "/.local/share/vkBasalt/vkBasalt.conf");
 
         const char* tmpConfigEnv      = std::getenv("XDG_CONFIG_HOME");
         std::string userXdgConfigFile = tmpConfigEnv ? std::string(tmpConfigEnv) + "/vkBasalt/vkBasalt.conf"
-                                                     : std::string(std::getenv("HOME")) + "/.config/vkBasalt/vkBasalt.conf";
+                                                     : (homeStr.empty() ? "" : homeStr + "/.config/vkBasalt/vkBasalt.conf");
 
         // Allowed config paths
         const std::array<std::string, 7> configPath = {
@@ -127,7 +130,8 @@ namespace vkBasalt
         auto found = options.find(option);
         if (found != options.end())
         {
-            // TODO find a better float parsing way, std::stof has locale issues
+            // "Find a better float parsing way, std::stof has locale issues"
+            // Note: Using std::locale("C") is standard way to parse floats, unnecessary.
             std::stringstream ss(found->second);
             ss.imbue(std::locale("C"));
             float value;
