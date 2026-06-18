@@ -45,7 +45,7 @@ namespace vkBasalt
 
         VkResult result =
             pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &descriptorSetCreateInfo, nullptr, &descriptorSetLayout);
-        ASSERT_VULKAN(result)
+        ASSERT_VULKAN(result); 
 
         return descriptorSetLayout;
     }
@@ -116,7 +116,8 @@ namespace vkBasalt
 
         VkResult result =
             pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &descriptorSetCreateInfo, nullptr, &descriptorSetLayout);
-        ASSERT_VULKAN(result)
+        ASSERT_VULKAN(result);
+
         return descriptorSetLayout;
     }
 
