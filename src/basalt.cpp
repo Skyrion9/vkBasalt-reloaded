@@ -8,6 +8,7 @@
 #include <string>
 #include <memory>
 #include <cstring>
+#include <algorithm>
 
 #include "util.hpp"
 #include "keyboard_input.hpp"
@@ -683,28 +684,48 @@ namespace vkBasalt
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
 
         VkResult result = pLogicalDevice->vkd.BindImageMemory(device, image, memory, memoryOffset);
-        // TODO what if the application creates more than one image before binding memory?
-        if (pLogicalDevice->depthImages.size() && image == pLogicalDevice->depthImages.back())
+        
+        // Fixed: Search for the image in depthImages to handle cases where multiple images are created before binding
+        auto it = std::find(pLogicalDevice->depthImages.begin(), pLogicalDevice->depthImages.end(), image);
+        if (it != pLogicalDevice->depthImages.end())
+        {
+            size_t index = std::distance(pLogicalDevice->depthImages.begin(), it);
+            
+            // Ensure the view vector is large enough
+            if (pLogicalDevice->depthImageViews.size() <= index) {
+                pLogicalDevice->depthImageViews.resize(index + 1, VK_NULL_HANDLE);
+            }
+
+            // Only create the view if we haven't already
+            if (pLogicalDevice->depthImageViews[index] == VK_NULL_HANDLE)
         {
             Logger::debug("before creating depth image view");
+                VkFormat depthFormat = pLogicalDevice->depthFormats[index];
+
             VkImageView depthImageView = createImageViews(pLogicalDevice,
-                                                            pLogicalDevice->depthFormats[pLogicalDevice->depthImages.size() - 1],
+                                                                depthFormat,
                                                             {image},
                                                             VK_IMAGE_VIEW_TYPE_2D,
                                                             VK_IMAGE_ASPECT_DEPTH_BIT)[0];
 
-            VkFormat depthFormat = pLogicalDevice->depthFormats[pLogicalDevice->depthImages.size() - 1];
-
             Logger::debug("created depth image view");
-            pLogicalDevice->depthImageViews.push_back(depthImageView);
-            if (pLogicalDevice->depthImageViews.size() > 1)
-            {
-                return result;
-            }
+                pLogicalDevice->depthImageViews[index] = depthImageView;
 
-            for (auto& it : swapchainMap)
+                // The original code only re-recorded command buffers for the first depth buffer.
+                // We preserve this behavior by checking if this is the first valid view.
+                bool isFirstDepthBuffer = true;
+                for(size_t i = 0; i < index; ++i) {
+                    if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE) {
+                        isFirstDepthBuffer = false;
+                        break;
+            }
+                }
+
+                if (isFirstDepthBuffer)
+                {
+                    for (auto& it_swap : swapchainMap)
             {
-                LogicalSwapchain* pLogicalSwapchain = it.second.get();
+                        LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
                 if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice)
                 {
                     if (pLogicalSwapchain->commandBuffersEffect.size())
@@ -715,11 +736,13 @@ namespace vkBasalt
                                                                  pLogicalSwapchain->commandBuffersEffect.data());
                         pLogicalSwapchain->commandBuffersEffect.clear();
                         pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-                        Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it.first));
+                                Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
 
                         writeCommandBuffers(
                             pLogicalDevice, pLogicalSwapchain->effects, image, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
                         Logger::debug("wrote CommandBuffers");
+                            }
+                        }
                     }
                 }
             }
@@ -741,20 +764,26 @@ namespace vkBasalt
             if (pLogicalDevice->depthImages[i] == image)
             {
                 pLogicalDevice->depthImages.erase(pLogicalDevice->depthImages.begin() + i);
-                // TODO what if a image gets destroyed before binding memory?
-                if (pLogicalDevice->depthImageViews.size() - 1 >= i)
+                
+                // Fixed: Safer bounds check and null check
+                if (i < pLogicalDevice->depthImageViews.size())
+                {
+                    if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE)
                 {
                     pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, pLogicalDevice->depthImageViews[i], nullptr);
+                    }
                     pLogicalDevice->depthImageViews.erase(pLogicalDevice->depthImageViews.begin() + i);
                 }
+                
                 pLogicalDevice->depthFormats.erase(pLogicalDevice->depthFormats.begin() + i);
 
                 VkImageView depthImageView = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImageViews[0] : VK_NULL_HANDLE;
                 VkImage     depthImage     = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImages[0] : VK_NULL_HANDLE;
                 VkFormat    depthFormat    = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthFormats[0] : VK_FORMAT_UNDEFINED;
-                for (auto& it : swapchainMap)
+                
+                for (auto& it_swap : swapchainMap)
                 {
-                    LogicalSwapchain* pLogicalSwapchain = it.second.get();
+                    LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
                     if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice)
                     {
                         if (pLogicalSwapchain->commandBuffersEffect.size())
@@ -765,7 +794,7 @@ namespace vkBasalt
                                                                      pLogicalSwapchain->commandBuffersEffect.data());
                             pLogicalSwapchain->commandBuffersEffect.clear();
                             pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-                            Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it.first));
+                            Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
 
                             writeCommandBuffers(pLogicalDevice,
                                                 pLogicalSwapchain->effects,
@@ -777,6 +806,8 @@ namespace vkBasalt
                         }
                     }
                 }
+                
+                break; // Fixed: Added break to prevent skipping elements or out-of-bounds access
             }
         }
 
@@ -898,9 +929,14 @@ extern "C"
 
     VK_BASALT_EXPORT PFN_vkVoidFunction VKAPI_CALL vkBasalt_GetDeviceProcAddr(VkDevice device, const char* pName)
     {
+        // Fixed: Thread-safe initialization of pConfig using double-checked locking
+        if (vkBasalt::pConfig == nullptr)
+        {
+            vkBasalt::scoped_lock l(vkBasalt::globalLock);
         if (vkBasalt::pConfig == nullptr)
         {
             vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
+            }
         }
 
         INTERCEPT_CALLS
@@ -913,9 +949,14 @@ extern "C"
 
     VK_BASALT_EXPORT PFN_vkVoidFunction VKAPI_CALL vkBasalt_GetInstanceProcAddr(VkInstance instance, const char* pName)
     {
+        // Fixed: Thread-safe initialization of pConfig using double-checked locking
+        if (vkBasalt::pConfig == nullptr)
+        {
+            vkBasalt::scoped_lock l(vkBasalt::globalLock);
         if (vkBasalt::pConfig == nullptr)
         {
             vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
+            }
         }
 
         INTERCEPT_CALLS
