@@ -10,7 +10,7 @@ namespace vkBasalt
         attachmentDescription.flags          = 0;
         attachmentDescription.format         = format;
         attachmentDescription.samples        = VK_SAMPLE_COUNT_1_BIT;
-        attachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        attachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachmentDescription.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
         attachmentDescription.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
