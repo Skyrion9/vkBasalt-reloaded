@@ -2,12 +2,13 @@
 
 namespace vkBasalt
 {
-    std::vector<VkImageView> createImageViews(LogicalDevice*       pLogicalDevice,
-                                              VkFormat             format,
-                                              std::vector<VkImage> images,
-                                              VkImageViewType      viewType,
-                                              VkImageAspectFlags   aspectMask,
-                                              uint32_t             mipLevels)
+    // Fixed: Pass vector by const reference to prevent unnecessary heap allocation
+    std::vector<VkImageView> createImageViews(LogicalDevice*              pLogicalDevice,
+                                              VkFormat                    format,
+                                              const std::vector<VkImage>& images,
+                                              VkImageViewType             viewType,
+                                              VkImageAspectFlags          aspectMask,
+                                              uint32_t                    mipLevels)
     {
         std::vector<VkImageView> imageViews(images.size());
 

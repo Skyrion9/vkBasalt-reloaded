@@ -3,7 +3,8 @@
 namespace vkBasalt
 {
     std::vector<VkFramebuffer>
-    createFramebuffers(LogicalDevice* pLogicalDevice, VkRenderPass renderPass, VkExtent2D& extent, std::vector<std::vector<VkImageView>> imageViews)
+    // pass by reference instead of by value to avoid copying the vector.
+    createFramebuffers(LogicalDevice* pLogicalDevice, VkRenderPass renderPass, VkExtent2D& extent, const std::vector<std::vector<VkImageView>>& imageViews)
     {
         std::vector<VkFramebuffer> framebuffers(imageViews[0].size());
         std::vector<VkImageView>   perFrameImageViews;

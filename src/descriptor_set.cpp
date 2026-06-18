@@ -120,11 +120,12 @@ namespace vkBasalt
         return descriptorSetLayout;
     }
 
-    std::vector<VkDescriptorSet> allocateAndWriteImageSamplerDescriptorSets(LogicalDevice*                        pLogicalDevice,
-                                                                            VkDescriptorPool                      descriptorPool,
-                                                                            VkDescriptorSetLayout                 descriptorSetLayout,
-                                                                            std::vector<VkSampler>                samplers,
-                                                                            std::vector<std::vector<VkImageView>> imageViewsVectors)
+    // Fixed: Pass vectors by const reference to prevent unnecessary copy heap allocations
+    std::vector<VkDescriptorSet> allocateAndWriteImageSamplerDescriptorSets(LogicalDevice*                               pLogicalDevice,
+                                                                            VkDescriptorPool                             descriptorPool,
+                                                                            VkDescriptorSetLayout                        descriptorSetLayout,
+                                                                            const std::vector<VkSampler>&                samplers,
+                                                                            const std::vector<std::vector<VkImageView>>& imageViewsVectors)
     {
         std::vector<VkDescriptorSet> descriptorSets(imageViewsVectors[0].size());
 

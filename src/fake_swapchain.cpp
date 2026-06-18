@@ -4,10 +4,11 @@
 
 namespace vkBasalt
 {
-    std::vector<VkImage> createFakeSwapchainImages(LogicalDevice*           pLogicalDevice,
-                                                   VkSwapchainCreateInfoKHR swapchainCreateInfo,
-                                                   uint32_t                 count,
-                                                   VkDeviceMemory&          deviceMemory)
+    // Fixed: Pass swapchainCreateInfo by const reference to prevent struct copying and dangling pointers
+    std::vector<VkImage> createFakeSwapchainImages(LogicalDevice*                  pLogicalDevice,
+                                                   const VkSwapchainCreateInfoKHR& swapchainCreateInfo,
+                                                   uint32_t                        count,
+                                                   VkDeviceMemory&                 deviceMemory)
     {
         std::vector<VkImage> fakeImages(count);
 
