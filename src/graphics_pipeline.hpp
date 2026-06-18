@@ -4,7 +4,6 @@
 #include <fstream>
 #include <string>
 #include <iostream>
-#include <vector>
 #include <memory>
 
 #include "vulkan_include.hpp"
@@ -13,15 +12,16 @@
 
 namespace vkBasalt
 {
-    VkPipelineLayout createGraphicsPipelineLayout(LogicalDevice* pLogicalDevice, std::vector<VkDescriptorSetLayout> descriptorSetLayouts);
+    // Added default argument of 0 so existing calls don't break
+    VkPipelineLayout createGraphicsPipelineLayout(LogicalDevice* pLogicalDevice, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, uint32_t pushConstantSize = 0);
 
     VkPipeline createGraphicsPipeline(LogicalDevice*        pLogicalDevice,
                                       VkShaderModule        vertexModule,
                                       VkSpecializationInfo* vertexSpecializationInfo,
-                                      std::string           vertexEntryPoint,
+                                      const std::string&    vertexEntryPoint,
                                       VkShaderModule        fragmentModule,
                                       VkSpecializationInfo* fragmentSpecializationInfo,
-                                      std::string           fragmentEntryPoint,
+                                      const std::string&    fragmentEntryPoint,
                                       VkExtent2D            extent,
                                       VkRenderPass          renderPass,
                                       VkPipelineLayout      pipelineLayout,

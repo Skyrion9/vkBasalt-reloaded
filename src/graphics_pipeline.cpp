@@ -2,13 +2,13 @@
 
 namespace vkBasalt
 {
-    VkPipelineLayout createGraphicsPipelineLayout(LogicalDevice* pLogicalDevice, std::vector<VkDescriptorSetLayout> descriptorSetLayouts)
+    // Fixed: Added 'uint32_t pushConstantSize' to the function signature to match the header
+    VkPipelineLayout createGraphicsPipelineLayout(LogicalDevice* pLogicalDevice, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, uint32_t pushConstantSize)
     {
-        // Define the push constant range (vec4 = 4 floats = 16 bytes for SPIR-V alignment)
         VkPushConstantRange pushConstantRange = {};
         pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         pushConstantRange.offset = 0;
-        pushConstantRange.size = sizeof(float) * 4;
+        pushConstantRange.size = pushConstantSize; // dynamic size passed from the effect
 
         VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
         pipelineLayoutCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -16,10 +16,18 @@ namespace vkBasalt
         pipelineLayoutCreateInfo.flags                  = 0;
         pipelineLayoutCreateInfo.setLayoutCount         = descriptorSetLayouts.size();
         pipelineLayoutCreateInfo.pSetLayouts            = descriptorSetLayouts.data();
-        
-        // Attach the push constant range
-        pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
-        pipelineLayoutCreateInfo.pPushConstantRanges    = &pushConstantRange;
+
+        if (pushConstantSize > 0)
+        {
+            // Attach the push constant range only if the effect requires it
+            pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+            pipelineLayoutCreateInfo.pPushConstantRanges    = &pushConstantRange;
+        }
+        else
+        {
+            pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+            pipelineLayoutCreateInfo.pPushConstantRanges    = nullptr;
+        }
 
         VkPipelineLayout pipelineLayout;
         VkResult result = pLogicalDevice->vkd.CreatePipelineLayout(pLogicalDevice->device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
@@ -27,13 +35,14 @@ namespace vkBasalt
         return pipelineLayout;
     }
 
+    // Pass by reference instead of by value to avoid copying strings.
     VkPipeline createGraphicsPipeline(LogicalDevice*        pLogicalDevice,
                                       VkShaderModule        vertexModule,
                                       VkSpecializationInfo* vertexSpecializationInfo,
-                                      std::string           vertexEntryPoint,
+                                      const std::string&    vertexEntryPoint,
                                       VkShaderModule        fragmentModule,
                                       VkSpecializationInfo* fragmentSpecializationInfo,
-                                      std::string           fragmentEntryPoint,
+                                      const std::string&    fragmentEntryPoint,
                                       VkExtent2D            extent,
                                       VkRenderPass          renderPass,
                                       VkPipelineLayout      pipelineLayout,
@@ -151,14 +160,12 @@ namespace vkBasalt
         colorBlendCreateInfo.blendConstants[2] = 0.0f;
         colorBlendCreateInfo.blendConstants[3] = 0.0f;
 
-        VkDynamicState dynamicStates[] = {};
-
         VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo;
         dynamicStateCreateInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
         dynamicStateCreateInfo.pNext             = nullptr;
         dynamicStateCreateInfo.flags             = 0;
         dynamicStateCreateInfo.dynamicStateCount = 0;
-        dynamicStateCreateInfo.pDynamicStates    = dynamicStates;
+        dynamicStateCreateInfo.pDynamicStates    = nullptr; // No zero-length array needed
 
         VkGraphicsPipelineCreateInfo pipelineCreateInfo;
         pipelineCreateInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

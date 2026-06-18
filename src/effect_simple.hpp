@@ -47,6 +47,7 @@ namespace vkBasalt
         std::vector<uint32_t>        fragmentCode;
         VkSpecializationInfo*        pVertexSpecInfo;
         VkSpecializationInfo*        pFragmentSpecInfo;
+        uint32_t                     pushConstantSize = 16; // subclasses can set this to the size of their push constants, safe default is 16 bytes.
 
         // subclasses can put DescriptorSets in here, but the first one will be the input image descriptorSet
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;

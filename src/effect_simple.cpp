@@ -1,6 +1,7 @@
 #include "effect_simple.hpp"
 
 #include <cstring>
+#include <vector>
 
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
@@ -58,7 +59,9 @@ namespace vkBasalt
         renderPass = createRenderPass(pLogicalDevice, format);
 
         descriptorSetLayouts.insert(descriptorSetLayouts.begin(), imageSamplerDescriptorSetLayout);
-        pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
+        
+        // Pass the dynamic pushConstantSize to the layout creator
+        pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts, this->pushConstantSize);
 
         graphicsPipeline = createGraphicsPipeline(pLogicalDevice,
                                                   vertexModule,
@@ -144,28 +147,34 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
         Logger::debug("after bind pipeliene");
 
-        // =====================================================================
-        // PUSH CONSTANT INJECTION
-        // =====================================================================
-        // Pushes the inverse screen resolution (texelSize).
+        // Push constant injection
+        // Dynamically sized based on the derived effect's pushConstantSize.
         // Shaders that declare a push_constant block (like Clarity) will read this.
-        // Shaders that don't (like CAS) will safely ignore it without crashing.
-        // Padded to 16 bytes (vec4) for SPIR-V alignment requirements.
-        float texelSize[4] = { 
-            1.0f / static_cast<float>(imageExtent.width), 
-            1.0f / static_cast<float>(imageExtent.height),
-            0.0f,
-            0.0f
-        };
+        // Shaders that don't (like CAS/FXAA) will safely ignore it, provided pushConstantSize matches the layout.
+        if (pushConstantSize > 0) {
+            std::vector<float> pushData(pushConstantSize / sizeof(float), 0.0f);
+            
+            // Populate texelSize (X and Y)
+            if (pushData.size() >= 2) {
+                pushData[0] = 1.0f / static_cast<float>(imageExtent.width); 
+                pushData[1] = 1.0f / static_cast<float>(imageExtent.height);
+            }
+            
+            // If the layout expects pixelSize at offset 4 (like Clarity effects), populate it
+            if (pushData.size() >= 6) {
+                pushData[4] = pushData[0]; // pixelSizeX
+                pushData[5] = pushData[1]; // pixelSizeY
+            }
 
-        pLogicalDevice->vkd.CmdPushConstants(
-            commandBuffer, 
-            pipelineLayout,              
-            VK_SHADER_STAGE_FRAGMENT_BIT, 
-            0,                           
-            sizeof(texelSize),           
-            texelSize                    
-        );
+            pLogicalDevice->vkd.CmdPushConstants(
+                commandBuffer, 
+                pipelineLayout,              
+                VK_SHADER_STAGE_FRAGMENT_BIT, 
+                0,                           
+                pushConstantSize,           
+                pushData.data()                    
+            );
+        }
         // =====================================================================
 
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
