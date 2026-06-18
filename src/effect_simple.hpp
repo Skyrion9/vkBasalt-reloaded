@@ -17,6 +17,12 @@
 
 namespace vkBasalt
 {
+    // Lightweight vec2 to mirror GLSL's vec2 without needing GLM
+    struct PushVec2 {
+        float x;
+        float y;
+    };
+
     class SimpleEffect : public Effect
     {
     public:
