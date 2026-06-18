@@ -33,7 +33,9 @@ namespace vkBasalt
         VkImageMemoryBarrier memoryBarrier;
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memoryBarrier.pNext               = nullptr;
-        memoryBarrier.srcAccessMask       = 0;
+        
+        // Fixed: Use MEMORY_READ_BIT for PRESENT_SRC_KHR
+        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT; 
         memoryBarrier.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
         memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -47,15 +49,19 @@ namespace vkBasalt
         memoryBarrier.subresourceRange.baseArrayLayer = 0;
         memoryBarrier.subresourceRange.layerCount     = 1;
 
+        // Fixed: Use COLOR_ATTACHMENT_OUTPUT_BIT instead of BOTTOM_OF_PIPE_BIT
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
         memoryBarrier.image         = outputImages[imageIndex];
         memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
         memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        memoryBarrier.srcAccessMask = 0;
         memoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        
+        // UNDEFINED to TRANSFER_DST requires no wait, so TOP_OF_PIPE is perfectly fine here
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
         pLogicalDevice->vkd.CmdCopyImage(commandBuffer,
                                          inputImages[imageIndex],

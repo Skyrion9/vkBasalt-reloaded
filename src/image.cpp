@@ -153,15 +153,24 @@ namespace vkBasalt
 
         pLogicalDevice->vkd.CmdCopyBufferToImage(commandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-        memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        if (mipLevels > 1)
+        {
+            // Leave level 0 in TRANSFER_DST_OPTIMAL so generateMipMaps can read it immediately
+            generateMipMaps(pLogicalDevice, commandBuffer, image, extent, mipLevels);
+            
+            // (generateMipMaps now handles transitioning all levels to SHADER_READ_ONLY)
+        }
+        else
+        {
+            // If no mipmaps, transition level 0 to SHADER_READ as usual
+            memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-
-        generateMipMaps(pLogicalDevice, commandBuffer, image, extent, mipLevels);
+            pLogicalDevice->vkd.CmdPipelineBarrier(
+                commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+        }
 
         pLogicalDevice->vkd.EndCommandBuffer(commandBuffer);
 
@@ -242,97 +251,106 @@ namespace vkBasalt
         {
             return;
         }
-        int32_t width  = extent.width;
-        int32_t height = extent.height;
-        int32_t depth  = extent.depth;
 
         VkImageMemoryBarrier memoryBarrier;
-        memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.pNext               = nullptr;
-        memoryBarrier.image               = image;
-        memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        memoryBarrier.srcAccessMask       = 0;
-        memoryBarrier.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
-        memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
+        memoryBarrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        memoryBarrier.pNext                           = nullptr;
+        memoryBarrier.image                           = image;
+        memoryBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        memoryBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        memoryBarrier.subresourceRange.baseMipLevel   = 0;
-        memoryBarrier.subresourceRange.levelCount     = 1;
         memoryBarrier.subresourceRange.baseArrayLayer = 0;
         memoryBarrier.subresourceRange.layerCount     = 1;
+        memoryBarrier.subresourceRange.levelCount     = 1;
+
+        int32_t mipWidth  = extent.width;
+        int32_t mipHeight = extent.height;
+        int32_t mipDepth  = extent.depth;
 
         for (uint32_t i = 1; i < mipLevels; i++)
         {
-            VkImageBlit imageBlit;
-
-            imageBlit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            imageBlit.srcSubresource.mipLevel       = i - 1;
-            imageBlit.srcSubresource.baseArrayLayer = 0;
-            imageBlit.srcSubresource.layerCount     = 1;
-            imageBlit.srcOffsets[0]                 = {0, 0, 0};
-            imageBlit.srcOffsets[1]                 = {width, height, depth};
-
-            width  = (width == 1) ? 1 : width / 2;
-            height = (height == 1) ? 1 : height / 2;
-            depth  = (depth == 1) ? 1 : depth / 2;
-
-            imageBlit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            imageBlit.dstSubresource.mipLevel       = i;
-            imageBlit.dstSubresource.baseArrayLayer = 0;
-            imageBlit.dstSubresource.layerCount     = 1;
-            imageBlit.dstOffsets[0]                 = {0, 0, 0};
-            imageBlit.dstOffsets[1]                 = {width, height, depth};
-
+            // 1. Transition level i-1 to TRANSFER_SRC (so it can be read by the blit)
             memoryBarrier.subresourceRange.baseMipLevel = i - 1;
-
-            memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            
+            // For the first iteration, level 0 is in TRANSFER_DST from the initial upload.
+            // For subsequent iterations, level i-1 is in TRANSFER_DST from the previous blit.
+            memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // Wait for the previous blit to finish!
             memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            memoryBarrier.srcAccessMask = 0;
             memoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
-                commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+                commandBuffer, 
+                VK_PIPELINE_STAGE_TRANSFER_BIT,  // Fixed: Must wait for TRANSFER stage, not TOP_OF_PIPE
+                VK_PIPELINE_STAGE_TRANSFER_BIT, 
+                0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
+            // 2. Transition level i from UNDEFINED to TRANSFER_DST
             memoryBarrier.subresourceRange.baseMipLevel = i;
-
             memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
             memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             memoryBarrier.srcAccessMask = 0;
             memoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
-                commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+                commandBuffer, 
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+                VK_PIPELINE_STAGE_TRANSFER_BIT, 
+                0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
-            pLogicalDevice->vkd.CmdBlitImage(commandBuffer,
-                                             image,
-                                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                             image,
-                                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                             1,
-                                             &imageBlit,
-                                             VK_FILTER_LINEAR);
+            // 3. Perform the Blit
+            VkImageBlit imageBlit{};
+            imageBlit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageBlit.srcSubresource.mipLevel       = i - 1;
+            imageBlit.srcSubresource.baseArrayLayer = 0;
+            imageBlit.srcSubresource.layerCount     = 1;
+            imageBlit.srcOffsets[0]                 = {0, 0, 0};
+            imageBlit.srcOffsets[1]                 = {mipWidth, mipHeight, mipDepth};
 
+            mipWidth  = (mipWidth == 1) ? 1 : mipWidth / 2;
+            mipHeight = (mipHeight == 1) ? 1 : mipHeight / 2;
+            mipDepth  = (mipDepth == 1) ? 1 : mipDepth / 2;
+
+            imageBlit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageBlit.dstSubresource.mipLevel       = i;
+            imageBlit.dstSubresource.baseArrayLayer = 0;
+            imageBlit.dstSubresource.layerCount     = 1;
+            imageBlit.dstOffsets[0]                 = {0, 0, 0};
+            imageBlit.dstOffsets[1]                 = {mipWidth, mipHeight, mipDepth};
+
+            pLogicalDevice->vkd.CmdBlitImage(
+                commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1, &imageBlit, VK_FILTER_LINEAR);
+
+            // 4. Transition level i-1 to its final SHADER_READ_ONLY layout
             memoryBarrier.subresourceRange.baseMipLevel = i - 1;
-
             memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
-                commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+                commandBuffer, 
+                VK_PIPELINE_STAGE_TRANSFER_BIT, 
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // Fixed: Must be FRAGMENT_SHADER, not VERTEX_SHADER
+                0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
-            memoryBarrier.subresourceRange.baseMipLevel = i;
+            // 5. If this is the very last mip level, transition level i to SHADER_READ as well
+            if (i == mipLevels - 1)
+            {
+                memoryBarrier.subresourceRange.baseMipLevel = i;
+                memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; // Was VK_ACCESS_TRANSFER_READ_BIT Fixed: Must be TRANSFER_WRITE, this was written to not read from.
+                memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-            memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-            pLogicalDevice->vkd.CmdPipelineBarrier(
-                commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+                pLogicalDevice->vkd.CmdPipelineBarrier(
+                    commandBuffer, 
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, 
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // Was VK_PIPELINE_STAGE_VERTEX_SHADER_BIT Fixed: Must be FRAGMENT_SHADER to prevent reading from uninitialized memory.
+                    0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            }
         }
     }
 } // namespace vkBasalt
