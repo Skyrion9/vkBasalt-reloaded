@@ -26,7 +26,7 @@ namespace vkBasalt
 
         return commandBuffers;
     }
-    void writeCommandBuffers(LogicalDevice*                                 pLogicalDevice,
+        void writeCommandBuffers(LogicalDevice*                                 pLogicalDevice,
                              std::vector<std::shared_ptr<vkBasalt::Effect>> effects,
                              VkImage                                        depthImage,
                              VkImageView                                    depthImageView,
@@ -57,8 +57,11 @@ namespace vkBasalt
             memoryBarrier.image               = depthImage;
             memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            memoryBarrier.srcAccessMask       = 0;
+            
+            // Fixed: Must match the srcStageMask (LATE_FRAGMENT_TESTS writes to depth)
+            memoryBarrier.srcAccessMask       = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; 
             memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+            
             memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             memoryBarrier.subresourceRange.aspectMask =
@@ -71,15 +74,9 @@ namespace vkBasalt
             if (depthImageView)
             {
                 pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffers[i],
-                                                       VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                                       VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                                       0,
-                                                       0,
-                                                       nullptr,
-                                                       0,
-                                                       nullptr,
-                                                       1,
-                                                       &memoryBarrier);
+                                                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, // Don't need catch all flags.
+                                                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                                       0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
             }
 
             for (uint32_t j = 0; j < effects.size(); j++)
@@ -88,21 +85,23 @@ namespace vkBasalt
                 effects[j]->applyEffect(i, commandBuffers[i]);
             }
 
+            // Prepare the second barrier to transition depth back to the game
             memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            memoryBarrier.dstAccessMask = 0;
+            
+            // Fixed: It was read by the fragment shader
+            memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT; 
+            // Fixed: The game will read/write depth in the next frame
+            memoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; 
+            
             if (depthImageView)
             {
                 pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffers[i],
-                                                       VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                                       VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                                       0,
-                                                       0,
-                                                       nullptr,
-                                                       0,
-                                                       nullptr,
-                                                       1,
-                                                       &memoryBarrier);
+                                                       // Fixed: Wait for the fragment shader to finish reading
+                                                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+                                                       // Fixed: Only block the depth test stages of the next frame, not ALL_COMMANDS
+                                                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, 
+                                                       0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
             }
 
             result = pLogicalDevice->vkd.EndCommandBuffer(commandBuffers[i]);
