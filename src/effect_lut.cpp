@@ -29,15 +29,26 @@ namespace vkBasalt
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = lut_frag;
 
+        // Setting this to 0 prevents the pipeline layout from allocating a push constant range,
+        // and tells SimpleEffect::applyEffect to skip the CmdPushConstants API call.
+        this->pushConstantSize = 0;
+
         std::string lutFile = pConfig->getOption<std::string>("lutFile");
 
-        int      height;
+        int      height = 0;
         LutCube  lutCube;
-        stbi_uc* pixels;
+        stbi_uc* pixels = nullptr;
         int32_t  usingPNG = (int32_t)(lutFile.find(".cube") == std::string::npos && lutFile.find(".CUBE") == std::string::npos);
+        
         if (!usingPNG)
         {
             lutCube = LutCube(lutFile);
+            // Fixed: Check if the cube was successfully parsed
+            if (lutCube.size == 0)
+            {
+                Logger::err("Failed to parse LUT cube: " + lutFile);
+                return;
+            }
             pixels  = lutCube.colorCube.data();
             height  = lutCube.size;
         }
@@ -45,9 +56,18 @@ namespace vkBasalt
         {
             int channels, width;
             pixels = stbi_load(lutFile.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+            
+            // Fixed: Check if stbi_load succeeded
+            if (!pixels)
+            {
+                Logger::err("Failed to load LUT PNG: " + lutFile);
+                return;
+            }
             if (width != height * height)
             {
-                Logger::err("bad lut");
+                Logger::err("Invalid LUT PNG dimensions (width must equal height * height)");
+                stbi_image_free(pixels);
+                return;
             }
         }
 
@@ -79,7 +99,8 @@ namespace vkBasalt
                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                 lutMemory)[0];
 
-        uploadToImage(pLogicalDevice, lutImage, lutImageExtent, height * height * height * 4, pixels);
+        // Fixed: Cast to uint32_t to prevent any potential integer overflow during multiplication
+        uploadToImage(pLogicalDevice, lutImage, lutImageExtent, static_cast<uint32_t>(height) * height * height * 4, pixels);
 
         if (usingPNG)
         {
@@ -108,6 +129,7 @@ namespace vkBasalt
                                                        {sampler},
                                                        std::vector<std::vector<VkImageView>>(1, std::vector<VkImageView>(1, lutImageView)))[0];
     }
+    
     LutEffect::~LutEffect()
     {
         pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, lutImageView, nullptr);
@@ -116,6 +138,7 @@ namespace vkBasalt
         pLogicalDevice->vkd.DestroyDescriptorPool(pLogicalDevice->device, lutDescriptorPool, nullptr);
         pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, lutMemory, nullptr);
     }
+    
     void LutEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
         pLogicalDevice->vkd.CmdBindDescriptorSets(
