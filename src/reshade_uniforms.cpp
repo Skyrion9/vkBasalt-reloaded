@@ -15,10 +15,17 @@ namespace vkBasalt
     {
         for (auto& uniform : module.uniforms)
         {
-            auto source = std::find_if(uniform.annotations.begin(), uniform.annotations.end(), [](const auto& a) {
+            // Fixed: Safely check if the "source" annotation exists before dereferencing
+            auto sourceIt = std::find_if(uniform.annotations.begin(), uniform.annotations.end(), [](const auto& a) {
                               return a.name == "source";
-                          })->value.string_data;
-            Logger::debug(source);
+                          });
+            
+            if (sourceIt != uniform.annotations.end()) {
+                Logger::debug(sourceIt->value.string_data);
+            } else {
+                Logger::debug("no source annotation");
+            }
+            
             Logger::debug("size: " + std::to_string(uniform.size));
             Logger::debug("offset: " + std::to_string(uniform.offset));
         }
@@ -26,12 +33,25 @@ namespace vkBasalt
 
     std::vector<std::shared_ptr<ReshadeUniform>> createReshadeUniforms(reshadefx::module module)
     {
+        // Fixed: Seed the random number generator once so std::rand() is actually random
+        static bool seeded = false;
+        if (!seeded) {
+            std::srand(static_cast<unsigned int>(std::time(nullptr)));
+            seeded = true;
+        }
+
         std::vector<std::shared_ptr<ReshadeUniform>> uniforms;
         for (auto& uniform : module.uniforms)
         {
-            auto source = std::find_if(uniform.annotations.begin(), uniform.annotations.end(), [](const auto& a) {
+            // Fixed: Safely check if the "source" annotation exists
+            auto sourceIt = std::find_if(uniform.annotations.begin(), uniform.annotations.end(), [](const auto& a) {
                               return a.name == "source";
-                          })->value.string_data;
+                          });
+            
+            if (sourceIt == uniform.annotations.end()) continue; // Skip uniforms without a source
+
+            std::string source = sourceIt->value.string_data;
+
             if (source == "frametime")
             {
                 uniforms.push_back(std::shared_ptr<ReshadeUniform>(new FrameTimeUniform(uniform)));
@@ -84,9 +104,11 @@ namespace vkBasalt
     FrameTimeUniform::FrameTimeUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "frametime")
+        // Fixed: Prevent segfault if source is missing
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "frametime")
         {
             Logger::err("Tried to create a FrameTimeUniform from a non frametime uniform_info");
+            return;
         }
         lastFrame = std::chrono::high_resolution_clock::now();
         offset    = uniformInfo.offset;
@@ -108,9 +130,10 @@ namespace vkBasalt
     FrameCountUniform::FrameCountUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "framecount")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "framecount")
         {
             Logger::err("Tried to create a FrameCountUniform from a non framecount uniform_info");
+            return;
         }
         offset = uniformInfo.offset;
         size   = uniformInfo.size;
@@ -128,9 +151,10 @@ namespace vkBasalt
     DateUniform::DateUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "date")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "date")
         {
             Logger::err("Tried to create a DateUniform from a non date uniform_info");
+            return;
         }
         offset = uniformInfo.offset;
         size   = uniformInfo.size;
@@ -155,9 +179,10 @@ namespace vkBasalt
     TimerUniform::TimerUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "timer")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "timer")
         {
             Logger::err("Tried to create a TimerUniform from a non timer uniform_info");
+            return;
         }
         start  = std::chrono::high_resolution_clock::now();
         offset = uniformInfo.offset;
@@ -178,10 +203,12 @@ namespace vkBasalt
     PingPongUniform::PingPongUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "pingpong")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "pingpong")
         {
             Logger::err("Tried to create a PingPongUniform from a non pingpong uniform_info");
+            return;
         }
+        
         if (auto minAnnotation =
                 std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "min"; });
             minAnnotation != uniformInfo.annotations.end())
@@ -253,9 +280,10 @@ namespace vkBasalt
     RandomUniform::RandomUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "random")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "random")
         {
             Logger::err("Tried to create a RandomUniform from a non random uniform_info");
+            return;
         }
         if (auto minAnnotation =
                 std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "min"; });
@@ -274,6 +302,12 @@ namespace vkBasalt
     }
     void RandomUniform::update(void* mapedBuffer)
     {
+        // Fixed: Prevent division by zero if max < min
+        if (max < min) {
+            int32_t value = min;
+            std::memcpy((uint8_t*) mapedBuffer + offset, &(value), sizeof(int32_t));
+            return;
+        }
         int32_t value = min + (std::rand() % (max - min + 1));
         std::memcpy((uint8_t*) mapedBuffer + offset, &(value), sizeof(int32_t));
     }
@@ -285,9 +319,10 @@ namespace vkBasalt
     KeyUniform::KeyUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "key")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "key")
         {
             Logger::err("Tried to create a KeyUniform from a non key uniform_info");
+            return;
         }
         offset = uniformInfo.offset;
         size   = uniformInfo.size;
@@ -305,9 +340,10 @@ namespace vkBasalt
     MouseButtonUniform::MouseButtonUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "mousebutton")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "mousebutton")
         {
             Logger::err("Tried to create a MouseButtonUniform from a non mousebutton uniform_info");
+            return;
         }
         offset = uniformInfo.offset;
         size   = uniformInfo.size;
@@ -325,9 +361,10 @@ namespace vkBasalt
     MousePointUniform::MousePointUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "mousepoint")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "mousepoint")
         {
             Logger::err("Tried to create a MousePointUniform from a non mousepoint uniform_info");
+            return;
         }
         offset = uniformInfo.offset;
         size   = uniformInfo.size;
@@ -345,9 +382,10 @@ namespace vkBasalt
     MouseDeltaUniform::MouseDeltaUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "mousedelta")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "mousedelta")
         {
             Logger::err("Tried to create a MouseDeltaUniform from a non mousedelta uniform_info");
+            return;
         }
         offset = uniformInfo.offset;
         size   = uniformInfo.size;
@@ -365,9 +403,10 @@ namespace vkBasalt
     DepthUniform::DepthUniform(reshadefx::uniform_info uniformInfo)
     {
         auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
-        if (source->value.string_data != "bufready_depth")
+        if (source == uniformInfo.annotations.end() || source->value.string_data != "bufready_depth")
         {
             Logger::err("Tried to create a DepthUniform from a non bufready_depth uniform_info");
+            return;
         }
         offset = uniformInfo.offset;
         size   = uniformInfo.size;
