@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# 1. Clean previous state cleanly
-rm -rf builddir build
+# 1. Clean previous state cleanly - Let's not do this unless something is absolutely broken.
+# rm -rf builddir build
 
 # 2. Enforce Clang toolchain and LLD Linker
 export CC=clang
