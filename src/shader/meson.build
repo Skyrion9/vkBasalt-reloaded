@@ -17,9 +17,14 @@ shader_src = [
     'smaa_neighbor.vert.glsl',
 ]
 
-glsl_compiler = find_program('glslangValidator')
+# Find the modern 'glslang' binary, falling back to 'glslangValidator' for older systems
+glsl_compiler = find_program('glslang', 'glslangValidator')
+
 glsl_generator = generator(glsl_compiler,
     output    : [ '@BASENAME@.h' ],
-    arguments : [ '-V', '-x', '@INPUT@', '-o', '@OUTPUT@' ])
+    # -V : Generate SPIR-V
+    # -x : Output as C-array hex header
+    # --lto : Enable Link-Time Optimization
+    arguments : [ '-V', '-x', '--lto', '@INPUT@', '-o', '@OUTPUT@' ])
 
 shader_include = glsl_generator.process(shader_src)
