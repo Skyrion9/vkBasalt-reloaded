@@ -12,6 +12,19 @@ project('vkBasalt', ['c', 'cpp'],
 
 cpp = meson.get_compiler('cpp')
 
+# For a vulkan layer we might not need RTTI. Disabling these probably shrinks the binary, speeds up the dynamic linker, and saves memory.
+# Don't use -fno-exceptions we do use exceptions.
+# TODO: Have to ensure we don't break reshade which might depend on some of the below.
+cpp_args_common = cpp.get_supported_arguments([
+    '-fno-rtti',                  # Disables Run-Time Type Information
+    '-fvisibility-inlines-hidden',# Hides inline function symbols from the export table
+    '-Wno-unknown-pragmas',
+    '-Wno-unused-parameter',
+    '-Wno-sign-compare'
+])
+
+add_project_arguments(cpp_args_common, language : 'cpp')
+
 vkBasalt_include_path = ''
 
 lib_dir = get_option('libdir')
