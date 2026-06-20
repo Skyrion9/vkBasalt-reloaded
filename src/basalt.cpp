@@ -1,3 +1,4 @@
+#define VK_USE_PLATFORM_WAYLAND_KHR
 #include "vulkan_include.hpp"
 
 #include <mutex>
@@ -12,6 +13,11 @@
 
 #include "util.hpp"
 #include "keyboard_input.hpp"
+
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+#include <wayland-client.h>
+#include "keyboard_input_wayland.hpp"
+#endif
 
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
@@ -317,6 +323,35 @@ namespace vkBasalt
         deviceMap.erase(GetKey(device));
     }
 
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+    VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateWaylandSurfaceKHR(
+        VkInstance                                  instance,
+        const VkWaylandSurfaceCreateInfoKHR*        pCreateInfo,
+        const VkAllocationCallbacks*                pAllocator,
+        VkSurfaceKHR*                               pSurface)
+    {
+        scoped_lock l(globalLock);
+        Logger::trace("vkCreateWaylandSurfaceKHR");
+
+        // Grab display pointer
+        if (pCreateInfo && pCreateInfo->display)
+        {
+            initWaylandInput((void*)pCreateInfo->display);
+        }
+
+        InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
+        PFN_vkCreateWaylandSurfaceKHR fpCreateWaylandSurfaceKHR = 
+            (PFN_vkCreateWaylandSurfaceKHR)dispatchTable.GetInstanceProcAddr(instance, "vkCreateWaylandSurfaceKHR");
+            
+        if (fpCreateWaylandSurfaceKHR)
+        {
+            return fpCreateWaylandSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
+        }
+        
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+#endif
+
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateSwapchainKHR(VkDevice                        device,
                                                                  const VkSwapchainCreateInfoKHR* pCreateInfo,
                                                                  const VkAllocationCallbacks*    pAllocator,
@@ -371,43 +406,10 @@ namespace vkBasalt
         return result;
     }
 
-    VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_GetSwapchainImagesKHR(VkDevice       device,
-                                                                   VkSwapchainKHR swapchain,
-                                                                   uint32_t*      pCount,
-                                                                   VkImage*       pSwapchainImages)
+    // Centralized effect creation, command buffer allocation, and semaphore creation
+    void initializeSwapchainEffects(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, VkSwapchainKHR swapchain)
     {
-        scoped_lock l(globalLock);
-        Logger::trace("vkGetSwapchainImagesKHR " + std::to_string(*pCount));
-
-        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
-
-        if (pSwapchainImages == nullptr)
-        {
-            return pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, pCount, pSwapchainImages);
-        }
-
-        LogicalSwapchain* pLogicalSwapchain = swapchainMap[swapchain].get();
-
-        // If the images got already requested once, return them again instead of creating new images
-        if (pLogicalSwapchain->fakeImages.size())
-        {
-            *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
-            std::memcpy(pSwapchainImages, pLogicalSwapchain->fakeImages.data(), sizeof(VkImage) * (*pCount));
-            return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
-        }
-
-        pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, nullptr);
-        pLogicalSwapchain->images.resize(pLogicalSwapchain->imageCount);
-        pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, pLogicalSwapchain->images.data());
-
         std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-
-        // create 1 more set of images when we can't use the swapchain it self
-        uint32_t fakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
-
-        pLogicalSwapchain->fakeImages =
-            createFakeSwapchainImages(pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, fakeImageCount, pLogicalSwapchain->fakeImageMemory);
-        Logger::debug("created fake swapchain images");
 
         VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->format);
         VkFormat srgbFormat  = convertToSRGB(pLogicalSwapchain->format);
@@ -520,8 +522,12 @@ namespace vkBasalt
         Logger::debug("effect count: " + std::to_string(pLogicalSwapchain->effects.size()));
 
         pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+        if (swapchain != VK_NULL_HANDLE) {
         Logger::debug("allocated ComandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain "
                       + convertToString(swapchain));
+        } else {
+            Logger::debug("allocated ComandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain (rebuild)");
+        }
 
         writeCommandBuffers(
             pLogicalDevice, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
@@ -533,7 +539,6 @@ namespace vkBasalt
         {
             Logger::debug(std::to_string(i) + " written commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersEffect[i]));
         }
-        Logger::trace("vkGetSwapchainImagesKHR");
 
         pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
             pLogicalDevice,
@@ -556,10 +561,105 @@ namespace vkBasalt
         {
             Logger::debug(std::to_string(i) + " written commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersNoEffect[i]));
         }
+    }
+
+    VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_GetSwapchainImagesKHR(VkDevice       device,
+                                                                   VkSwapchainKHR swapchain,
+                                                                   uint32_t*      pCount,
+                                                                   VkImage*       pSwapchainImages)
+    {
+        scoped_lock l(globalLock);
+        Logger::trace("vkGetSwapchainImagesKHR " + std::to_string(*pCount));
+
+        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+
+        if (pSwapchainImages == nullptr)
+        {
+            return pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, pCount, pSwapchainImages);
+        }
+
+        LogicalSwapchain* pLogicalSwapchain = swapchainMap[swapchain].get();
+
+        // If the images got already requested once, return them again instead of creating new images
+        if (pLogicalSwapchain->fakeImages.size())
+        {
+        *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
+        std::memcpy(pSwapchainImages, pLogicalSwapchain->fakeImages.data(), sizeof(VkImage) * (*pCount));
+        return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
+        }
+
+        pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, nullptr);
+        pLogicalSwapchain->images.resize(pLogicalSwapchain->imageCount);
+        pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, pLogicalSwapchain->images.data());
+
+        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+
+        // create 1 more set of images when we can't use the swapchain it self
+        uint32_t fakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
+
+        pLogicalSwapchain->fakeImages =
+            createFakeSwapchainImages(pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, fakeImageCount, pLogicalSwapchain->fakeImageMemory);
+        Logger::debug("created fake swapchain images");
+
+        initializeSwapchainEffects(pLogicalDevice, pLogicalSwapchain, swapchain);
+        Logger::trace("vkGetSwapchainImagesKHR");
 
         *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
         std::memcpy(pSwapchainImages, pLogicalSwapchain->fakeImages.data(), sizeof(VkImage) * (*pCount));
         return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
+    }
+
+    void rebuildSwapchainEffects(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain)
+    {
+        Logger::debug("Rebuilding effects for swapchain...");
+        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+
+        // Wait for GPU to finish using old resources (Using QueueWaitIdle as DeviceWaitIdle is unmapped)
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
+
+        // Free old command buffers
+        if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
+            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
+                pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
+            pLogicalSwapchain->commandBuffersEffect.clear();
+        }
+        if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
+            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
+                pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
+            pLogicalSwapchain->commandBuffersNoEffect.clear();
+        }
+
+        // Destroy old semaphores
+        for (auto sem : pLogicalSwapchain->semaphores) {
+            pLogicalDevice->vkd.DestroySemaphore(pLogicalDevice->device, sem, nullptr);
+        }
+        pLogicalSwapchain->semaphores.clear();
+
+        // Destroy old effects (this destroys the pipelines)
+        pLogicalSwapchain->effects.clear();
+        pLogicalSwapchain->defaultTransfer.reset();
+
+        // Recreate fake images if the effect count changed
+        uint32_t newFakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
+        if (newFakeImageCount != pLogicalSwapchain->fakeImages.size()) {
+            Logger::debug("Effect count changed. Recreating fake images...");
+            for (auto img : pLogicalSwapchain->fakeImages) {
+                pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, img, nullptr);
+            }
+            pLogicalSwapchain->fakeImages.clear();
+            
+            if (pLogicalSwapchain->fakeImageMemory != VK_NULL_HANDLE) {
+                pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, pLogicalSwapchain->fakeImageMemory, nullptr);
+                pLogicalSwapchain->fakeImageMemory = VK_NULL_HANDLE;
+            }
+            
+            pLogicalSwapchain->fakeImages = createFakeSwapchainImages(pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, newFakeImageCount, pLogicalSwapchain->fakeImageMemory);
+        }
+
+        // Rebuild Effects
+        initializeSwapchainEffects(pLogicalDevice, pLogicalSwapchain, VK_NULL_HANDLE);
+        
+        Logger::debug("Rebuild complete.");
     }
 
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
@@ -567,8 +667,10 @@ namespace vkBasalt
         scoped_lock l(globalLock);
 
         static uint32_t keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
+        static uint32_t reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
 
         static bool pressed       = false;
+        static bool reloadPressed = false;
         static bool presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
 
         if (isKeyPressed(keySymbol))
@@ -577,11 +679,41 @@ namespace vkBasalt
             {
                 presentEffect = !presentEffect;
                 pressed       = true;
+
+                Logger::debug(presentEffect ? "vkBasalt effects enabled" : "vkBasalt effects disabled");
             }
         }
         else
         {
             pressed = false;
+        }
+
+        if (isKeyPressed(reloadKeySymbol))
+        {
+            if (!reloadPressed)
+            {
+                reloadPressed = true;
+                Logger::debug("Reloading vkBasalt config...");
+                
+                // Reload Config from disk
+                pConfig = std::shared_ptr<Config>(new Config());
+                
+                // Update keybinds and default state
+                keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
+                reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
+                presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
+                
+                // Rebuild all active swapchains
+                for (auto& pair : swapchainMap)
+                {
+                    rebuildSwapchainEffects(pair.second->pLogicalDevice, pair.second.get());
+                }
+                Logger::debug("vkBasalt config reloaded successfully!");
+            }
+        }
+        else
+        {
+            reloadPressed = false;
         }
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(queue)].get();
@@ -899,6 +1031,13 @@ extern "C"
     */
 
     // vkGetDeviceProcAddr needs to behave like vkGetInstanceProcAddr thanks to some games
+
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+#define VKBASALT_INTERCEPT_WAYLAND GETPROCADDR(CreateWaylandSurfaceKHR);
+#else
+#define VKBASALT_INTERCEPT_WAYLAND
+#endif
+
 #define INTERCEPT_CALLS \
     /* instance chain functions we intercept */ \
     if (!std::strcmp(pName, "vkGetInstanceProcAddr")) \
@@ -907,6 +1046,7 @@ extern "C"
     GETPROCADDR(EnumerateInstanceExtensionProperties); \
     GETPROCADDR(CreateInstance); \
     GETPROCADDR(DestroyInstance); \
+    VKBASALT_INTERCEPT_WAYLAND \
 \
     /* device chain functions we intercept*/ \
     if (!std::strcmp(pName, "vkGetDeviceProcAddr")) \

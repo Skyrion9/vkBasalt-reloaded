@@ -27,6 +27,7 @@ vkBasalt_src = [
     'image.cpp',
     'image_view.cpp',
     'keyboard_input.cpp',
+    'keyboard_input_wayland.cpp',
     'logger.cpp',
     'logical_swapchain.cpp',
     'lut_cube.cpp',
@@ -42,6 +43,8 @@ vkBasalt_src = [
 ]
 
 x11_dep = dependency('x11')
+wayland_client_dep = dependency('wayland-client')
+xkbcommon_dep = dependency('xkbcommon')
 
 conf_paths = configuration_data()
 conf_paths.set_quoted('SYSCONFDIR', join_paths(get_option('prefix'), get_option('sysconfdir')))
@@ -58,7 +61,7 @@ shared_library(meson.project_name().to_lower(),
     vkBasalt_src, shader_include,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
-    dependencies : [x11_dep, reshade_dep],
+    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep],
     gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)
