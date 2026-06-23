@@ -1,24 +1,30 @@
 #version 450
 
-// Clarity Shader - Optimized Single-Pass Cross-Convolution Contrast (Bilateral Edge-Aware)
+// clarity inspired optimized single-pass cross-convolution contrast
+// pure 9-tap architecture with gaussian bilateral weights and  smooth transitions
 
 layout(set = 0, binding = 0) uniform sampler2D img;
 
-// 6 Specialization Constants (darkIntensity and lightIntensity removed due to bilateral edge-stopping)
-layout(constant_id = 0) const float radius = 1.0;
-layout(constant_id = 1) const float offset = 5.0;
+layout(constant_id = 0) const float radius = 2.0;
+layout(constant_id = 1) const float offset = 1.5;
 layout(constant_id = 2) const float strength = 1.0;
 layout(constant_id = 3) const int blendMode = 1; 
 layout(constant_id = 4) const int blendIfDark = 40;
 layout(constant_id = 5) const int blendIfLight = 220;
+layout(constant_id = 6) const float edgeThreshLow = 0.05;
+layout(constant_id = 7) const float edgeThreshHigh = 0.25;
+layout(constant_id = 8) const int enableDithering = 1;
 
 layout(push_constant) uniform PushConstants {
-    vec2 texelSize;
-    vec2 _padding;
+    vec2 step1;     
+    vec2 step2;     
 } pc;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
+
+#define BILATERAL_WEIGHT(diff) (1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(diff)))
+#define BILATERAL_DIFF(neighbor, weight) ((lE - neighbor) * BILATERAL_WEIGHT(lE - neighbor) * weight)
 
 float getLuma(vec3 rgb) {
     return dot(rgb, vec3(0.32786885, 0.655737705, 0.0163934436));
@@ -36,73 +42,65 @@ float applyBlendMode(float luma, float sharp) {
 
 void main() {
     vec4 centerColor = textureLod(img, textureCoord, 0.0);
-    vec3 orig = centerColor.rgb;
-    float luma = getLuma(orig);
+    vec3 e = centerColor.rgb;
+    float lE = getLuma(e);
 
-    // Early exit for near-black pixels
-    if (luma <= 0.0001) {
+    if (lE <= 0.0001) {
         fragColor = centerColor;
         return;
     }
 
-    vec2 texelSize = pc.texelSize;
-    float baseOffset = 1.5 * radius * offset;
-    vec2 step1 = baseOffset * texelSize;
-    vec2 step2 = step1 * 3.0;
-
-    // Raw samples for bilateral delta accumulation
-    float h1 = getLuma(textureLod(img, textureCoord + vec2(step1.x, 0.0), 0.0).rgb);
-    float h2 = getLuma(textureLod(img, textureCoord - vec2(step1.x, 0.0), 0.0).rgb);
-    float h3 = getLuma(textureLod(img, textureCoord + vec2(step2.x, 0.0), 0.0).rgb);
-    float h4 = getLuma(textureLod(img, textureCoord - vec2(step2.x, 0.0), 0.0).rgb);
+    // phase 1: clarity wide fetches (8 taps)
+    float h1_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb);
+    float h2_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb);
+    float h3_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb);
+    float h4_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb);
     
-    float v1 = getLuma(textureLod(img, textureCoord + vec2(0.0, step1.y), 0.0).rgb);
-    float v2 = getLuma(textureLod(img, textureCoord - vec2(0.0, step1.y), 0.0).rgb);
-    float v3 = getLuma(textureLod(img, textureCoord + vec2(0.0, step2.y), 0.0).rgb);
-    float v4 = getLuma(textureLod(img, textureCoord - vec2(0.0, step2.y), 0.0).rgb);
+    float v1_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb);
+    float v2_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb);
+    float v3_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb);
+    float v4_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb);
 
-    // =====================================================================
-    // BILATERAL DELTA ACCUMULATION (Edge-Aware)
-    // =====================================================================
-    float edgeThreshLow = 0.05;
-    float edgeThreshHigh = 0.25;
+    // phase 2: bilateral delta accumulation
+    float diff = (
+        BILATERAL_DIFF(h1_raw, 0.16) + BILATERAL_DIFF(h2_raw, 0.16) + BILATERAL_DIFF(v1_raw, 0.16) + BILATERAL_DIFF(v2_raw, 0.16) +
+        BILATERAL_DIFF(h3_raw, 0.04) + BILATERAL_DIFF(h4_raw, 0.04) + BILATERAL_DIFF(v3_raw, 0.04) + BILATERAL_DIFF(v4_raw, 0.04)
+    );
 
-    float d_h1 = luma - h1; float w_h1 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h1));
-    float d_h2 = luma - h2; float w_h2 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h2));
-    float d_h3 = luma - h3; float w_h3 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h3));
-    float d_h4 = luma - h4; float w_h4 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_h4));
-    
-    float d_v1 = luma - v1; float w_v1 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v1));
-    float d_v2 = luma - v2; float w_v2 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v2));
-    float d_v3 = luma - v3; float w_v3 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v3));
-    float d_v4 = luma - v4; float w_v4 = 1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(d_v4));
+    // phase 3: clarity gates and s-curve
+    diff *= smoothstep(0.006, 0.018, abs(diff));
 
-    float diff = (d_h1 * w_h1 + d_h2 * w_h2 + d_v1 * w_v1 + d_v2 * w_v2) * 0.16 + 
-                 (d_h3 * w_h3 + d_h4 * w_h4 + d_v3 * w_v3 + d_v4 * w_v4) * 0.04;
-
-    // Extremes Stopper (Gamma fix)
-    float distFromMid = abs(luma - 0.5) * 2.0; 
-    float extremesMask = clamp(1.0 - (distFromMid * distFromMid), 0.0, 1.0); 
+    float distFromMidSq = (lE - 0.5) * (lE - 0.5);
+    float extremesMask = clamp(1.0 - distFromMidSq * 4.0, 0.0, 1.0); 
     diff *= extremesMask;
 
-    float sharp = luma + diff;
-    sharp = applyBlendMode(luma, sharp);
+    diff = clamp(diff, -0.02, 0.15);
 
-    // BlendIf mid-tone masking
+    float blendMask = clamp(0.5 + diff, 0.0, 1.0); 
+    float sharpLuma = applyBlendMode(lE, blendMask);
+
     if (blendIfDark > 0 || blendIfLight < 255) {
         float blendIfD = (float(blendIfDark) / 255.0) + 0.0001;
         float blendIfL = (float(blendIfLight) / 255.0) - 0.0001;
-        float mixVal = dot(orig, vec3(0.33333333));
+        
+        float mixVal = lE; 
         float mask = 1.0;
-
         if (blendIfDark > 0) mask = smoothstep(blendIfD * 0.8, blendIfD * 1.2, mixVal);
         if (blendIfLight < 255) mask *= 1.0 - smoothstep(blendIfL * 0.8, blendIfL * 1.2, mixVal);
-
-        sharp = mix(luma, sharp, mask);
+        sharpLuma = mix(lE, sharpLuma, mask);
     }
 
-    float lumaScale = mix(luma, sharp, strength) / luma;
-    vec3 finalColor = orig * lumaScale;
+    // phase 4: final composite and dithering
+    float lumaScale = (lE > 0.0001) ? mix(lE, sharpLuma, strength) / lE : 1.0;
+    vec3 finalColor = e * lumaScale;
+
+    if (enableDithering == 1) {
+        uint hash = uint(gl_FragCoord.x) * 1973u + uint(gl_FragCoord.y) * 9277u;
+        hash = (hash ^ (hash >> 16)) * 2654435769u;
+        
+        float dither = float(hash & 255u) * 0.0039215686; 
+        finalColor += (dither - 0.5) * 0.0039215686;
+    }
 
     fragColor = vec4(clamp(finalColor, 0.0, 1.0), centerColor.a);
 }
