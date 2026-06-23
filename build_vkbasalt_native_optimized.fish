@@ -39,7 +39,7 @@ if meson compile -C build
 
             echo ""
             echo "Installation complete!"
-            echo "Please FULLY restart Steam (Right-click tray -> Exit) so the Proton container re-reads the manifest."
+            echo "Please FULLY restart Steam (Right-click tray -> Exit) so the Proton container re-reads the manifest. If it's not your first time installing, simply restart your game."
 
         case '*'
             echo "Skipping installation. You can deploy it later using: sudo meson install -C build"
