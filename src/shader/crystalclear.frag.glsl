@@ -12,12 +12,12 @@ layout(set = 0, binding = 0) uniform sampler2D img;
 
 layout(constant_id = 0) const float radius = 3.5;
 layout(constant_id = 1) const float offset = 1.5;
-layout(constant_id = 2) const float clarityStrength = 5.0;
+layout(constant_id = 2) const float clarityStrength = 1.0;
 layout(constant_id = 3) const int blendMode = 1;
 layout(constant_id = 4) const int blendIfDark = 40;
 layout(constant_id = 5) const int blendIfLight = 220;
 layout(constant_id = 6) const float casSharpness = 1.0; 
-layout(constant_id = 7) const float casStrength = 5.0; 
+layout(constant_id = 7) const float casStrength = 2.0; 
 layout(constant_id = 8) const float edgeThreshLow = 0.05;
 layout(constant_id = 9) const float edgeThreshHigh = 0.35; 
 layout(constant_id = 10) const int enableDithering = 1; 

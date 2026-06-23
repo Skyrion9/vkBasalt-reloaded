@@ -39,7 +39,7 @@ namespace vkBasalt
         uniformSize = sizeof(FrameData);
 
         // Store radius and offset for push constant calculation. Clamped to pass safe values.
-        this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", 3.5f), 0.5f, 8.0f);
+        this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", 2.0f), 0.5f, 8.0f);
         this->offset = std::clamp(pConfig->getOption<float>("crystalclearBilateralOffset", 1.5f), 0.5f, 3.0f);
 
         float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
@@ -94,18 +94,18 @@ namespace vkBasalt
         // Clamp values to sane ranges
         specData.radius                    = std::clamp(this->radius, 0.5f, 8.0f);
         specData.offset                    = std::clamp(this->offset, 0.5f, 3.0f);
-        specData.SharpStrength             = std::clamp(pConfig->getOption<float>("crystalclearSharpStrength", 5.0f), 0.0f, 10.0f);
+        specData.SharpStrength             = std::clamp(pConfig->getOption<float>("crystalclearSharpStrength", 1.0f), 0.0f, 5.0f);
         specData.blendMode                 = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendMode", 1), int32_t(0), int32_t(6));
         specData.blendIfDark               = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfDark", 40), int32_t(0), int32_t(255));
         specData.blendIfLight              = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfLight", 220), int32_t(0), int32_t(255));
-        specData.casSharpness              = std::clamp(pConfig->getOption<float>("crystalclearCasSharpness", 1.0f), 0.0f, 1.0f);
-        specData.casStrength               = std::clamp(pConfig->getOption<float>("crystalclearCasStrength", 5.0f), 0.0f, 10.0f);
+        specData.casSharpness              = std::clamp(pConfig->getOption<float>("crystalclearCasSharpness", 0.8f), 0.0f, 1.0f);
+        specData.casStrength               = std::clamp(pConfig->getOption<float>("crystalclearCasStrength", 2.0f), 0.0f, 5.0f);
         specData.edgeThreshLow             = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshLow", 0.05f), 0.0f, 1.0f);
         specData.edgeThreshHigh            = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshHigh", 0.35f), 0.0f, 1.0f);
         specData.enableDithering           = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDithering", 1), int32_t(0), int32_t(1));
-        specData.enableAA                  = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableAA", 1), int32_t(0), int32_t(1));
+        specData.enableAA                  = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableAA", 0), int32_t(0), int32_t(1));
         specData.enableRGBEdgeDetection    = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableRGBEdgeDetection", 1), int32_t(0), int32_t(1));
-        specData.fxaaEdgeThreshold         = std::clamp(pConfig->getOption<float>("crystalclearFxaaEdgeThreshold", 0.0625f), 0.001f, 1.0f);
+        specData.fxaaEdgeThreshold         = std::clamp(pConfig->getOption<float>("crystalclearFxaaEdgeThreshold", 0.05f), 0.001f, 1.0f);
         specData.fxaaSubpixAmount          = std::clamp(pConfig->getOption<float>("crystalclearFxaaSubpixAmount", 0.75f), 0.0f, 1.0f);
         specData.fxaaSearchScale           = std::clamp(pConfig->getOption<float>("crystalclearFxaaSearchScale", 1.0f), 0.1f, 3.0f);
         specData.fxaaHardEdgeThreshold     = std::clamp(pConfig->getOption<float>("crystalclearFxaaHardEdgeThreshold", 0.08f), 0.0f, 1.0f);
@@ -116,11 +116,11 @@ namespace vkBasalt
         specData.enableDebugCAS            = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugCAS", 0), int32_t(0), int32_t(1));
         specData.enableDebugClarity        = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugClarity", 0), int32_t(0), int32_t(1));
         specData.enableFilmGrain           = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableFilmGrain", 1), int32_t(0), int32_t(1));
-        specData.filmGrainStrength         = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainStrength", 0.5f), 0.0f, 2.0f);
-        specData.filmGrainMinimum          = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainMinimum", 0.15f), 0.0f, 2.0f);
+        specData.filmGrainStrength         = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainStrength", 1.0f), 0.0f, 2.0f);
+        specData.filmGrainMinimum          = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainMinimum", 0.0f), 0.0f, 2.0f);
         specData.enableDebugGrain          = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugGrain", 0), int32_t(0), int32_t(1));
-        specData.fineGrainWeight           = std::clamp(pConfig->getOption<float>("crystalclearFineGrainWeight", 0.6f), 0.0f, 1.0f);
-        specData.coarseGrainWeight         = std::clamp(pConfig->getOption<float>("crystalclearCoarseGrainWeight", 0.4f), 0.0f, 1.0f);
+        specData.fineGrainWeight           = std::clamp(pConfig->getOption<float>("crystalclearFineGrainWeight", 0.4f), 0.0f, 1.0f);
+        specData.coarseGrainWeight         = std::clamp(pConfig->getOption<float>("crystalclearCoarseGrainWeight", 0.8f), 0.0f, 1.0f);
 
         // Map struct fields to GLSL constant IDs using offsetof
         VkSpecializationMapEntry mapEntries[29] = {
