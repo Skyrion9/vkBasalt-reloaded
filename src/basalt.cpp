@@ -617,7 +617,14 @@ namespace vkBasalt
         // Wait for GPU to finish using old resources (Using QueueWaitIdle as DeviceWaitIdle is unmapped)
         pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
 
-        // Free old command buffers
+        uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
+
+        // dyanmic check, if the new chain requires more images than we currently have, 
+        // can't resize the array because the game holds the old handles we must force the game to recreate the swapchain.
+        if (requiredFakeImageCount > pLogicalSwapchain->fakeImages.size()) {
+            Logger::debug("Effect chain grew beyond allocated pool. Forcing game to recreate swapchain...");
+            pLogicalSwapchain->forceSwapchainRebuild = true;
+            
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
                 pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
@@ -629,35 +636,46 @@ namespace vkBasalt
             pLogicalSwapchain->commandBuffersNoEffect.clear();
         }
 
-        // Destroy old semaphores
+            pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+            pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+            
+        pLogicalSwapchain->effects.clear();
+        pLogicalSwapchain->defaultTransfer.reset();
+
+            pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
+                pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                pLogicalSwapchain->images, pConfig.get()));
+                
+            writeCommandBuffers(pLogicalDevice, {pLogicalSwapchain->defaultTransfer}, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED, pLogicalSwapchain->commandBuffersNoEffect);
+            
+            return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
+        }
+
+        Logger::debug("Effect chain fits in existing pool. Rebuilding in-place...");
+        
+        if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
+            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
+                pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
+            pLogicalSwapchain->commandBuffersEffect.clear();
+        }
+        if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
+            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
+                pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
+            pLogicalSwapchain->commandBuffersNoEffect.clear();
+            }
+            
         for (auto sem : pLogicalSwapchain->semaphores) {
             pLogicalDevice->vkd.DestroySemaphore(pLogicalDevice->device, sem, nullptr);
         }
         pLogicalSwapchain->semaphores.clear();
 
-        // Destroy old effects (this destroys the pipelines)
         pLogicalSwapchain->effects.clear();
         pLogicalSwapchain->defaultTransfer.reset();
 
-        // Recreate fake images if the effect count changed
-        uint32_t newFakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
-        if (newFakeImageCount != pLogicalSwapchain->fakeImages.size()) {
-            Logger::debug("Effect count changed. Recreating fake images...");
-            for (auto img : pLogicalSwapchain->fakeImages) {
-                pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, img, nullptr);
-            }
-            pLogicalSwapchain->fakeImages.clear();
-            
-            if (pLogicalSwapchain->fakeImageMemory != VK_NULL_HANDLE) {
-                pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, pLogicalSwapchain->fakeImageMemory, nullptr);
-                pLogicalSwapchain->fakeImageMemory = VK_NULL_HANDLE;
-            }
-            
-            pLogicalSwapchain->fakeImages = createFakeSwapchainImages(pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, newFakeImageCount, pLogicalSwapchain->fakeImageMemory);
-        }
-
-        // Rebuild Effects
         initializeSwapchainEffects(pLogicalDevice, pLogicalSwapchain, VK_NULL_HANDLE);
+        
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         
         Logger::debug("Rebuild complete.");
     }
@@ -672,6 +690,7 @@ namespace vkBasalt
         static bool pressed       = false;
         static bool reloadPressed = false;
         static bool presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
+        static bool skipNextPresent = false;
 
         if (isKeyPressed(keySymbol))
         {
@@ -693,6 +712,7 @@ namespace vkBasalt
             if (!reloadPressed)
             {
                 reloadPressed = true;
+                skipNextPresent = true; 
                 Logger::debug("Reloading vkBasalt config...");
                 
                 // Reload Config from disk
@@ -718,16 +738,44 @@ namespace vkBasalt
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(queue)].get();
 
+        if (skipNextPresent) {
+            skipNextPresent = false;
+            Logger::debug("Skipping present frame to allow layout stabilization...");
+            return pLogicalDevice->vkd.QueuePresentKHR(queue, pPresentInfo);
+        }
+
         std::vector<VkSemaphore> presentSemaphores;
         presentSemaphores.reserve(pPresentInfo->swapchainCount);
 
         std::vector<VkPipelineStageFlags> waitStages(pPresentInfo->waitSemaphoreCount, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        bool forceOutOfDate = false;
 
         for (unsigned int i = 0; i < (*pPresentInfo).swapchainCount; i++)
         {
             uint32_t          index             = (*pPresentInfo).pImageIndices[i];
             VkSwapchainKHR    swapchain         = (*pPresentInfo).pSwapchains[i];
             LogicalSwapchain* pLogicalSwapchain = swapchainMap[swapchain].get();
+
+            // If the effect chain grew dynamically submit the fallback and signal OUT_OF_DATE
+            if (pLogicalSwapchain->forceSwapchainRebuild) {
+                forceOutOfDate = true;
+                pLogicalSwapchain->forceSwapchainRebuild = false;
+
+                VkSubmitInfo submitInfo = {};
+                submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                submitInfo.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
+                submitInfo.pWaitSemaphores = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
+                submitInfo.pWaitDstStageMask = i == 0 ? waitStages.data() : nullptr;
+                submitInfo.commandBufferCount = 1;
+                submitInfo.pCommandBuffers = &(pLogicalSwapchain->commandBuffersNoEffect[index]);
+                submitInfo.signalSemaphoreCount = 1;
+                submitInfo.pSignalSemaphores = &(pLogicalSwapchain->semaphores[index]);
+                
+                pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+                presentSemaphores.push_back(pLogicalSwapchain->semaphores[index]);
+                continue; 
+            }
 
             for (auto& effect : pLogicalSwapchain->effects)
             {
@@ -760,7 +808,14 @@ namespace vkBasalt
         presentInfo.waitSemaphoreCount = presentSemaphores.size();
         presentInfo.pWaitSemaphores    = presentSemaphores.data();
 
-        return pLogicalDevice->vkd.QueuePresentKHR(queue, &presentInfo);
+        VkResult result = pLogicalDevice->vkd.QueuePresentKHR(queue, &presentInfo);
+
+        // If any swapchain requested a rebuild, force OUT_OF_DATE so the game engine handles it cleanly
+        if (forceOutOfDate) {
+            return VK_ERROR_OUT_OF_DATE_KHR;
+        }
+
+        return result;
     }
 
     VKAPI_ATTR void VKAPI_CALL vkBasalt_DestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator)

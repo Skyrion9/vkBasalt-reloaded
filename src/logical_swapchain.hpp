@@ -32,6 +32,10 @@ namespace vkBasalt
         std::shared_ptr<Effect>              defaultTransfer;
         VkDeviceMemory                       fakeImageMemory;
 
+        // flag to force the game to recreate the swapchain if the effect chain grows dynamically.
+        // prevents device loss by letting the game engine cleanly release its cached VkImage handles.
+        bool                                 forceSwapchainRebuild = false;
+
         void destroy();
     };
 } // namespace vkBasalt
