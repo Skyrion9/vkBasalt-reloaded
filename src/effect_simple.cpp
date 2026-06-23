@@ -18,6 +18,7 @@ namespace vkBasalt
     SimpleEffect::SimpleEffect()
     {
     }
+    
     void SimpleEffect::init(LogicalDevice*       pLogicalDevice,
                             VkFormat             format,
                             VkExtent2D           imageExtent,
@@ -41,14 +42,82 @@ namespace vkBasalt
         sampler = createSampler(pLogicalDevice);
         Logger::debug("created sampler");
 
-        imageSamplerDescriptorSetLayout = createImageSamplerDescriptorSetLayout(pLogicalDevice, 1);
-        Logger::debug("created descriptorSetLayouts");
+        // Descriptor set & ubo layout creation
+        if (needsUniformBuffer && uniformSize > 0) {
+            // Create layout with 2 bindings: 0 = sampler, 1 = UBO
+            std::vector<VkDescriptorSetLayoutBinding> bindings(2);
+            
+            bindings[0].binding = 0;
+            bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            bindings[0].descriptorCount = 1;
+            bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+            bindings[0].pImmutableSamplers = nullptr;
+
+            bindings[1].binding = 1;
+            bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            bindings[1].descriptorCount = 1;
+            bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+            bindings[1].pImmutableSamplers = nullptr;
+
+            VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = 2;
+            layoutInfo.pBindings = bindings.data();
+            
+            pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &layoutInfo, nullptr, &imageSamplerDescriptorSetLayout);
+            Logger::debug("created descriptorSetLayout with UBO");
+            
+            // Create UBO
+            VkBufferCreateInfo bufferInfo = {};
+            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bufferInfo.size = uniformSize;
+            bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            pLogicalDevice->vkd.CreateBuffer(pLogicalDevice->device, &bufferInfo, nullptr, &uniformBuffer);
+
+            // Allocate and Map Memory
+            VkMemoryRequirements memRequirements;
+            pLogicalDevice->vkd.GetBufferMemoryRequirements(pLogicalDevice->device, uniformBuffer, &memRequirements);
+            
+            VkPhysicalDeviceMemoryProperties memProperties;
+            pLogicalDevice->vki.GetPhysicalDeviceMemoryProperties(pLogicalDevice->physicalDevice, &memProperties);
+            uint32_t memoryTypeIndex = 0;
+            for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+                if ((memRequirements.memoryTypeBits & (1 << i)) && 
+                    (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+                    (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+                    memoryTypeIndex = i;
+                    break;
+                }
+            }
+
+            VkMemoryAllocateInfo allocInfo = {};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memRequirements.size;
+            allocInfo.memoryTypeIndex = memoryTypeIndex;
+            pLogicalDevice->vkd.AllocateMemory(pLogicalDevice->device, &allocInfo, nullptr, &uniformMemory);
+            pLogicalDevice->vkd.BindBufferMemory(pLogicalDevice->device, uniformBuffer, uniformMemory, 0);
+            pLogicalDevice->vkd.MapMemory(pLogicalDevice->device, uniformMemory, 0, uniformSize, 0, &mappedUniform);
+            
+            // Zero out the mapped memory to prevent garbage data on frame 0
+            memset(mappedUniform, 0, uniformSize);
+        } else {
+            imageSamplerDescriptorSetLayout = createImageSamplerDescriptorSetLayout(pLogicalDevice, 1);
+            Logger::debug("created descriptorSetLayouts (Sampler only)");
+        }
 
         VkDescriptorPoolSize imagePoolSize;
         imagePoolSize.type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         imagePoolSize.descriptorCount = inputImages.size() + 10;
 
         std::vector<VkDescriptorPoolSize> poolSizes = {imagePoolSize};
+        
+        if (needsUniformBuffer && uniformSize > 0) {
+            VkDescriptorPoolSize uboPoolSize;
+            uboPoolSize.type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            uboPoolSize.descriptorCount = inputImages.size() + 10;
+            poolSizes.push_back(uboPoolSize);
+        }
 
         descriptorPool = createDescriptorPool(pLogicalDevice, poolSizes);
         Logger::debug("created descriptorPool");
@@ -78,8 +147,34 @@ namespace vkBasalt
         imageDescriptorSets = allocateAndWriteImageSamplerDescriptorSets(
             pLogicalDevice, descriptorPool, imageSamplerDescriptorSetLayout, {sampler}, std::vector<std::vector<VkImageView>>(1, inputImageViews));
 
+        // UBO to descriptor sets
+        if (uniformBuffer != VK_NULL_HANDLE) {
+            std::vector<VkDescriptorBufferInfo> bufferInfos(imageDescriptorSets.size());
+            std::vector<VkWriteDescriptorSet> uboWrites(imageDescriptorSets.size());
+            
+            for (size_t i = 0; i < imageDescriptorSets.size(); i++) {
+                bufferInfos[i].buffer = uniformBuffer;
+                bufferInfos[i].offset = 0;
+                bufferInfos[i].range = uniformSize;
+
+                uboWrites[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                uboWrites[i].pNext = nullptr;
+                uboWrites[i].dstSet = imageDescriptorSets[i];
+                uboWrites[i].dstBinding = 1;
+                uboWrites[i].dstArrayElement = 0;
+                uboWrites[i].descriptorCount = 1;
+                uboWrites[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                uboWrites[i].pImageInfo = nullptr;
+                uboWrites[i].pBufferInfo = &bufferInfos[i];
+                uboWrites[i].pTexelBufferView = nullptr;
+            }
+            pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, static_cast<uint32_t>(uboWrites.size()), uboWrites.data(), 0, nullptr);
+            Logger::debug("wrote UBO to descriptor sets");
+        }
+
         framebuffers = createFramebuffers(pLogicalDevice, renderPass, imageExtent, {outputImageViews});
     }
+    
     void SimpleEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
         Logger::debug("applying SimpleEffect to cb " + convertToString(commandBuffer));
@@ -182,6 +277,12 @@ namespace vkBasalt
     SimpleEffect::~SimpleEffect()
     {
         Logger::debug("destroying SimpleEffect " + convertToString(this));
+        
+        // UBO Cleanup
+        if (mappedUniform && pLogicalDevice) pLogicalDevice->vkd.UnmapMemory(pLogicalDevice->device, uniformMemory);
+        if (uniformBuffer && pLogicalDevice) pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, uniformBuffer, nullptr);
+        if (uniformMemory && pLogicalDevice) pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, uniformMemory, nullptr);
+
         pLogicalDevice->vkd.DestroyPipeline(pLogicalDevice->device, graphicsPipeline, nullptr);
         pLogicalDevice->vkd.DestroyPipelineLayout(pLogicalDevice->device, pipelineLayout, nullptr);
         pLogicalDevice->vkd.DestroyRenderPass(pLogicalDevice->device, renderPass, nullptr);

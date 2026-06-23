@@ -23,6 +23,11 @@ namespace vkBasalt
         float y;
     };
 
+    // UBO Struct for per-frame temporal data
+    struct FrameData {
+        uint32_t frameCounter;
+    };
+
     class SimpleEffect : public Effect
     {
     public:
@@ -54,6 +59,15 @@ namespace vkBasalt
         VkSpecializationInfo*        pVertexSpecInfo;
         VkSpecializationInfo*        pFragmentSpecInfo;
         uint32_t                     pushConstantSize = 16; // subclasses can set this to the size of their push constants, safe default is 16 bytes.
+
+        // UBO support for per-frame data (e.g., temporal frame counters)
+        // Subclasses can set needsUniformBuffer = true and uniformSize = sizeof(Struct) in their constructor.
+        VkBuffer uniformBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory uniformMemory = VK_NULL_HANDLE;
+        void* mappedUniform = nullptr;
+        size_t uniformSize = 0;
+        bool needsUniformBuffer = false;
+        
         bool needsClear = false;
         VkImageLayout finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
