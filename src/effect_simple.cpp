@@ -121,7 +121,7 @@ namespace vkBasalt
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
         // conditionally attach clearValue only if the effect requested it
-        VkClearValue clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
+        VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 0.0f}}};
         if (needsClear) {
             renderPassBeginInfo.clearValueCount = 1;
             renderPassBeginInfo.pClearValues = &clearValue;

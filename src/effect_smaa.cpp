@@ -217,7 +217,7 @@ namespace vkBasalt
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
         // Alpha 1f
-        VkClearValue clearValue = {0.0f, 0.0f, 0.0f, 1.0f};
+        VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
         renderPassBeginInfo.clearValueCount   = 1;
         renderPassBeginInfo.pClearValues      = &clearValue;
 
