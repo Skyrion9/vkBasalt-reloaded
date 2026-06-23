@@ -106,8 +106,7 @@ Enable the layer via environment variables. **No `LD_PRELOAD` required** if inst
 ---
 
 ## ⚙️ Configuration
-
-The config file (`vkBasalt.conf`) is searched for in this order:
+All the configuration options below goes into `vkBasalt.conf` file you create in these locations in this order of priority:
 1. `vkBasalt.conf` in the game's working directory (Best for per-game tweaks)
 2. `~/.config/vkBasalt/vkBasalt.conf`
 3. `~/.local/share/vkBasalt/vkBasalt.conf`
@@ -256,7 +255,11 @@ reshadeIncludePath = /home/user/reshade-shaders/Shaders
 
 *   **Toggle Effects:** Press `Home` (Configurable). Works on X11 and Wayland.
 *   **Hot-Reload Config:** Press `End` (Configurable). Reloads `vkBasalt.conf` in real-time without restarting the game.
-*   **Logging:** Set `VKBASALT_LOG_LEVEL=debug` (trace, debug, info, warn, error, none). Output goes to stderr or `VKBASALT_LOG_FILE="vkBasalt.log"`.
+```ini
+toggleKey = Home
+reloadConfigKey = End
+```
+*   **Logging:** Set env flag `VKBASALT_LOG_LEVEL=debug` (trace, debug, info, warn, error, none). Output goes to stderr or `VKBASALT_LOG_FILE="vkBasalt.log"`.
 
 ---
 
