@@ -59,6 +59,8 @@ chmod +x ./build_vkbasalt_native_optimized.sh
 
 **Bash:**
 ```bash
+VK_LOADER_DEBUG=all vulkaninfo 2>&1 | grep -i basalt
+
 # Remove the JSON manifests
 sudo rm -f /usr/share/vulkan/implicit_layer.d/vkBasalt.json
 sudo rm -f /usr/local/share/vulkan/implicit_layer.d/vkBasalt.json
