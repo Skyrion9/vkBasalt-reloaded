@@ -192,30 +192,36 @@ crystalclearEnableDebugGrain = 0
 ### ClarityRCAS & Clarity Configuration
 ```ini
 # Clarity RCAS (Standalone): 5-tap RCAS + Clarity (Lighter than CrystalClear) - Refer to crystalclear's descriptions above.
+
+# Intensity of macro contrast. (1.0 standard, up to 5.0+)
+clarityRStrength = 1.0
+# Radius/Offset: Measurement distance for local contrast. Higher = wider, more cinematic pop.
+clarityRBilateralRadius = 2.0
+clarityRBilateralOffset = 1.5
 # Range: 0.0 to 2.0.
 clarityRcasSharpness = 0.8
 # Range: 0.0 to 5.0. >2.0 may cause crunchy artifacts.
-clarityRcasStrength = 3.0
+clarityRcasStrength = 1.0
 # Range: 0 to 255 - lower limit
-clarityRcasBlendIfDark = 40
+clarityRBlendIfDark = 40
 # Range: 0 to 255 - higher limit
-clarityRcasBlendIfLight = 220
+clarityRBlendIfLight = 220
 # Range: 0.0 to 1.0.
-clarityRcasEdgeThreshLow = 0.05
+clarityREdgeThreshLow = 0.05
 # Range: 0.0 to 1.0.
-clarityRcasEdgeThreshHigh = 0.35
+clarityREdgeThreshHigh = 0.35
 # Range: 0 to 1.
-clarityRcasEnableDithering = 1
+clarityREnableDithering = 1
 # Range: 0 to 1.
-clarityRcasEnableFilmGrain = 1
+clarityREnableFilmGrain = 1
 # Range: 0.0 to 2.0.
-clarityRcasFilmGrainStrength = 1.0
+clarityRFilmGrainStrength = 1.0
 # Range: 0.0 to 2.0.
-clarityRcasFilmGrainMinimum = 0
+clarityRFilmGrainMinimum = 0
 # Range: 0.0 to 1.0.
-clarityRcasFineGrainWeight = 0.4
+clarityRFineGrainWeight = 0.4
 # Range: 0.0 to 1.0.
-clarityRcasCoarseGrainWeight = 0.8
+clarityRCoarseGrainWeight = 0.8
 
 # Standard Clarity (9-Tap) Refer to above for descriptions and ranges.
 clarityStrength = 1.0

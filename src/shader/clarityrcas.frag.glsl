@@ -13,16 +13,16 @@ layout(constant_id = 2) const float clarityStrength = 1.0;
 layout(constant_id = 3) const int blendMode = 1;
 layout(constant_id = 4) const int blendIfDark = 40;
 layout(constant_id = 5) const int blendIfLight = 220;
-layout(constant_id = 6) const float rcasSharpness = 1.0; 
+layout(constant_id = 6) const float rcasSharpness = 0.8; 
 layout(constant_id = 7) const float rcasStrength = 1.0; 
 layout(constant_id = 8) const float edgeThreshLow = 0.05;
-layout(constant_id = 9) const float edgeThreshHigh = 0.25;
+layout(constant_id = 9) const float edgeThreshHigh = 0.35;
 layout(constant_id = 10) const int enableDithering = 1; 
 layout(constant_id = 11) const int enableFilmGrain = 1;
-layout(constant_id = 12) const float filmGrainStrength = 0.35;
+layout(constant_id = 12) const float filmGrainStrength = 1.0;
 layout(constant_id = 13) const float filmGrainMinimum = 0.0;
-layout(constant_id = 14) const float fineGrainWeight = 0.6;
-layout(constant_id = 15) const float coarseGrainWeight = 0.4;
+layout(constant_id = 14) const float fineGrainWeight = 0.4;
+layout(constant_id = 15) const float coarseGrainWeight = 0.8;
 
 layout(push_constant) uniform PushConstants {
     vec2 step1;     
