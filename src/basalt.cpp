@@ -994,7 +994,7 @@ namespace vkBasalt
                     }
                 }
                 
-                break; // Fixed: Added break to prevent skipping elements or out-of-bounds access
+                break; 
             }
         }
 

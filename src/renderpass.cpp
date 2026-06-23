@@ -2,7 +2,7 @@
 
 namespace vkBasalt
 {
-    VkRenderPass createRenderPass(LogicalDevice* pLogicalDevice, VkFormat format)
+    VkRenderPass createRenderPass(LogicalDevice* pLogicalDevice, VkFormat format, bool clear, VkImageLayout finalLayout)
     {
         VkRenderPass renderPass;
 
@@ -10,12 +10,17 @@ namespace vkBasalt
         attachmentDescription.flags          = 0;
         attachmentDescription.format         = format;
         attachmentDescription.samples        = VK_SAMPLE_COUNT_1_BIT;
-        attachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        
+        // Use CLEAR if requested (for SMAA etc.), otherwise use DONT_CARE for maximum performance
+        attachmentDescription.loadOp         = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        
         attachmentDescription.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
         attachmentDescription.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         attachmentDescription.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-        attachmentDescription.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        
+        // Use the parameter instead of hardcoding PRESENT_SRC_KHR
+        attachmentDescription.finalLayout    = finalLayout;
 
         VkAttachmentReference attachmentReference;
         attachmentReference.attachment = 0;

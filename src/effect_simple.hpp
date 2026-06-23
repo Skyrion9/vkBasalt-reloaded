@@ -54,6 +54,8 @@ namespace vkBasalt
         VkSpecializationInfo*        pVertexSpecInfo;
         VkSpecializationInfo*        pFragmentSpecInfo;
         uint32_t                     pushConstantSize = 16; // subclasses can set this to the size of their push constants, safe default is 16 bytes.
+        bool needsClear = false;
+        VkImageLayout finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         // subclasses can put DescriptorSets in here, but the first one will be the input image descriptorSet
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;

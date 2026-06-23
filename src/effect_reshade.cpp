@@ -525,15 +525,20 @@ namespace vkBasalt
             ASSERT_VULKAN(result);
             renderPasses.push_back(renderPass);
 
-            VkRenderPassBeginInfo renderPassBeginInfo;
+            // Zero-initialized to prevent garbage clearValueCount crashes
+            VkRenderPassBeginInfo renderPassBeginInfo = {};
             renderPassBeginInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             renderPassBeginInfo.pNext           = nullptr;
             renderPassBeginInfo.renderPass      = renderPass;
             renderPassBeginInfo.framebuffer     = VK_NULL_HANDLE; // changed at apply time
             renderPassBeginInfo.renderArea      = scissor;
-            renderPassBeginInfo.clearValueCount = attachmentDescriptions.size();
-            VkClearValue clearValues[9]         = {};
-            renderPassBeginInfo.pClearValues    = clearValues;
+
+            // ReShade effects that explicitly request clearing need a valid VkClearValue
+            VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+            if (pass.clear_render_targets || firstTimeStencilAccess) {
+                renderPassBeginInfo.clearValueCount = static_cast<uint32_t>(attachmentDescriptions.size());
+                renderPassBeginInfo.pClearValues    = &clearValue;
+            }
 
             renderPassBeginInfos.push_back(renderPassBeginInfo);
 
@@ -543,11 +548,17 @@ namespace vkBasalt
             {
                 std::vector<VkImageView> backBufferImageViews = pass.srgb_write_enable ? backBufferImageViewsSRGB : backBufferImageViewsUNORM;
                 std::vector<VkImageView> outputImageViews     = pass.srgb_write_enable ? outputImageViewsSRGB : outputImageViewsUNORM;
+                
+                std::vector<std::vector<VkImageView>> fbViews = {
+                    outputToBackBuffer ? backBufferImageViews : outputImageViews, 
+                    std::vector<VkImageView>(inputImages.size(), stencilImageView)
+                };
+
                 framebuffers.push_back(createFramebuffers(
                     pLogicalDevice,
                     renderPass,
                     imageExtent,
-                    {outputToBackBuffer ? backBufferImageViews : outputImageViews, std::vector<VkImageView>(inputImages.size(), stencilImageView)}));
+                    fbViews));
                 outputToBackBuffer = !outputToBackBuffer;
                 switchSamplers.push_back(true);
             }
@@ -847,65 +858,49 @@ namespace vkBasalt
     void ReshadeEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
         Logger::debug("applying ReshadeEffect to command buffer" + convertToString(commandBuffer));
-        // Used to make the Image accessable by the shader
-        VkImageMemoryBarrier memoryBarrier;
+
+        // Barrier 1 inputImage -> ReShade)
+        VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.pNext               = nullptr;
-        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_WRITE_BIT;
+        // Wait for the game's color/transfer writes to finish and flush cache
+        memoryBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
         memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-
-        memoryBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        memoryBarrier.subresourceRange.baseMipLevel   = 0;
-        memoryBarrier.subresourceRange.levelCount     = 1;
-        memoryBarrier.subresourceRange.baseArrayLayer = 0;
-        memoryBarrier.subresourceRange.layerCount     = 1;
-
-        // Reverses the first Barrier
-        VkImageMemoryBarrier secondBarrier;
-        secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        secondBarrier.pNext               = nullptr;
-        secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        secondBarrier.dstAccessMask       = 0;
-        secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        secondBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        secondBarrier.image               = inputImages[imageIndex];
-
-        secondBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        secondBarrier.subresourceRange.baseMipLevel   = 0;
-        secondBarrier.subresourceRange.levelCount     = 1;
-        secondBarrier.subresourceRange.baseArrayLayer = 0;
-        secondBarrier.subresourceRange.layerCount     = 1;
+        memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        memoryBarrier.image     = outputImages[imageIndex];
-        memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        memoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            commandBuffer, 
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+        
+        // outputImage -> ReShade)
+        memoryBarrier.image         = outputImages[imageIndex];
+        memoryBarrier.srcAccessMask = 0; // Coming from UNDEFINED, no prior access to wait for
+        memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+        memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, 
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+        
+        // barrier 3 BackBuffer Image
         if (outputWrites > 1)
         {
             memoryBarrier.image = backBufferImages[imageIndex];
-            pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
-                                                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                                   0,
-                                                   0,
-                                                   nullptr,
-                                                   0,
-                                                   nullptr,
-                                                   1,
-                                                   &memoryBarrier);
+            pLogicalDevice->vkd.CmdPipelineBarrier(
+                commandBuffer, 
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+                0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
         }
 
-        // stencil image
+        // barrier 4 Stencil Image
         memoryBarrier.image                       = stencilImage;
         memoryBarrier.srcAccessMask               = 0;
         memoryBarrier.dstAccessMask               = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -913,16 +908,11 @@ namespace vkBasalt
         memoryBarrier.newLayout                   = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         memoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT | VK_IMAGE_ASPECT_DEPTH_BIT;
 
-        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
-                                               VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                               VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                                               0,
-                                               0,
-                                               nullptr,
-                                               0,
-                                               nullptr,
-                                               1,
-                                               &memoryBarrier);
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
         Logger::debug("after the first pipeline barrier");
 
@@ -976,27 +966,33 @@ namespace vkBasalt
                     pLogicalDevice, commandBuffer, textureImages[renderTarget][0], textureExtents[renderTarget], textureMipLevels[renderTarget]);
             }
         }
-        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
-                                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                               0,
-                                               0,
-                                               nullptr,
-                                               0,
-                                               nullptr,
-                                               1,
-                                               &secondBarrier);
+        
+        // barrier 5 & 6 transition back to PRESENT_SRC_KHR
+        VkImageMemoryBarrier secondBarrier = {};
+        secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        // The render pass just finished writing to these images as color attachments we must wait for the COLOR_ATTACHMENT_OUTPUT stage
+        secondBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        secondBarrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT; // Presentation engine reads it
+        secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        secondBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        secondBarrier.image               = inputImages[imageIndex];
+        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // Wait for render pass writes
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+            
         secondBarrier.image = outputImages[imageIndex];
-        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
-                                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                               0,
-                                               0,
-                                               nullptr,
-                                               0,
-                                               nullptr,
-                                               1,
-                                               &secondBarrier);
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+            
         Logger::debug("after the second pipeline barrier");
     }
 

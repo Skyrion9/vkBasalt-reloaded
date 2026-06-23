@@ -4,7 +4,6 @@
 #include <fstream>
 #include <string>
 #include <iostream>
-#include <vector>
 #include <unordered_map>
 #include <memory>
 
@@ -42,7 +41,7 @@ namespace vkBasalt
         std::vector<VkDescriptorSet> imageDescriptorSets;
         std::vector<VkFramebuffer>   edgeFramebuffers;
         std::vector<VkFramebuffer>   blendFramebuffers;
-        std::vector<VkFramebuffer>   neignborFramebuffers;
+        std::vector<VkFramebuffer>   neighborFramebuffers;
         VkImage                      areaImage;
         VkImage                      searchImage;
         VkImageView                  areaImageView;
@@ -54,7 +53,7 @@ namespace vkBasalt
         VkShaderModule               blendVertexModule;
         VkShaderModule               blendFragmentModule;
         VkShaderModule               neighborVertexModule;
-        VkShaderModule               neignborFragmentModule;
+        VkShaderModule               neighborFragmentModule;
         VkRenderPass                 renderPass;
         VkRenderPass                 unormRenderPass;
         VkPipelineLayout             pipelineLayout;

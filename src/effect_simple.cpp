@@ -56,7 +56,8 @@ namespace vkBasalt
         createShaderModule(pLogicalDevice, vertexCode, &vertexModule);
         createShaderModule(pLogicalDevice, fragmentCode, &fragmentModule);
 
-        renderPass = createRenderPass(pLogicalDevice, format);
+        // Pass the dynamic clear and layout flags to the render pass creator
+        renderPass = createRenderPass(pLogicalDevice, format, needsClear, finalLayout);
 
         descriptorSetLayouts.insert(descriptorSetLayouts.begin(), imageSamplerDescriptorSetLayout);
         
@@ -83,10 +84,8 @@ namespace vkBasalt
     {
         Logger::debug("applying SimpleEffect to cb " + convertToString(commandBuffer));
         // Used to make the Image accessable by the shader
-        VkImageMemoryBarrier memoryBarrier;
+        VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.pNext               = nullptr;
-        // Fixed: The correct access mask for an image currently in PRESENT_SRC_KHR is MEMORY_READ_BIT.
         memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT; 
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
         memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
@@ -94,30 +93,18 @@ namespace vkBasalt
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
+        memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-        memoryBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        memoryBarrier.subresourceRange.baseMipLevel   = 0;
-        memoryBarrier.subresourceRange.levelCount     = 1;
-        memoryBarrier.subresourceRange.baseArrayLayer = 0;
-        memoryBarrier.subresourceRange.layerCount     = 1;
-
-        // Reverses the first Barrier
-        VkImageMemoryBarrier secondBarrier;
+        VkImageMemoryBarrier secondBarrier = {};
         secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        secondBarrier.pNext               = nullptr;
         secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
         secondBarrier.dstAccessMask       = 0;
         secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        secondBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        secondBarrier.newLayout           = finalLayout; // Respect the final layout defined by the effect
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
-
-        secondBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        secondBarrier.subresourceRange.baseMipLevel   = 0;
-        secondBarrier.subresourceRange.levelCount     = 1;
-        secondBarrier.subresourceRange.baseArrayLayer = 0;
-        secondBarrier.subresourceRange.layerCount     = 1;
+        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, 
@@ -126,17 +113,20 @@ namespace vkBasalt
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
         Logger::debug("after the first pipeline barrier");
 
-        // Zero-initialized to prevent garbage clearValueCount.
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassBeginInfo.pNext             = nullptr;
         renderPassBeginInfo.renderPass        = renderPass;
         renderPassBeginInfo.framebuffer       = framebuffers[imageIndex];
         renderPassBeginInfo.renderArea.offset = {0, 0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
-        // clearValue removed because renderpass uses LOAD_OP_DONT_CARE
 
-        Logger::debug("before beginn renderpass");
+        // conditionally attach clearValue only if the effect requested it
+        VkClearValue clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
+        if (needsClear) {
+            renderPassBeginInfo.clearValueCount = 1;
+            renderPassBeginInfo.pClearValues = &clearValue;
+        }
+
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         Logger::debug("after beginn renderpass");
 
@@ -175,7 +165,6 @@ namespace vkBasalt
                 pushData.data()                    
             );
         }
-        // =====================================================================
 
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         Logger::debug("after draw");
@@ -189,6 +178,7 @@ namespace vkBasalt
                                                0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
         Logger::debug("after the second pipeline barrier");
     }
+    
     SimpleEffect::~SimpleEffect()
     {
         Logger::debug("destroying SimpleEffect " + convertToString(this));
