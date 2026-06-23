@@ -22,12 +22,15 @@ namespace vkBasalt
                            std::vector<VkImage> outputImages,
                            Config*              pConfig)
     {
+        vertexCode   = full_screen_triangle_vert;
+        fragmentCode = fxaa_frag;
+
+        // Prevent the pipeline layout from allocating a push constant range, tells SimpleEffect::applyEffect to skip the CmdPushConstants API call.
+        this->pushConstantSize = 0;
+
         float fxaaQualitySubpix           = pConfig->getOption<float>("fxaaQualitySubpix", 0.75f);
         float fxaaQualityEdgeThreshold    = pConfig->getOption<float>("fxaaQualityEdgeThreshold", 0.125f);
         float fxaaQualityEdgeThresholdMin = pConfig->getOption<float>("fxaaQualityEdgeThresholdMin", 0.0312f);
-
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = fxaa_frag;
 
         std::vector<VkSpecializationMapEntry> specMapEntrys(5);
 
@@ -51,6 +54,7 @@ namespace vkBasalt
 
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
     }
+    
     FxaaEffect::~FxaaEffect()
     {
     }
