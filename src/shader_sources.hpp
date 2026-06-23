@@ -21,6 +21,10 @@ namespace vkBasalt
 #include "clarityrcas.frag.h"
     };
 
+    const std::vector<uint32_t> crystalclear_frag = {
+#include "crystalclear.frag.h"
+    };
+
     const std::vector<uint32_t> deband_frag = {
 #include "deband.frag.h"
     };

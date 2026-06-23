@@ -3,6 +3,7 @@ shader_src = [
     'clarity.frag.glsl',
     'claritycas.frag.glsl',
     'clarityrcas.frag.glsl',
+    'crystalclear.frag.glsl',
     'deband.frag.glsl',
     'dls.frag.glsl',
     'full_screen_triangle.vert.glsl',

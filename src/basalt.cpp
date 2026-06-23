@@ -42,6 +42,7 @@
 #include "effect_clarity.hpp"
 #include "effect_claritycas.hpp"
 #include "effect_clarityrcas.hpp"
+#include "effect_crystalclear.hpp"
 #include "effect_dls.hpp"
 #include "effect_smaa.hpp"
 #include "effect_deband.hpp"
@@ -489,6 +490,12 @@ namespace vkBasalt
                 pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
                     new ClarityRcasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
                 Logger::debug("created ClarityRcasEffect");
+            }
+            else if (effectStrings[i] == std::string("crystalclear"))
+            {
+                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
+                    new CrystalClearEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
+                Logger::debug("created CrystalClearEffect");
             }
             else
             {
