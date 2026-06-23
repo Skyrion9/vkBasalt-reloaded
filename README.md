@@ -1,6 +1,7 @@
-Contributions are welcome as the original repo is seemingly abandoned? Over time I'd like to have a collection of vkBasalt implemented GLSL shaders since this is a highly optimized solution as compared to Reshade. I had to turn down my upscaling to be able to run Clarity.fx through Reshade and it cost me about 20 Watts (60 fps limit) to toggle that + CAS. Now it's just about 4-5 Watts in 4k.
+## IMPORTANT NOTE: 
+The repo has been moved to [vkBasalt-reloaded repo](https://github.com/Skyrion9/vkBasalt-reloaded) the development will continue there. No point holding a fork since vkBasalt's original repo is no longer maintained. It's a direct mirror of this repo with preserved history.
 
-# vkBasalt Extended: Push Constants, Native Proton Support & Optimized Shaders
+Contributions are welcome as the original repo is seemingly abandoned? Over time I'd like to have a collection of vkBasalt implemented GLSL shaders since this is a highly optimized solution as compared to Reshade. I had to turn down my upscaling to be able to run Clarity.fx through Reshade and it cost me about 20 Watts (60 fps limit) to toggle that + CAS. Now it's just about 4-5 Watts in 4k.
 
 This fork extends the original vkBasalt with push constant support, native Steam/Proton integration, a modernized build system, and heavily optimized custom GLSL shaders. 
 
