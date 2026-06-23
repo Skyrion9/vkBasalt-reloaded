@@ -26,7 +26,10 @@ I want to avoid playing catch up with reshade?.. It's a difficult task with how 
 *   **`clarity`**: An optimized single-pass 9-tap cross-convolution local contrast enhancement. Inspired by Reshade's Clarity.fx, this lightweight, singlepass version delivers macro contrast with a fraction of the processing cost.
 
 ### Core Vulkan Engine Fixes (vs. Upstream)
-*   **Hot-Reload Support**: Press `End` to reload `vkBasalt.conf` in real-time, you can safely add, remove or reconfigure effects during runtime, no longer need to restart your game to see changes.
+*   **Hot-Reload Support**: Press `End` to reload `vkBasalt.conf` in real-time, you can safely add, remove or reconfigure effects during runtime, no longer need to restart your game to see changes. 
+
+You can even create a vkBasalt.conf in the game exe's folder AFTER having already booted the game. The hot reload will respect loading order as shown in configuration below, and will load your newly created config so you never have to reboot a game to configure vkBasalt-reloaded. Because we uh reloaded it..
+
 *   **Synchronization Overhaul**: Pipeline barriers and access masks slimmed down instead of using all-catching parameters we only fetch and deliver what is needed, increasing efficiency and reducing performance cost. Reducing GPU stalls and bandwidth usage.
 *   **Wayland Support**: Added native Wayland keyboard input hooks for toggle/reload hotkeys.
 *   **Tile-Based GPU Optimizations**: Implemented `VK_ATTACHMENT_LOAD_OP_DONT_CARE` across single-pass effects to maximize mobile/handheld/lowend GPU performance, with explicit clear overrides for multi-pass effects like SMAA.
