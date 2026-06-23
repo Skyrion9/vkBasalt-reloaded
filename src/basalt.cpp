@@ -40,7 +40,6 @@
 #include "effect_fxaa.hpp"
 #include "effect_cas.hpp"
 #include "effect_clarity.hpp"
-#include "effect_claritycas.hpp"
 #include "effect_clarityrcas.hpp"
 #include "effect_crystalclear.hpp"
 #include "effect_dls.hpp"
@@ -479,12 +478,6 @@ namespace vkBasalt
                     new ClarityEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
                 Logger::debug("created ClarityEffect");
             }
-            else if (effectStrings[i] == std::string("claritycas"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new ClarityCasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
-                Logger::debug("created ClarityCasEffect");
-            }
             else if (effectStrings[i] == std::string("clarityrcas"))
             {
                 pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
@@ -530,8 +523,8 @@ namespace vkBasalt
 
         pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
         if (swapchain != VK_NULL_HANDLE) {
-        Logger::debug("allocated ComandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain "
-                      + convertToString(swapchain));
+            Logger::debug("allocated ComandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain "
+                          + convertToString(swapchain));
         } else {
             Logger::debug("allocated ComandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain (rebuild)");
         }
@@ -590,9 +583,9 @@ namespace vkBasalt
         // If the images got already requested once, return them again instead of creating new images
         if (pLogicalSwapchain->fakeImages.size())
         {
-        *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
-        std::memcpy(pSwapchainImages, pLogicalSwapchain->fakeImages.data(), sizeof(VkImage) * (*pCount));
-        return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
+            *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
+            std::memcpy(pSwapchainImages, pLogicalSwapchain->fakeImages.data(), sizeof(VkImage) * (*pCount));
+            return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
         }
 
         pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, nullptr);
@@ -632,23 +625,23 @@ namespace vkBasalt
             Logger::debug("Effect chain grew beyond allocated pool. Forcing game to recreate swapchain...");
             pLogicalSwapchain->forceSwapchainRebuild = true;
             
-        if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
-                pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
-            pLogicalSwapchain->commandBuffersEffect.clear();
-        }
-        if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
-                pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
-            pLogicalSwapchain->commandBuffersNoEffect.clear();
-        }
-
+            if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
+                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
+                    pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
+                pLogicalSwapchain->commandBuffersEffect.clear();
+            }
+            if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
+                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
+                    pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
+                pLogicalSwapchain->commandBuffersNoEffect.clear();
+            }
+            
             pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
             pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
             
-        pLogicalSwapchain->effects.clear();
-        pLogicalSwapchain->defaultTransfer.reset();
-
+            pLogicalSwapchain->effects.clear();
+            pLogicalSwapchain->defaultTransfer.reset();
+            
             pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
                 pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
                 std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
@@ -670,8 +663,8 @@ namespace vkBasalt
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
                 pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
             pLogicalSwapchain->commandBuffersNoEffect.clear();
-            }
-            
+        }
+
         for (auto sem : pLogicalSwapchain->semaphores) {
             pLogicalDevice->vkd.DestroySemaphore(pLogicalDevice->device, sem, nullptr);
         }
@@ -832,7 +825,7 @@ namespace vkBasalt
 
         scoped_lock l(globalLock);
         // we need to delete the infos of the oldswapchain
-
+        
         Logger::trace("vkDestroySwapchainKHR " + convertToString(swapchain));
         swapchainMap[swapchain]->destroy();
         swapchainMap.erase(swapchain);
@@ -892,17 +885,17 @@ namespace vkBasalt
 
             // Only create the view if we haven't already
             if (pLogicalDevice->depthImageViews[index] == VK_NULL_HANDLE)
-        {
-            Logger::debug("before creating depth image view");
+            {
+                Logger::debug("before creating depth image view");
                 VkFormat depthFormat = pLogicalDevice->depthFormats[index];
 
-            VkImageView depthImageView = createImageViews(pLogicalDevice,
+                VkImageView depthImageView = createImageViews(pLogicalDevice,
                                                                 depthFormat,
-                                                            {image},
-                                                            VK_IMAGE_VIEW_TYPE_2D,
-                                                            VK_IMAGE_ASPECT_DEPTH_BIT)[0];
+                                                                {image},
+                                                                VK_IMAGE_VIEW_TYPE_2D,
+                                                                VK_IMAGE_ASPECT_DEPTH_BIT)[0];
 
-            Logger::debug("created depth image view");
+                Logger::debug("created depth image view");
                 pLogicalDevice->depthImageViews[index] = depthImageView;
 
                 // The original code only re-recorded command buffers for the first depth buffer.
@@ -912,29 +905,29 @@ namespace vkBasalt
                     if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE) {
                         isFirstDepthBuffer = false;
                         break;
-            }
+                    }
                 }
 
                 if (isFirstDepthBuffer)
                 {
                     for (auto& it_swap : swapchainMap)
-            {
-                        LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
-                if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice)
-                {
-                    if (pLogicalSwapchain->commandBuffersEffect.size())
                     {
-                        pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device,
-                                                                 pLogicalDevice->commandPool,
-                                                                 pLogicalSwapchain->commandBuffersEffect.size(),
-                                                                 pLogicalSwapchain->commandBuffersEffect.data());
-                        pLogicalSwapchain->commandBuffersEffect.clear();
-                        pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+                        LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
+                        if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice)
+                        {
+                            if (pLogicalSwapchain->commandBuffersEffect.size())
+                            {
+                                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device,
+                                                                         pLogicalDevice->commandPool,
+                                                                         pLogicalSwapchain->commandBuffersEffect.size(),
+                                                                         pLogicalSwapchain->commandBuffersEffect.data());
+                                pLogicalSwapchain->commandBuffersEffect.clear();
+                                pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
                                 Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
 
-                        writeCommandBuffers(
-                            pLogicalDevice, pLogicalSwapchain->effects, image, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
-                        Logger::debug("wrote CommandBuffers");
+                                writeCommandBuffers(
+                                    pLogicalDevice, pLogicalSwapchain->effects, image, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
+                                Logger::debug("wrote CommandBuffers");
                             }
                         }
                     }
@@ -963,8 +956,8 @@ namespace vkBasalt
                 if (i < pLogicalDevice->depthImageViews.size())
                 {
                     if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE)
-                {
-                    pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, pLogicalDevice->depthImageViews[i], nullptr);
+                    {
+                        pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, pLogicalDevice->depthImageViews[i], nullptr);
                     }
                     pLogicalDevice->depthImageViews.erase(pLogicalDevice->depthImageViews.begin() + i);
                 }
@@ -1135,9 +1128,9 @@ extern "C"
         if (vkBasalt::pConfig == nullptr)
         {
             vkBasalt::scoped_lock l(vkBasalt::globalLock);
-        if (vkBasalt::pConfig == nullptr)
-        {
-            vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
+            if (vkBasalt::pConfig == nullptr)
+            {
+                vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
             }
         }
 
@@ -1155,9 +1148,9 @@ extern "C"
         if (vkBasalt::pConfig == nullptr)
         {
             vkBasalt::scoped_lock l(vkBasalt::globalLock);
-        if (vkBasalt::pConfig == nullptr)
-        {
-            vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
+            if (vkBasalt::pConfig == nullptr)
+            {
+                vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
             }
         }
 

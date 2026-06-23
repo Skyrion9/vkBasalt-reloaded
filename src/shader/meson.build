@@ -1,7 +1,6 @@
 shader_src = [
     'cas.frag.glsl',
     'clarity.frag.glsl',
-    'claritycas.frag.glsl',
     'clarityrcas.frag.glsl',
     'crystalclear.frag.glsl',
     'deband.frag.glsl',

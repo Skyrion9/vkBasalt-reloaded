@@ -9,7 +9,6 @@ vkBasalt_src = [
     'descriptor_set.cpp',
     'effect_cas.cpp',
     'effect_clarity.cpp',
-    'effect_claritycas.cpp',
     'effect_clarityrcas.cpp',
     'effect_crystalclear.cpp',
     'effect.cpp',
@@ -66,3 +65,4 @@ shared_library(meson.project_name().to_lower(),
     gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)
+    
