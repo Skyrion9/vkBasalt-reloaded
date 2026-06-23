@@ -12,6 +12,7 @@ set -gx CXX_LD lld
 # 3. Configure. 
 # Note: -march=native is passed here. All other optimizations are baked into root meson.build!
 meson setup build --prefix=/usr \
+  --buildtype=release \
   -Dc_args='-march=native' \
   -Dcpp_args='-march=native'
 

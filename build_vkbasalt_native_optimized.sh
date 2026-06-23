@@ -13,6 +13,7 @@ export CXX_LD=lld
 # Note: -march=native is passed here. All other optimizations (ThinLTO, O3, C++20, C17, ndebug) 
 # are now baked into the root meson.build default_options!
 meson setup build --prefix=/usr \
+  --buildtype=release \
   -Dc_args='-march=native' \
   -Dcpp_args='-march=native'
 
