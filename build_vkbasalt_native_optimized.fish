@@ -1,22 +1,27 @@
 #!/usr/bin/env fish
 
-# 1. Clean previous state cleanly - Let's not do this unless something is absolutely broken.
-# rm -rf builddir build
+cd (dirname (status -f))
 
-# 2. Enforce Clang toolchain and LLD Linker
+# Enforce Clang toolchain + mold linker
 set -gx CC clang
 set -gx CXX clang++
-set -gx CC_LD lld
-set -gx CXX_LD lld
+set -gx CC_LD mold
+set -gx CXX_LD mold
 
-# 3. Configure. 
-# Note: -march=native is passed here. All other optimizations are baked into root meson.build!
+# Use ccache if available
+if command -v ccache &>/dev/null
+    set -gx CC "ccache clang"
+    set -gx CXX "ccache clang++"
+    echo "ccache detected and enabled."
+end
+
+# Configure
 meson setup build --prefix=/usr \
   --buildtype=release \
   -Dc_args='-march=native' \
   -Dcpp_args='-march=native'
 
-# 4. Compile
+# Compile
 if meson compile -C build
     echo ""
     echo "========================================="

@@ -53,16 +53,20 @@ conf_paths.set_quoted('DATADIR', join_paths(get_option('prefix'), get_option('da
 configure_file(output: 'config_paths.hpp',
                configuration : conf_paths)
 
-# X11/X.h library contains many definitions (e.g. None)
-# which conflicts with the rest codebase with with Meson --unity=on option
-keyboard_input_x11_lib = static_library('keyboard_input_x11', 'keyboard_input_x11.cpp')
+# X11/X.h contains macro definitions (e.g. None) that conflict with the
+# rest of the codebase when Meson --unity=on merges translation units.
+# Isolating it in a static_library prevents the collision.
+keyboard_input_x11_lib = static_library('keyboard_input_x11',
+    'keyboard_input_x11.cpp',
+    # Override: this file needs X11 macros visible, no RTTI stripping
+    cpp_args: ['-Wno-unknown-pragmas'],
+)
 
 shared_library(meson.project_name().to_lower(), 
     vkBasalt_src, shader_include,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
     dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep],
-    gnu_symbol_visibility: 'hidden',
+    gnu_symbol_visibility: 'hidden',  # Only VK_BASALT_EXPORT symbols are visible
     install : true,
     install_dir : lib_dir)
-    

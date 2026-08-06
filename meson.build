@@ -11,19 +11,42 @@ project('vkBasalt', ['c', 'cpp'],
 )
 
 cpp = meson.get_compiler('cpp')
+c = meson.get_compiler('c')
 
-# For a vulkan layer we might not need RTTI. Disabling these probably shrinks the binary, speeds up the dynamic linker, and saves memory.
-# Don't use -fno-exceptions we do use exceptions.
-# TODO: Have to ensure we don't break reshade which might depend on some of the below.
+# Shared library hardening + performance flags
 cpp_args_common = cpp.get_supported_arguments([
-    '-fno-rtti',                  # Disables Run-Time Type Information
-    '-fvisibility-inlines-hidden',# Hides inline function symbols from the export table
+    '-fno-rtti',                    # No RTTI needed for a Vulkan layer
+    '-fvisibility-inlines-hidden',  # Hide inline symbols from export table
+    '-fno-semantic-interposition',  # Allow direct calls, skip PLT indirection
+    '-fno-plt',                     # Eliminate PLT entirely
+    '-fdata-sections',              # Allow linker to GC unused data
+    '-ffunction-sections',          # Allow linker to GC unused functions
+    '-fmerge-all-constants',        # Merge identical constants
+    '-fno-ident',                   # Remove compiler ident string
     '-Wno-unknown-pragmas',
     '-Wno-unused-parameter',
     '-Wno-sign-compare'
 ])
 
+# C files (stb_image) get matching treatment minus C++-only flags
+c_args_common = c.get_supported_arguments([
+    '-fdata-sections',
+    '-ffunction-sections',
+    '-fmerge-all-constants',
+    '-fno-ident',
+])
+
+# Linker flags: strip, GC dead code, optimize, bind symbols internally
+ld_args_common = [
+    '-Wl,--gc-sections',       # Strip unused functions/data sections
+    '-Wl,-Bsymbolic',          # Bind internal symbols at link time
+    '-Wl,-O2',                 # Linker optimization pass
+    '-Wl,--as-needed',         # Only link libraries actually used
+]
+
 add_project_arguments(cpp_args_common, language : 'cpp')
+add_project_arguments(c_args_common, language : 'c')
+add_project_link_arguments(ld_args_common, language : ['c', 'cpp'])
 
 vkBasalt_include_path = ''
 

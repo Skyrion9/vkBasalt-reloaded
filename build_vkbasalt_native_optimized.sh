@@ -1,23 +1,34 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# 1. Clean previous state cleanly - Let's not do this unless something is absolutely broken.
-# rm -rf builddir build
+# Lower build process priority (don't hog the system while compiling)
+renice -n 19 -p $$ >/dev/null 2>&1 || true
+ionice -c 3 -p $$ >/dev/null 2>&1 || true
 
-# 2. Enforce Clang toolchain and LLD Linker
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Enforce Clang toolchain + mold linker (3-5x faster than lld for linking)
 export CC=clang
 export CXX=clang++
-export CC_LD=lld
-export CXX_LD=lld
+export CC_LD=mold
+export CXX_LD=mold
 
-# 3. Configure. 
-# Note: -march=native is passed here. All other optimizations (ThinLTO, O3, C++20, C17, ndebug) 
-# are now baked into the root meson.build default_options!
+# Use ccache if available (10x faster incremental rebuilds)
+if command -v ccache &>/dev/null; then
+    export CC="ccache clang"
+    export CXX="ccache clang++"
+    echo "ccache detected and enabled."
+fi
+
+# Configure
+# -march=native: Targets your exact CPU microarchitecture
+# All other flags (O3, ThinLTO, visibility, ndebug, C++20) are in meson.build
 meson setup build --prefix=/usr \
   --buildtype=release \
   -Dc_args='-march=native' \
   -Dcpp_args='-march=native'
 
-# 4. Compile
+# Compile
 if meson compile -C build; then
     echo ""
     echo "========================================="

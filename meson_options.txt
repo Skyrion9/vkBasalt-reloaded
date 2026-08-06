@@ -1,3 +1,8 @@
 option('with_so', type : 'boolean', value : true, description : 'install the library')
 option('with_json', type : 'boolean', value : true, description : 'install the json')
 option('append_libdir_vkbasalt', type : 'boolean', value : false, description: 'Append "vkbasalt" to libdir path or not.')
+option('spirv_target',
+       type : 'combo',
+       choices : ['auto', 'vulkan1.0', 'vulkan1.1', 'vulkan1.2', 'vulkan1.3', 'vulkan1.4'],
+       value : 'auto',
+       description : 'SPIR-V/Vulkan target for shader compilation. "auto" probes glslang for the highest supported.')
