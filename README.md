@@ -137,8 +137,9 @@ effects = crystalclear
 # -- Core & AA Toggles --
 # EnableAA: Built-in FXAA. Reuses shader data for performance. Use instead of standalone FXAA, off by default in favor of effects=smaa:crystalclear
 crystalclearEnableAA = 0
-# FxaaOnlyMode: Debug toggle. Bypasses other effects to only apply FXAA.
-crystalclearFxaaOnlyMode = 0
+# Pick a CrystalClear preset to use (Individual options take priority, so presets are your "default" options.)
+# Choose a preset: devfav, esports, artifactless, maxsharp, vibrantsharp, devfxaa, cinematic
+crystalclearPreset = devfav
 # EnableRGBEdgeDetection: Detects color edges, not just luma for AA.
 crystalclearEnableRGBEdgeDetection = 1
 # -- Macro Contrast (Clarity) --
@@ -223,6 +224,8 @@ crystalclearEnableDebugAA = 0
 crystalclearEnableDebugCAS = 0
 crystalclearEnableDebugClarity = 0
 crystalclearEnableDebugGrain = 0
+# FxaaOnlyMode: Debug toggle. Bypasses other effects to only apply FXAA.
+crystalclearFxaaOnlyMode = 0
 ```
 
 ### ClarityRCAS & Clarity Configuration

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
+#include <string>
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -30,21 +31,86 @@ namespace vkBasalt
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = crystalclear_frag;
 
-        // Dynamic push constant size based on the CrystalClearPushConstants struct (.hpp).
         this->pushConstantSize = sizeof(CrystalClearPushConstants);
-
-        // Request UBO for per-frame temporal seed
         needsUniformBuffer = true;
         uniformSize = sizeof(FrameData);
 
-        // Store radius and offset for push constant calculation. Clamped to pass safe values.
-        this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", 2.0f), 0.5f, 8.0f);
-        this->offset = std::clamp(pConfig->getOption<float>("crystalclearBilateralOffset", 1.5f), 0.5f, 3.0f);
+        std::string preset = pConfig->getOption<std::string>("crystalclearPreset", "devfav");
+        Logger::debug("CrystalClear Preset: " + preset);
+
+        // Base Defaults (devfav)
+        float def_radius = 2.5f;
+        float def_offset = 1.5f;
+        float def_SharpStrength = 2.5f;
+        int32_t def_blendMode = 5;
+        int32_t def_blendIfDark = 8;
+        int32_t def_blendIfLight = 248;
+        float def_casSharpness = 1.0f;
+        float def_casStrength = 3.0f;
+        float def_edgeThreshLow = 0.03f;
+        float def_edgeThreshHigh = 0.28f;
+        float def_clarityTextureProtection = 0.35f;
+        int32_t def_enableAA = 0;
+        float def_fxaaEdgeThreshold = 0.05f;
+        float def_fxaaSubpixAmount = 1.0f;
+        float def_guardStrength = 0.4f;
+        float def_bandPassWidth = 0.85f;
+        float def_extremeProtection = 0.3f;
+        float def_shimmerReduction = 0.4f;
+        float def_vibrance = 0.0f;
+        int32_t def_enableDeband = 0;
+        float def_debandStrength = 0.5f;
+        float def_toneCurve = 0.0f;
+        int32_t def_enableChromaSmooth = 0;
+        float def_chromaSmoothStrength = 0.5f;
+        float def_specularDesat = 0.0f;
+        int32_t def_enableFilmGrain = 1;
+        float def_filmGrainStrength = 1.0f;
+        float def_filmGrainMinimum = 0.0f;
+        float def_fineGrainWeight = 0.4f;
+        float def_coarseGrainWeight = 0.8f;
+
+        // Override defaults based on preset
+        if (preset == "esports") {
+            def_SharpStrength = 2.0f; def_casStrength = 2.5f; def_guardStrength = 0.6f;
+            def_extremeProtection = 0.5f; def_shimmerReduction = 0.6f; def_enableFilmGrain = 0;
+            def_vibrance = 0.2f; def_blendIfDark = 15; def_blendIfLight = 240;
+        } else if (preset == "artifactless") {
+            def_SharpStrength = 1.2f; def_casStrength = 1.5f; def_guardStrength = 0.9f;
+            def_extremeProtection = 0.8f; def_shimmerReduction = 0.8f; def_bandPassWidth = 0.6f;
+            def_edgeThreshLow = 0.05f; def_edgeThreshHigh = 0.35f; def_clarityTextureProtection = 0.6f;
+            def_enableFilmGrain = 0; def_enableDeband = 1; def_debandStrength = 0.4f;
+            def_enableChromaSmooth = 1; def_chromaSmoothStrength = 0.4f; def_specularDesat = 0.2f;
+        } else if (preset == "maxsharp") {
+            def_SharpStrength = 3.5f; def_casStrength = 4.0f; def_casSharpness = 1.0f;
+            def_guardStrength = 0.2f; def_extremeProtection = 0.1f; def_shimmerReduction = 0.2f;
+            def_bandPassWidth = 1.2f; def_edgeThreshLow = 0.02f; def_edgeThreshHigh = 0.20f;
+            def_clarityTextureProtection = 0.1f; def_filmGrainStrength = 0.8f;
+        } else if (preset == "vibrantsharp") {
+            def_SharpStrength = 2.5f; def_casStrength = 2.5f; def_guardStrength = 0.5f;
+            def_extremeProtection = 0.4f; def_shimmerReduction = 0.5f; def_filmGrainStrength = 0.6f;
+            def_enableDeband = 1; def_debandStrength = 0.6f; def_toneCurve = 0.2f;
+            def_vibrance = 0.6f; def_specularDesat = 0.1f;
+        } else if (preset == "devfxaa") {
+            def_enableAA = 1; def_fxaaEdgeThreshold = 0.04f; def_fxaaSubpixAmount = 0.8f;
+            def_SharpStrength = 2.0f; def_casStrength = 2.5f; def_guardStrength = 0.6f;
+            def_filmGrainStrength = 0.8f;
+        } else if (preset == "cinematic") {
+            def_SharpStrength = 1.8f; def_casStrength = 1.5f; def_guardStrength = 0.7f;
+            def_extremeProtection = 0.6f; def_shimmerReduction = 0.5f; def_bandPassWidth = 0.7f;
+            def_filmGrainStrength = 1.2f; def_filmGrainMinimum = 0.1f; def_coarseGrainWeight = 0.9f;
+            def_enableDeband = 1; def_debandStrength = 0.5f; def_toneCurve = 0.5f;
+            def_vibrance = -0.1f; def_enableChromaSmooth = 1; def_chromaSmoothStrength = 0.6f;
+            def_specularDesat = 0.4f; def_blendIfDark = 20; def_blendIfLight = 230;
+        }
+        // "devfav" or unknown falls through to base defaults
+
+        this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", def_radius), 0.5f, 8.0f);
+        this->offset = std::clamp(pConfig->getOption<float>("crystalclearBilateralOffset", def_offset), 0.5f, 3.0f);
 
         float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
         float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
 
-        // The Bilinear Guarantee & Offset Math
         float rawOffset = 1.5f * radius * offset;
         float baseOffset = std::floor(rawOffset) + 0.5f;
 
@@ -52,107 +118,74 @@ namespace vkBasalt
         pushConstants.step1.y = baseOffset * texelSizeY;
         pushConstants.step2.x = pushConstants.step1.x * 3.0f;
         pushConstants.step2.y = pushConstants.step1.y * 3.0f;
-
         pushConstants.pixelSize.x = texelSizeX;
         pushConstants.pixelSize.y = texelSizeY;
 
         struct CrystalClearSpecData {
-            float radius;
-            float offset;
-            float SharpStrength;
-            int32_t blendMode;
-            int32_t blendIfDark;
-            int32_t blendIfLight;
-            float casSharpness;
-            float casStrength;
-            float edgeThreshLow;
-            float edgeThreshHigh;
-            int32_t enableDithering;
-            int32_t enableAA;
-            int32_t enableRGBEdgeDetection;
-            float fxaaEdgeThreshold;
-            float fxaaSubpixAmount;
-            float fxaaSearchScale;
-            float fxaaHardEdgeThreshold;
-            float clarityTextureProtection;
-            float fxaaEdgeThresholdMin;
-            int32_t fxaaOnlyMode;
-            int32_t enableDebugAA;
-            int32_t enableDebugCAS;
-            int32_t enableDebugClarity;
-            int32_t enableFilmGrain;
-            float filmGrainStrength;
-            float filmGrainMinimum;
-            int32_t enableDebugGrain;
-            float fineGrainWeight;
-            float coarseGrainWeight;
-            int32_t hdrMode;
-            float guardStrength;
-            float bandPassWidth;
-            float extremeProtection;
-            float shimmerReduction;
-            float vibrance;
-            int32_t enableDeband;
-            float debandStrength;
-            float toneCurve;
-            int32_t enableChromaSmooth;
-            float chromaSmoothStrength;
+            float radius; float offset; float SharpStrength; int32_t blendMode;
+            int32_t blendIfDark; int32_t blendIfLight; float casSharpness; float casStrength;
+            float edgeThreshLow; float edgeThreshHigh; int32_t enableDithering; int32_t enableAA;
+            int32_t enableRGBEdgeDetection; float fxaaEdgeThreshold; float fxaaSubpixAmount; float fxaaSearchScale;
+            float fxaaHardEdgeThreshold; float clarityTextureProtection; float fxaaEdgeThresholdMin; int32_t fxaaOnlyMode;
+            int32_t enableDebugAA; int32_t enableDebugCAS; int32_t enableDebugClarity; int32_t enableFilmGrain;
+            float filmGrainStrength; float filmGrainMinimum; int32_t enableDebugGrain; float fineGrainWeight;
+            float coarseGrainWeight; int32_t hdrMode; float guardStrength; float bandPassWidth;
+            float extremeProtection; float shimmerReduction; float vibrance; int32_t enableDeband;
+            float debandStrength; float toneCurve; int32_t enableChromaSmooth; float chromaSmoothStrength;
             float specularDesat;
         };
 
         CrystalClearSpecData specData;
 
-        // Detect HDR based on Color Space and Format
         bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
                       colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
                       colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
-        // Clamp values to sane ranges
+        // Clamp values using preset defaults as fallback
         specData.radius                    = std::clamp(this->radius, 0.5f, 8.0f);
         specData.offset                    = std::clamp(this->offset, 0.5f, 3.0f);
-        specData.SharpStrength             = std::clamp(pConfig->getOption<float>("crystalclearSharpStrength", 1.0f), 0.0f, 5.0f);
-        specData.blendMode                 = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendMode", 1), int32_t(0), int32_t(6));
-        specData.blendIfDark               = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfDark", 40), int32_t(0), int32_t(255));
-        specData.blendIfLight              = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfLight", 220), int32_t(0), int32_t(255));
-        specData.casSharpness              = std::clamp(pConfig->getOption<float>("crystalclearCasSharpness", 0.8f), 0.0f, 1.0f);
-        specData.casStrength               = std::clamp(pConfig->getOption<float>("crystalclearCasStrength", 2.0f), 0.0f, 5.0f);
-        specData.edgeThreshLow             = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshLow", 0.05f), 0.0f, 1.0f);
-        specData.edgeThreshHigh            = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshHigh", 0.35f), 0.0f, 1.0f);
+        specData.SharpStrength             = std::clamp(pConfig->getOption<float>("crystalclearSharpStrength", def_SharpStrength), 0.0f, 5.0f);
+        specData.blendMode                 = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendMode", def_blendMode), int32_t(0), int32_t(6));
+        specData.blendIfDark               = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfDark", def_blendIfDark), int32_t(0), int32_t(255));
+        specData.blendIfLight              = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfLight", def_blendIfLight), int32_t(0), int32_t(255));
+        specData.casSharpness              = std::clamp(pConfig->getOption<float>("crystalclearCasSharpness", def_casSharpness), 0.0f, 1.0f);
+        specData.casStrength               = std::clamp(pConfig->getOption<float>("crystalclearCasStrength", def_casStrength), 0.0f, 5.0f);
+        specData.edgeThreshLow             = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshLow", def_edgeThreshLow), 0.0f, 1.0f);
+        specData.edgeThreshHigh            = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshHigh", def_edgeThreshHigh), 0.0f, 1.0f);
         specData.enableDithering           = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDithering", 1), int32_t(0), int32_t(1));
-        specData.enableAA                  = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableAA", 0), int32_t(0), int32_t(1));
+        specData.enableAA                  = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableAA", def_enableAA), int32_t(0), int32_t(1));
         specData.enableRGBEdgeDetection    = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableRGBEdgeDetection", 1), int32_t(0), int32_t(1));
-        specData.fxaaEdgeThreshold         = std::clamp(pConfig->getOption<float>("crystalclearFxaaEdgeThreshold", 0.05f), 0.001f, 1.0f);
-        specData.fxaaSubpixAmount          = std::clamp(pConfig->getOption<float>("crystalclearFxaaSubpixAmount", 0.75f), 0.0f, 1.0f);
+        specData.fxaaEdgeThreshold         = std::clamp(pConfig->getOption<float>("crystalclearFxaaEdgeThreshold", def_fxaaEdgeThreshold), 0.001f, 1.0f);
+        specData.fxaaSubpixAmount          = std::clamp(pConfig->getOption<float>("crystalclearFxaaSubpixAmount", def_fxaaSubpixAmount), 0.0f, 1.0f);
         specData.fxaaSearchScale           = std::clamp(pConfig->getOption<float>("crystalclearFxaaSearchScale", 1.0f), 0.1f, 3.0f);
         specData.fxaaHardEdgeThreshold     = std::clamp(pConfig->getOption<float>("crystalclearFxaaHardEdgeThreshold", 0.08f), 0.0f, 1.0f);
-        specData.clarityTextureProtection  = std::clamp(pConfig->getOption<float>("crystalclearClarityTextureProtection", 0.5f), 0.0f, 1.0f);
+        specData.clarityTextureProtection  = std::clamp(pConfig->getOption<float>("crystalclearClarityTextureProtection", def_clarityTextureProtection), 0.0f, 1.0f);
         specData.fxaaEdgeThresholdMin      = std::clamp(pConfig->getOption<float>("crystalclearFxaaEdgeThresholdMin", 0.0312f), 0.0f, 1.0f);
         specData.fxaaOnlyMode              = std::clamp(pConfig->getOption<int32_t>("crystalclearFxaaOnlyMode", 0), int32_t(0), int32_t(1));
         specData.enableDebugAA             = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugAA", 0), int32_t(0), int32_t(1));
         specData.enableDebugCAS            = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugCAS", 0), int32_t(0), int32_t(1));
         specData.enableDebugClarity        = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugClarity", 0), int32_t(0), int32_t(1));
-        specData.enableFilmGrain           = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableFilmGrain", 1), int32_t(0), int32_t(1));
-        specData.filmGrainStrength         = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainStrength", 1.0f), 0.0f, 2.0f);
-        specData.filmGrainMinimum          = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainMinimum", 0.0f), 0.0f, 2.0f);
+        specData.enableFilmGrain           = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableFilmGrain", def_enableFilmGrain), int32_t(0), int32_t(1));
+        specData.filmGrainStrength         = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainStrength", def_filmGrainStrength), 0.0f, 2.0f);
+        specData.filmGrainMinimum          = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainMinimum", def_filmGrainMinimum), 0.0f, 2.0f);
         specData.enableDebugGrain          = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugGrain", 0), int32_t(0), int32_t(1));
-        specData.fineGrainWeight           = std::clamp(pConfig->getOption<float>("crystalclearFineGrainWeight", 0.4f), 0.0f, 1.0f);
-        specData.coarseGrainWeight         = std::clamp(pConfig->getOption<float>("crystalclearCoarseGrainWeight", 0.8f), 0.0f, 1.0f);
+        specData.fineGrainWeight           = std::clamp(pConfig->getOption<float>("crystalclearFineGrainWeight", def_fineGrainWeight), 0.0f, 1.0f);
+        specData.coarseGrainWeight         = std::clamp(pConfig->getOption<float>("crystalclearCoarseGrainWeight", def_coarseGrainWeight), 0.0f, 1.0f);
         specData.hdrMode                   = isHDR ? 1 : 0;
-        specData.guardStrength             = std::clamp(pConfig->getOption<float>("crystalclearGuardStrength", 0.6f), 0.0f, 1.0f);
-        specData.bandPassWidth             = std::clamp(pConfig->getOption<float>("crystalclearBandPassWidth", 0.8f), 0.3f, 1.5f);
-        specData.extremeProtection         = std::clamp(pConfig->getOption<float>("crystalclearExtremeProtection", 0.5f), 0.0f, 1.0f);
-        specData.shimmerReduction          = std::clamp(pConfig->getOption<float>("crystalclearShimmerReduction", 0.5f), 0.0f, 1.0f);
-        specData.vibrance                  = std::clamp(pConfig->getOption<float>("crystalclearVibrance", 0.0f), -1.0f, 1.0f);
-        specData.enableDeband              = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDeband", 0), int32_t(0), int32_t(1));
-        specData.debandStrength            = std::clamp(pConfig->getOption<float>("crystalclearDebandStrength", 0.5f), 0.0f, 1.0f);
-        specData.toneCurve                 = std::clamp(pConfig->getOption<float>("crystalclearToneCurve", 0.0f), 0.0f, 1.0f);
-        specData.enableChromaSmooth        = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableChromaSmooth", 0), int32_t(0), int32_t(1));
-        specData.chromaSmoothStrength      = std::clamp(pConfig->getOption<float>("crystalclearChromaSmoothStrength", 0.5f), 0.0f, 1.0f);
-        specData.specularDesat             = std::clamp(pConfig->getOption<float>("crystalclearSpecularDesat", 0.0f), 0.0f, 1.0f);
+        specData.guardStrength             = std::clamp(pConfig->getOption<float>("crystalclearGuardStrength", def_guardStrength), 0.0f, 1.0f);
+        specData.bandPassWidth             = std::clamp(pConfig->getOption<float>("crystalclearBandPassWidth", def_bandPassWidth), 0.3f, 1.5f);
+        specData.extremeProtection         = std::clamp(pConfig->getOption<float>("crystalclearExtremeProtection", def_extremeProtection), 0.0f, 1.0f);
+        specData.shimmerReduction          = std::clamp(pConfig->getOption<float>("crystalclearShimmerReduction", def_shimmerReduction), 0.0f, 1.0f);
+        specData.vibrance                  = std::clamp(pConfig->getOption<float>("crystalclearVibrance", def_vibrance), -1.0f, 1.0f);
+        specData.enableDeband              = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDeband", def_enableDeband), int32_t(0), int32_t(1));
+        specData.debandStrength            = std::clamp(pConfig->getOption<float>("crystalclearDebandStrength", def_debandStrength), 0.0f, 1.0f);
+        specData.toneCurve                 = std::clamp(pConfig->getOption<float>("crystalclearToneCurve", def_toneCurve), 0.0f, 1.0f);
+        specData.enableChromaSmooth        = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableChromaSmooth", def_enableChromaSmooth), int32_t(0), int32_t(1));
+        specData.chromaSmoothStrength      = std::clamp(pConfig->getOption<float>("crystalclearChromaSmoothStrength", def_chromaSmoothStrength), 0.0f, 1.0f);
+        specData.specularDesat             = std::clamp(pConfig->getOption<float>("crystalclearSpecularDesat", def_specularDesat), 0.0f, 1.0f);
 
-        // Map struct fields to GLSL constant IDs using offsetof
         VkSpecializationMapEntry mapEntries[41] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
             {1,  offsetof(CrystalClearSpecData, offset),                    sizeof(float)},
@@ -197,40 +230,30 @@ namespace vkBasalt
             {40, offsetof(CrystalClearSpecData, specularDesat),             sizeof(float)}
         };
 
-        // Setup specialization info with correct data size
         VkSpecializationInfo specializationInfo;
         specializationInfo.mapEntryCount = 41;
         specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(CrystalClearSpecData);
         specializationInfo.pData         = &specData;
 
-        // Assign to SimpleEffect's protected pointers before calling base init
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &specializationInfo;
 
-        // Call base class init to setup pipelines, framebuffers, etc.
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
     }
 
-    CrystalClearEffect::~CrystalClearEffect()
-    {
-    }
+    CrystalClearEffect::~CrystalClearEffect() {}
 
-    void CrystalClearEffect::updateEffect()
-    {
-        // Write the new frame counter directly to the mapped GPU memory. We use this to randomize noise.
-        // The pre-recorded command buffer will automatically read this new value next frame.
+    void CrystalClearEffect::updateEffect() {
         if (mappedUniform) {
             FrameData* data = static_cast<FrameData*>(mappedUniform);
             data->frameCounter = m_frameCounter++;
         }
     }
 
-    void CrystalClearEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
-    {
+    void CrystalClearEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) {
         Logger::debug("applying CrystalClearEffect to cb " + convertToString(commandBuffer));
 
-        // Used to make the Image accessable by the shader
         VkImageMemoryBarrier memoryBarrier;
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memoryBarrier.pNext               = nullptr;
@@ -247,7 +270,6 @@ namespace vkBasalt
         memoryBarrier.subresourceRange.baseArrayLayer = 0;
         memoryBarrier.subresourceRange.layerCount     = 1;
 
-        // Reverses the first Barrier
         VkImageMemoryBarrier secondBarrier;
         secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         secondBarrier.pNext               = nullptr;
@@ -264,13 +286,8 @@ namespace vkBasalt
         secondBarrier.subresourceRange.baseArrayLayer = 0;
         secondBarrier.subresourceRange.layerCount     = 1;
 
-        pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer,
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        Logger::debug("after the first pipeline barrier");
-
+        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+        
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext             = nullptr;
@@ -279,37 +296,14 @@ namespace vkBasalt
         renderPassBeginInfo.renderArea.offset = {0, 0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
-        Logger::debug("before beginn renderpass");
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        Logger::debug("after beginn renderpass");
-
-        pLogicalDevice->vkd.CmdBindDescriptorSets(
-            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
-        Logger::debug("after binding image sampler");
-
+        pLogicalDevice->vkd.CmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-        Logger::debug("after bind pipeliene");
 
-        // Push constant injection
-        pLogicalDevice->vkd.CmdPushConstants(
-            commandBuffer,
-            pipelineLayout,
-            VK_SHADER_STAGE_FRAGMENT_BIT,
-            0,
-            sizeof(CrystalClearPushConstants),
-            &pushConstants
-        );
-
+        pLogicalDevice->vkd.CmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(CrystalClearPushConstants), &pushConstants);
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
-        Logger::debug("after draw");
-
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
-        Logger::debug("after end renderpass");
 
-        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
-                                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                               VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                               0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
-        Logger::debug("after the second pipeline barrier");
+        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
     }
 } // namespace vkBasalt
