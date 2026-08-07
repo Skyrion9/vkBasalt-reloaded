@@ -102,9 +102,12 @@ ninja -C builddir.32 install
 
 Enable the layer via environment variables. **No `LD_PRELOAD` required** if installed via the scripts!
 
-*   **Steam:** Add `ENABLE_VKBASALT=1 %command%` to Launch Options.
-*   **Lutris:** Go to `Configure` -> `System options` -> `Environment variables`. Add Key: `ENABLE_VKBASALT`, Value: `1`.
-*   **Terminal:** `ENABLE_VKBASALT=1 yourgame`
+Note: This was changed from Vkbasalt's default `ENABLE_VKBASALT=1` as Cachy-Proton bundles the old conflicting VKbasalt which lacks our optimizations and custom effects, therefore failing to launch.
+This was necessary to seperate the two without workarounds.
+
+*   **Steam:** Add `ENABLE_VKBASALT_RELOADED=1 %command%` to Launch Options.
+*   **Lutris:** Go to `Configure` -> `System options` -> `Environment variables`. Add Key: `ENABLE_VKBASALT_RELOADED`, Value: `1`.
+*   **Terminal:** `ENABLE_VKBASALT_RELOADED=1 yourgame`
 
 ---
 
