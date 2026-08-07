@@ -93,6 +93,35 @@ namespace vkBasalt
     {
         return convertToSRGB(format) != format;
     }
+    
+    bool isExtendedRangeFormat(VkFormat format)
+    {
+        switch (format)
+        {
+            // Floating-point formats (scRGB linear HDR)
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+            case VK_FORMAT_R16_SFLOAT:
+            case VK_FORMAT_R16G16_SFLOAT:
+            case VK_FORMAT_R16G16B16_SFLOAT:
+            case VK_FORMAT_R32_SFLOAT:
+            case VK_FORMAT_R32G32_SFLOAT:
+            case VK_FORMAT_R32G32B32_SFLOAT:
+            case VK_FORMAT_R32G32B32A32_SFLOAT:
+            case VK_FORMAT_R64_SFLOAT:
+            case VK_FORMAT_R64G64_SFLOAT:
+            case VK_FORMAT_R64G64B64_SFLOAT:
+            case VK_FORMAT_R64G64B64A64_SFLOAT:
+                return true;
+                
+            // Packed 10-bit HDR formats (HDR10)
+            case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+            case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+                return true;
+                
+            default:
+                return false;
+        }
+    }
 
     VkFormat getSupportedFormat(LogicalDevice* pLogicalDevice, std::vector<VkFormat> formats, VkFormatFeatureFlags features, VkImageTiling tiling)
     {

@@ -23,6 +23,7 @@ layout(constant_id = 12) const float filmGrainStrength = 1.0;
 layout(constant_id = 13) const float filmGrainMinimum = 0.0;
 layout(constant_id = 14) const float fineGrainWeight = 0.4;
 layout(constant_id = 15) const float coarseGrainWeight = 0.8;
+layout(constant_id = 16) const int hdrMode = 0;
 
 layout(push_constant) uniform PushConstants {
     vec2 step1;     
@@ -208,7 +209,10 @@ void main() {
     // phase 9: perceptual film grain
     float finalGrainIntensity = 0.0;
     if (enableFilmGrain == 1) {
-        float hvsLumaWeight = 4.0 * finalLuma * (1.0 - finalLuma);
+        // HDR: Clamp luma for grain weight calculation so it doesn't invert on values > 1.0
+        float lumaForGrain = (hdrMode == 1) ? clamp(finalLuma, 0.0, 1.0) : finalLuma;
+        float hvsLumaWeight = 4.0 * lumaForGrain * (1.0 - lumaForGrain);
+        
         float baseFloor = 0.15; 
         float textureBoost = smoothstep(0.02, 0.12, localContrast) * 0.85; 
         float spatialGrain = baseFloor + textureBoost;
@@ -240,7 +244,9 @@ void main() {
         }
     }
 
-    fragColor = vec4(clamp(finalColor, 0.0, 1.0), centerColor.a);
+    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
+    vec3 outColor = (hdrMode == 1) ? max(finalColor, 0.0) : clamp(finalColor, 0.0, 1.0);
+    fragColor = vec4(outColor, centerColor.a);
 }
 
 //##############P##############

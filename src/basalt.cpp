@@ -392,11 +392,14 @@ namespace vkBasalt
         modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         Logger::debug("format " + std::to_string(modifiedCreateInfo.imageFormat));
+        Logger::debug("colorSpace " + std::to_string(modifiedCreateInfo.imageColorSpace));
+
         std::shared_ptr<LogicalSwapchain> pLogicalSwapchain(new LogicalSwapchain());
         pLogicalSwapchain->pLogicalDevice      = pLogicalDevice;
         pLogicalSwapchain->swapchainCreateInfo = *pCreateInfo;
         pLogicalSwapchain->imageExtent         = modifiedCreateInfo.imageExtent;
         pLogicalSwapchain->format              = modifiedCreateInfo.imageFormat;
+        pLogicalSwapchain->colorSpace          = modifiedCreateInfo.imageColorSpace;
         pLogicalSwapchain->imageCount          = 0;
 
         VkResult result = pLogicalDevice->vkd.CreateSwapchainKHR(device, &modifiedCreateInfo, pAllocator, pSwapchain);
@@ -475,19 +478,19 @@ namespace vkBasalt
             else if (effectStrings[i] == std::string("clarity"))
             {
                 pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new ClarityEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
+                    new ClarityEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get(), pLogicalSwapchain->colorSpace)));
                 Logger::debug("created ClarityEffect");
             }
             else if (effectStrings[i] == std::string("clarityrcas"))
             {
                 pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new ClarityRcasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
+                    new ClarityRcasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get(), pLogicalSwapchain->colorSpace)));
                 Logger::debug("created ClarityRcasEffect");
             }
             else if (effectStrings[i] == std::string("crystalclear"))
             {
                 pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new CrystalClearEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
+                    new CrystalClearEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get(), pLogicalSwapchain->colorSpace)));
                 Logger::debug("created CrystalClearEffect");
             }
             else

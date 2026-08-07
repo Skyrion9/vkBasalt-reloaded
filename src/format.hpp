@@ -22,6 +22,9 @@ namespace vkBasalt
     // Returns true if format is UNORM
     // TODO currently return false if format is UNORM and no matching sRGB format exist
     bool isUNORM(VkFormat format);
+    
+    // Detects: FP16, FP32, A2B10G10R10 (HDR10), and other extended-range formats
+    bool isExtendedRangeFormat(VkFormat format);
 
     VkFormat getSupportedFormat(LogicalDevice*        pLogicalDevice,
                                 std::vector<VkFormat> formats,

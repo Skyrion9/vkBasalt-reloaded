@@ -14,6 +14,7 @@ layout(constant_id = 5) const int blendIfLight = 220;
 layout(constant_id = 6) const float edgeThreshLow = 0.05;
 layout(constant_id = 7) const float edgeThreshHigh = 0.25;
 layout(constant_id = 8) const int enableDithering = 1;
+layout(constant_id = 9) const int hdrMode = 0;
 
 layout(push_constant) uniform PushConstants {
     vec2 step1;     
@@ -102,5 +103,7 @@ void main() {
         finalColor += (dither - 0.5) * 0.0039215686;
     }
 
-    fragColor = vec4(clamp(finalColor, 0.0, 1.0), centerColor.a);
+    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
+    vec3 outColor = (hdrMode == 1) ? max(finalColor, 0.0) : clamp(finalColor, 0.0, 1.0);
+    fragColor = vec4(outColor, centerColor.a);
 }

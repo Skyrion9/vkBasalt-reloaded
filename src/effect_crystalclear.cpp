@@ -1,10 +1,8 @@
 #include "effect_crystalclear.hpp"
-
 #include <cstring>
 #include <cmath>
-#include <cstddef> // Required for offsetof
-#include <algorithm> // Required for std::clamp
-
+#include <cstddef>
+#include <algorithm>
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -14,17 +12,18 @@
 #include "shader.hpp"
 #include "sampler.hpp"
 #include "util.hpp"
-
+#include "format.hpp"
 #include "shader_sources.hpp"
 
 namespace vkBasalt
 {
     CrystalClearEffect::CrystalClearEffect(LogicalDevice*       pLogicalDevice,
-                                     VkFormat             format,
-                                     VkExtent2D           imageExtent,
-                                     std::vector<VkImage> inputImages,
-                                     std::vector<VkImage> outputImages,
-                                     Config*              pConfig)
+                                           VkFormat             format,
+                                           VkExtent2D           imageExtent,
+                                           std::vector<VkImage> inputImages,
+                                           std::vector<VkImage> outputImages,
+                                           Config*              pConfig,
+                                           VkColorSpaceKHR      colorSpace)
     {
         Logger::debug("in creating CrystalClearEffect");
 
@@ -33,7 +32,7 @@ namespace vkBasalt
 
         // Dynamic push constant size based on the CrystalClearPushConstants struct (.hpp).
         this->pushConstantSize = sizeof(CrystalClearPushConstants);
-
+        
         // Request UBO for per-frame temporal seed
         needsUniformBuffer = true;
         uniformSize = sizeof(FrameData);
@@ -87,10 +86,22 @@ namespace vkBasalt
             int32_t enableDebugGrain;
             float fineGrainWeight;
             float coarseGrainWeight;
+            int32_t hdrMode;
+            float guardStrength;
+            float bandPassWidth;
+            float extremeProtection;
+            float shimmerReduction;
         };
 
         CrystalClearSpecData specData;
-        
+
+        // Detect HDR based on Color Space and Format
+        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
+                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
+                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
+                      isExtendedRangeFormat(format));
+
         // Clamp values to sane ranges
         specData.radius                    = std::clamp(this->radius, 0.5f, 8.0f);
         specData.offset                    = std::clamp(this->offset, 0.5f, 3.0f);
@@ -121,9 +132,14 @@ namespace vkBasalt
         specData.enableDebugGrain          = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugGrain", 0), int32_t(0), int32_t(1));
         specData.fineGrainWeight           = std::clamp(pConfig->getOption<float>("crystalclearFineGrainWeight", 0.4f), 0.0f, 1.0f);
         specData.coarseGrainWeight         = std::clamp(pConfig->getOption<float>("crystalclearCoarseGrainWeight", 0.8f), 0.0f, 1.0f);
+        specData.hdrMode                   = isHDR ? 1 : 0;
+        specData.guardStrength             = std::clamp(pConfig->getOption<float>("crystalclearGuardStrength", 0.6f), 0.0f, 1.0f);
+        specData.bandPassWidth             = std::clamp(pConfig->getOption<float>("crystalclearBandPassWidth", 0.8f), 0.3f, 1.5f);
+        specData.extremeProtection         = std::clamp(pConfig->getOption<float>("crystalclearExtremeProtection", 0.5f), 0.0f, 1.0f);
+        specData.shimmerReduction          = std::clamp(pConfig->getOption<float>("crystalclearShimmerReduction", 0.5f), 0.0f, 1.0f);
 
         // Map struct fields to GLSL constant IDs using offsetof
-        VkSpecializationMapEntry mapEntries[29] = {
+        VkSpecializationMapEntry mapEntries[34] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
             {1,  offsetof(CrystalClearSpecData, offset),                    sizeof(float)},
             {2,  offsetof(CrystalClearSpecData, SharpStrength),             sizeof(float)},
@@ -151,13 +167,18 @@ namespace vkBasalt
             {24, offsetof(CrystalClearSpecData, filmGrainStrength),         sizeof(float)},
             {25, offsetof(CrystalClearSpecData, filmGrainMinimum),          sizeof(float)},
             {26, offsetof(CrystalClearSpecData, enableDebugGrain),          sizeof(int32_t)},
-            {27, offsetof(CrystalClearSpecData, fineGrainWeight),      sizeof(float)},
-            {28, offsetof(CrystalClearSpecData, coarseGrainWeight),    sizeof(float)}
+            {27, offsetof(CrystalClearSpecData, fineGrainWeight),            sizeof(float)},
+            {28, offsetof(CrystalClearSpecData, coarseGrainWeight),         sizeof(float)},
+            {29, offsetof(CrystalClearSpecData, hdrMode),                   sizeof(int32_t)},
+            {30, offsetof(CrystalClearSpecData, guardStrength),             sizeof(float)},
+            {31, offsetof(CrystalClearSpecData, bandPassWidth),             sizeof(float)},
+            {32, offsetof(CrystalClearSpecData, extremeProtection),         sizeof(float)},
+            {33, offsetof(CrystalClearSpecData, shimmerReduction),          sizeof(float)}
         };
 
         // Setup specialization info with correct data size
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 29;
+        specializationInfo.mapEntryCount = 34;
         specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(CrystalClearSpecData);
         specializationInfo.pData         = &specData;
@@ -192,14 +213,13 @@ namespace vkBasalt
         VkImageMemoryBarrier memoryBarrier;
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memoryBarrier.pNext               = nullptr;
-        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT; 
+        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
         memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-
         memoryBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         memoryBarrier.subresourceRange.baseMipLevel   = 0;
         memoryBarrier.subresourceRange.levelCount     = 1;
@@ -213,7 +233,7 @@ namespace vkBasalt
         secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
         secondBarrier.dstAccessMask       = 0;
         secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        secondBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; 
+        secondBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
@@ -241,7 +261,7 @@ namespace vkBasalt
 
         Logger::debug("before beginn renderpass");
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        Logger::debug("after beginn renderpass"); 
+        Logger::debug("after beginn renderpass");
 
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
@@ -272,5 +292,4 @@ namespace vkBasalt
                                                0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
         Logger::debug("after the second pipeline barrier");
     }
-
 } // namespace vkBasalt

@@ -14,6 +14,7 @@
 #include "shader.hpp"
 #include "sampler.hpp"
 #include "util.hpp"
+#include "format.hpp"
 
 #include "shader_sources.hpp"
 
@@ -24,7 +25,8 @@ namespace vkBasalt
                                  VkExtent2D           imageExtent,
                                  std::vector<VkImage> inputImages,
                                  std::vector<VkImage> outputImages,
-                                 Config*              pConfig)
+                                 Config*              pConfig,
+                                 VkColorSpaceKHR      colorSpace)
     {
         Logger::debug("in creating ClarityEffect");
 
@@ -59,7 +61,14 @@ namespace vkBasalt
             float edgeThreshLow;
             float edgeThreshHigh;
             int32_t enableDithering;
+            int32_t hdrMode;
         };
+
+        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
+                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
+                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
+                      isExtendedRangeFormat(format));
 
         ClaritySpecData specData;
         specData.radius          = this->radius;
@@ -71,8 +80,9 @@ namespace vkBasalt
         specData.edgeThreshLow   = std::clamp(pConfig->getOption<float>("clarityEdgeThreshLow", 0.05f), 0.0f, 1.0f);
         specData.edgeThreshHigh  = std::clamp(pConfig->getOption<float>("clarityEdgeThreshHigh", 0.25f), 0.0f, 1.0f);
         specData.enableDithering = std::clamp(pConfig->getOption<int32_t>("clarityEnableDithering", 1), 0, 1);
+        specData.hdrMode         = isHDR ? 1 : 0;
 
-        VkSpecializationMapEntry mapEntries[9] = {
+        VkSpecializationMapEntry mapEntries[10] = {
             {0, offsetof(ClaritySpecData, radius),         sizeof(float)},
             {1, offsetof(ClaritySpecData, offset),         sizeof(float)},
             {2, offsetof(ClaritySpecData, strength),       sizeof(float)},
@@ -81,11 +91,12 @@ namespace vkBasalt
             {5, offsetof(ClaritySpecData, blendIfLight),   sizeof(int32_t)},
             {6, offsetof(ClaritySpecData, edgeThreshLow),  sizeof(float)},
             {7, offsetof(ClaritySpecData, edgeThreshHigh), sizeof(float)},
-            {8, offsetof(ClaritySpecData, enableDithering),sizeof(int32_t)}
+            {8, offsetof(ClaritySpecData, enableDithering),sizeof(int32_t)},
+            {9, offsetof(ClaritySpecData, hdrMode),        sizeof(int32_t)}
         };
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 9;
+        specializationInfo.mapEntryCount = 10;
         specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(ClaritySpecData);
         specializationInfo.pData         = &specData;

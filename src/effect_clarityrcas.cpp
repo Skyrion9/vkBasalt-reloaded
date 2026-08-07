@@ -14,6 +14,7 @@
 #include "shader.hpp"
 #include "sampler.hpp"
 #include "util.hpp"
+#include "format.hpp"
 
 #include "shader_sources.hpp"
 
@@ -24,7 +25,8 @@ namespace vkBasalt
                                          VkExtent2D           imageExtent,
                                          std::vector<VkImage> inputImages,
                                          std::vector<VkImage> outputImages,
-                                         Config*              pConfig)
+                                         Config*              pConfig,
+                                         VkColorSpaceKHR      colorSpace)
     {
         Logger::debug("in creating ClarityRcasEffect");
 
@@ -70,7 +72,14 @@ namespace vkBasalt
             float filmGrainMinimum;
             float fineGrainWeight;
             float coarseGrainWeight;
+            int32_t hdrMode;
         };
+
+        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
+                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
+                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
+                      isExtendedRangeFormat(format));
 
         ClarityRcasSpecData specData;
         specData.radius               = this->radius;
@@ -90,8 +99,9 @@ namespace vkBasalt
         specData.filmGrainMinimum     = std::clamp(pConfig->getOption<float>("clarityRFilmGrainMinimum", 0.0f), 0.0f, 2.0f);
         specData.fineGrainWeight      = std::clamp(pConfig->getOption<float>("clarityRFineGrainWeight", 0.4f), 0.0f, 1.0f);
         specData.coarseGrainWeight    = std::clamp(pConfig->getOption<float>("clarityRCoarseGrainWeight", 0.8f), 0.0f, 1.0f);
+        specData.hdrMode              = isHDR ? 1 : 0;
 
-        VkSpecializationMapEntry mapEntries[16] = {
+        VkSpecializationMapEntry mapEntries[17] = {
             {0,  offsetof(ClarityRcasSpecData, radius),                sizeof(float)},
             {1,  offsetof(ClarityRcasSpecData, offset),                sizeof(float)},
             {2,  offsetof(ClarityRcasSpecData, clarityStrength),       sizeof(float)},
@@ -107,11 +117,12 @@ namespace vkBasalt
             {12, offsetof(ClarityRcasSpecData, filmGrainStrength),     sizeof(float)},
             {13, offsetof(ClarityRcasSpecData, filmGrainMinimum),      sizeof(float)},
             {14, offsetof(ClarityRcasSpecData, fineGrainWeight),       sizeof(float)},
-            {15, offsetof(ClarityRcasSpecData, coarseGrainWeight),     sizeof(float)}
+            {15, offsetof(ClarityRcasSpecData, coarseGrainWeight),     sizeof(float)},
+            {16, offsetof(ClarityRcasSpecData, hdrMode),               sizeof(int32_t)}
         };
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 16;
+        specializationInfo.mapEntryCount = 17;
         specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(ClarityRcasSpecData);
         specializationInfo.pData         = &specData;
@@ -169,6 +180,7 @@ namespace vkBasalt
 
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassBeginInfo.pNext             = nullptr;
         renderPassBeginInfo.renderPass        = renderPass;
         renderPassBeginInfo.framebuffer       = framebuffers[imageIndex];
         renderPassBeginInfo.renderArea.offset = {0, 0};
