@@ -49,7 +49,13 @@ layout(constant_id = 30) const float guardStrength = 0.6;
 layout(constant_id = 31) const float bandPassWidth = 0.8;
 layout(constant_id = 32) const float extremeProtection = 0.5;
 layout(constant_id = 33) const float shimmerReduction = 0.5;
-
+layout(constant_id = 34) const float vibrance = 0.0; // -1.0 to 1.0
+layout(constant_id = 35) const int enableDeband = 0;
+layout(constant_id = 36) const float debandStrength = 0.5;
+layout(constant_id = 37) const float toneCurve = 0.0; // filmic highlight rolloff, 0.0 = off
+layout(constant_id = 38) const int enableChromaSmooth = 0;
+layout(constant_id = 39) const float chromaSmoothStrength = 0.5;
+layout(constant_id = 40) const float specularDesat = 0.0; // 0.0 = off, 0.4 = subtle, 1.0 = max
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -66,16 +72,21 @@ layout(set = 0, binding = 1) uniform FrameData {
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
-// 'bilateralThreshLow' and 'dynamicThreshHigh' are locals declared in main() before use, so the macros pick up the HDR-scaled thresholds.
-#define BILATERAL_WEIGHT(diff) (1.0 - smoothstep(bilateralThreshLow, dynamicThreshHigh, abs(diff)))
-#define BILATERAL_DIFF(neighbor, weight) ((lumaAA - neighbor) * BILATERAL_WEIGHT(lumaAA - neighbor) * weight)
-
+// perceptual green heavy luma for edge detection, sharpening masks, and FXAA.
 float getLuma(vec3 rgb) {
     return dot(rgb, vec3(0.32786885, 0.655737705, 0.0163934436));
 }
 
+float getNeutralLuma(vec3 rgb) {
+    return (rgb.r + rgb.g + rgb.b) * 0.33333333;
+}
+
+float bilateralDiff(float d, float weight, float threshLow, float threshHigh) {
+    return d * (1.0 - smoothstep(threshLow, threshHigh, abs(d))) * weight;
+}
+
 // HDR: 'norm' is the adaptation factor (hdrNorm). Mode 5 (Linear Light) is additive, self-normalizing via the downstream luma ratio, so it stays on raw values.
-// The other modes are evaluated on normalized luma in HDR so their 1.0/clamp/step reference points remain valid above SDR white.
+// The other modes are evaluated on normalized NEUTRAL luma in HDR so their 1.0/clamp/step reference points remain valid above SDR white.
 float applyBlendMode(float luma, float sharp, float norm) {
     if (blendMode == 5) return luma + 2.0 * sharp - 1.0;
 
@@ -100,7 +111,7 @@ void main() {
         return;
     }
 
-    // HDR adaptation luminance: reference level for relative threshold scaling. SDR -> 1.0 (no-op). HDR -> tracks local luminance. 
+    // HDR adaptation luminance: reference level for relative threshold scaling. SDR -> 1.0 (no-op). HDR -> tracks local luminance.
     // Floor avoids division blowup in shadows; ceiling avoids absurd thresholds in extreme highlights.
     float hdrNorm = (hdrMode == 1) ? clamp(lE, 0.18, 16.0) : 1.0;
 
@@ -123,7 +134,6 @@ void main() {
     float h2_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb);
     float h3_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb);
     float h4_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb);
-
     float v1_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb);
     float v2_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb);
     float v3_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb);
@@ -147,13 +157,13 @@ void main() {
     } else {
         ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, 0.0001), 0.0, 1.0);
     }
-
     float peak = 8.0 - 3.0 * casSharpness;
     vec3 invAmp = inversesqrt(max(ampRGB, 0.0001));
     vec3 P = invAmp * peak;
     vec3 tightWindow = (b + d) + (f + h);
     vec3 casDeltaRGB = (4.0 * e - tightWindow) / (P - 4.0);
 
+    // Perceptual: local contrast for edge/texture detection
     float localContrast = getLuma(trueMxRGB) - getLuma(trueMnRGB);
 
     float bpLow = 0.01 * hdrNorm;
@@ -239,7 +249,7 @@ void main() {
             float subpixNSWE = lB + lH + lD + lF;
             float subpixNWSWNESE = lA + lC + lG + lI;
             float subpixA = subpixNSWE * 2.0 + subpixNWSWNESE;
-            float subpixB = (subpixA * (1.0 / 12.0)) - lE;
+            float subpixB = subpixA * 0.08333333 - lE;
             float subpixRcpRange = 1.0 / max(crossRange, 0.0001);
             float subpixC = clamp(abs(subpixB) * subpixRcpRange, 0.0, 1.0);
             float subpixD = (-2.0 * subpixC) + 3.0;
@@ -329,6 +339,7 @@ void main() {
     }
 
     // phase 6: clarity bilateral deltas and weights with 3x3 anchor
+    // Perceptual luma: sharpening context
     float lumaAA = getLuma(aaColor);
 
     float bilateralThreshLow = edgeThreshLow * hdrNorm;
@@ -338,11 +349,23 @@ void main() {
     float dynamicThreshHigh = mix(bilateralThreshHighBase, bilateralThreshLow + 0.02 * hdrNorm, edgeChoke);
 
     float diff = (
-        BILATERAL_DIFF(lB, 2.0) + BILATERAL_DIFF(lD, 2.0) + BILATERAL_DIFF(lF, 2.0) + BILATERAL_DIFF(lH, 2.0) +
-        BILATERAL_DIFF(lA, 1.0) + BILATERAL_DIFF(lC, 1.0) + BILATERAL_DIFF(lG, 1.0) + BILATERAL_DIFF(lI, 1.0) +
-        BILATERAL_DIFF(h1_raw, 0.5) + BILATERAL_DIFF(h2_raw, 0.5) + BILATERAL_DIFF(h3_raw, 0.5) + BILATERAL_DIFF(h4_raw, 0.5) +
-        BILATERAL_DIFF(v1_raw, 0.5) + BILATERAL_DIFF(v2_raw, 0.5) + BILATERAL_DIFF(v3_raw, 0.5) + BILATERAL_DIFF(v4_raw, 0.5)
-    ) / 16.0;
+        bilateralDiff(lumaAA - lB, 2.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - lD, 2.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - lF, 2.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - lH, 2.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - lA, 1.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - lC, 1.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - lG, 1.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - lI, 1.0, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
+        bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, dynamicThreshHigh)
+    ) * 0.0625;
 
     // phase 7: clarity gates and s-curve with saturation and edge guards
     diff *= mix(1.0, bandPassMask, guardStrength);
@@ -383,15 +406,17 @@ void main() {
     diff = clamp(diff, -maxDiffClamp, maxDiffClamp);
 
     float blendMask = clamp(0.5 + diff, 0.0, 1.0);
-    float sharpLuma = applyBlendMode(lumaAA, blendMask, hdrNorm);
+    // NEUTRAL luma for blend modes: preserves hue during saturation scaling
+    float neutralLumaAA = getNeutralLuma(aaColor);
+    float sharpLuma = applyBlendMode(neutralLumaAA, blendMask, hdrNorm);
 
     if (blendIfDark > 0 || blendIfLight < 255) {
         float blendIfD = ((float(blendIfDark) / 255.0) + 0.0001) * hdrNorm;
         float blendIfL = ((float(blendIfLight) / 255.0) - 0.0001) * hdrNorm;
         float mask = 1.0;
-        if (blendIfDark > 0) mask = smoothstep(blendIfD * 0.8, blendIfD * 1.2, lumaAA);
-        if (blendIfLight < 255) mask *= 1.0 - smoothstep(blendIfL * 0.8, blendIfL * 1.2, lumaAA);
-        sharpLuma = mix(lumaAA, sharpLuma, mask);
+        if (blendIfDark > 0) mask = smoothstep(blendIfD * 0.8, blendIfD * 1.2, neutralLumaAA);
+        if (blendIfLight < 255) mask *= 1.0 - smoothstep(blendIfL * 0.8, blendIfL * 1.2, neutralLumaAA);
+        sharpLuma = mix(neutralLumaAA, sharpLuma, mask);
     }
 
     // phase 8: final composite & shimmer reduction
@@ -405,7 +430,7 @@ void main() {
             finalColor = mix(finalColor, vec3(1.0, 0.2, 0.2) * hdrNorm, intensity);
         }
     } else {
-        float lumaScale = (lumaAA > 0.0001) ? mix(lumaAA, sharpLuma, clarityStrength) / lumaAA : 1.0;
+        float lumaScale = (neutralLumaAA > 0.0001) ? mix(neutralLumaAA, sharpLuma, clarityStrength) / neutralLumaAA : 1.0;
         vec3 clarityColor = aaColor * lumaScale;
 
         vec3 rgbRange = trueMxRGB - trueMnRGB;
@@ -425,6 +450,65 @@ void main() {
         vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost), max(vec3(0.03 * hdrNorm * overshootBoost), rgbRange * 0.15));
         finalColor = clamp(finalColor, trueMnRGB - overshoot, trueMxRGB + overshoot);
 
+        // phase 9: Edge-Aware Chroma Smoothing (Color Denoise)
+        // Blurs the chroma channels using the 4-tap cross, gated by a flatness mask, kills color noise (common from TAA/compression) without softening luma detail.
+        if (enableChromaSmooth == 1) {
+            vec3 cross_avg = (b + d + f + h) * 0.25;
+            float cross_luma = getNeutralLuma(cross_avg);
+            float center_luma = getNeutralLuma(finalColor);
+
+            // Gate: smooth in flat, non-edge areas where color noise is visible
+            float flatMask = 1.0 - smoothstep(0.05 * hdrNorm, 0.25 * hdrNorm, localContrast);
+            float smoothAmount = flatMask * edgeMask * chromaSmoothStrength;
+
+            // Mix the current color toward the cross average, but preserve the center luma.
+            finalColor = mix(finalColor, cross_avg + vec3(center_luma - cross_luma), smoothAmount);
+        }
+
+        // phase 10: Vibrance (Post-sharpening, Pre-grain)
+        if (vibrance != 0.0) {
+            float max_c = max(finalColor.r, max(finalColor.g, finalColor.b));
+            float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
+            float chroma = max_c - min_c;
+            
+            if (chroma > 0.0001) {
+                // HDR-aware vibrance amount: less saturated colors get more boost
+                float sat_rel = chroma / max(max_c, 0.0001);
+                float amount = vibrance * (1.0 - clamp(sat_rel, 0.0, 1.0));
+                float sat_factor = 1.0 + amount;
+                
+                // Calculate new chroma, clamped to max_c to preserve HSV Value (brightness)
+                float new_chroma = clamp(chroma * sat_factor, 0.0, max_c);
+                
+                // Scale the pure chrominance vector (preserves exact linear RGB hue ratios)
+                vec3 pure_chroma = finalColor - min_c;
+                pure_chroma *= (new_chroma / chroma);
+                
+                // Reconstruct color with new min_c to maintain original max_c
+                float new_min_c = max_c - new_chroma;
+                finalColor = pure_chroma + new_min_c;
+            }
+        }
+
+        // phase 11: Specular Highlight Desaturation white specular reflections lose saturation and approach white irl. Prevents colorful highlights.
+        if (specularDesat != 0.0) {
+            float max_spec = max(finalColor.r, max(finalColor.g, finalColor.b));
+            float spec_mask = smoothstep(0.85 * hdrNorm, 2.0 * hdrNorm, max_spec);
+            float desat_factor = 1.0 - (spec_mask * specularDesat); // 1.0 = original, 0.0 = fully white
+            
+            float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
+            float chroma = max_spec - min_c;
+            
+            if (chroma > 0.0001) {
+                float new_chroma = chroma * desat_factor;
+                vec3 pure_chroma = finalColor - min_c;
+                pure_chroma *= (new_chroma / chroma);
+                float new_min_c = max_spec - new_chroma;
+                finalColor = pure_chroma + new_min_c;
+            }
+        }
+
+        // phase 12: shimmer reduction (stabilizes isolated pixels)
         float finalLuma = getLuma(finalColor);
 
         float avgLuma = (lB + lH + lD + lF) * 0.25;
@@ -441,10 +525,21 @@ void main() {
             finalLuma *= shimmerScale;
         }
 
-        // phase 9: unified noise generation for hybrid multi-scale procedural grain
-        float noise = 0.0;
-        if (enableFilmGrain == 1 || enableDithering == 1) {
+        // phase 13: Filmic tone curve / highlight rolloff
+        if (toneCurve != 0.0) {
+            float knee = (hdrMode == 1) ? hdrNorm : 0.9;
+            if (finalLuma > knee) {
+                float excess = finalLuma - knee;
+                // Rational soft-clip: smoothly compresses the excess above the knee
+                float compressed = excess / (1.0 + (excess / knee) * toneCurve);
+                finalColor *= (knee + compressed) / finalLuma;
+                finalLuma = knee + compressed;
+            }
+        }
 
+        // phase 14: shared noise generation (reused by deband, film grain, and dither)
+        float noise = 0.0;
+        if (enableFilmGrain == 1 || enableDithering == 1 || enableDeband == 1) {
             // fine grain layer at 1:1 pixel resolution updating every frame
             uint fineSeed = uint(gl_FragCoord.x) * 747796405u
                           + uint(gl_FragCoord.y) * 2891336453u
@@ -472,7 +567,16 @@ void main() {
             noise = (fineNoise * fineGrainWeight) + (coarseNoise * coarseGrainWeight);
         }
 
-        // tune to perception
+        // phase 15: Debanding breaks up color banding in flat/gradient regions by adding a small amount of the shared noise,
+        // weighted toward low local-contrast areas where banding is visible, protected from real edges. Reuses localContrast, edgeMask, and noise.
+        if (enableDeband == 1) {
+            float flatMask = 1.0 - smoothstep(0.004 * hdrNorm, 0.025 * hdrNorm, localContrast);
+            float debandMask = flatMask * edgeMask;
+            // Amplitude sized near a quantization step to effectively break bands
+            finalColor += vec3(noise) * debandMask * debandStrength * 0.004 * hdrNorm;
+        }
+
+        // phase 16: perceptual film grain
         float perceptualMask = 0.0;
         float finalGrainIntensity = 0.0;
 
@@ -488,7 +592,7 @@ void main() {
 
             float edgeFade = 1.0 - smoothstep(0.0, rangeMaxClamped * 0.8, maxCombinedEdge);
 
-            float clarityDelta = abs(sharpLuma - lumaAA);
+            float clarityDelta = abs(sharpLuma - neutralLumaAA);
             float casDelta = length(casDeltaFinal);
             float sharpeningIntensity = max(clarityDelta, casDelta);
 
@@ -503,9 +607,10 @@ void main() {
             finalGrainIntensity = abs(grain);
         }
 
-        // phase 10: dithering for banding prevention that (can) complement grain
+        // phase 17: Contrast-adaptive dithering boosted in flat/low-contrast areas where banding is visible and reduced in textured areas where it's imperceptible. Reuses localContrast and shared noise.
         if (enableDithering == 1) {
-            float ditherAmp = 0.0019607843 * hdrNorm;
+            float flatBoost = 1.0 - smoothstep(0.01 * hdrNorm, 0.08 * hdrNorm, localContrast);
+            float ditherAmp = 0.0019607843 * hdrNorm * mix(0.6, 1.6, flatBoost);
             if (enableFilmGrain == 1) {
                 float grainAmplitude = finalGrainIntensity;
                 float ditherThreshold = 0.003 * hdrNorm;
@@ -516,7 +621,7 @@ void main() {
             }
         }
 
-        // phase11: debug overlays
+        // phase18: debug overlays
         if (enableAA == 1 && enableDebugAA == 1) {
             float intensity = clamp(length(aaColor - e) * 8.0 / hdrNorm, 0.0, 1.0);
             finalColor = mix(finalColor, vec3(1.0, 0.2, 0.2) * hdrNorm, intensity);
@@ -528,7 +633,7 @@ void main() {
         }
 
         if (enableDebugClarity == 1) {
-            float clarityEffect = abs(sharpLuma - lumaAA) * clarityStrength;
+            float clarityEffect = abs(sharpLuma - neutralLumaAA) * clarityStrength;
             float intensity = clamp(clarityEffect * 20.0 / hdrNorm, 0.0, 1.0);
             finalColor = mix(finalColor, vec3(0.0, 0.8, 1.0) * hdrNorm, intensity);
         }

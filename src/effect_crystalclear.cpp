@@ -32,7 +32,7 @@ namespace vkBasalt
 
         // Dynamic push constant size based on the CrystalClearPushConstants struct (.hpp).
         this->pushConstantSize = sizeof(CrystalClearPushConstants);
-        
+
         // Request UBO for per-frame temporal seed
         needsUniformBuffer = true;
         uniformSize = sizeof(FrameData);
@@ -91,6 +91,13 @@ namespace vkBasalt
             float bandPassWidth;
             float extremeProtection;
             float shimmerReduction;
+            float vibrance;
+            int32_t enableDeband;
+            float debandStrength;
+            float toneCurve;
+            int32_t enableChromaSmooth;
+            float chromaSmoothStrength;
+            float specularDesat;
         };
 
         CrystalClearSpecData specData;
@@ -137,9 +144,16 @@ namespace vkBasalt
         specData.bandPassWidth             = std::clamp(pConfig->getOption<float>("crystalclearBandPassWidth", 0.8f), 0.3f, 1.5f);
         specData.extremeProtection         = std::clamp(pConfig->getOption<float>("crystalclearExtremeProtection", 0.5f), 0.0f, 1.0f);
         specData.shimmerReduction          = std::clamp(pConfig->getOption<float>("crystalclearShimmerReduction", 0.5f), 0.0f, 1.0f);
+        specData.vibrance                  = std::clamp(pConfig->getOption<float>("crystalclearVibrance", 0.0f), -1.0f, 1.0f);
+        specData.enableDeband              = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDeband", 0), int32_t(0), int32_t(1));
+        specData.debandStrength            = std::clamp(pConfig->getOption<float>("crystalclearDebandStrength", 0.5f), 0.0f, 1.0f);
+        specData.toneCurve                 = std::clamp(pConfig->getOption<float>("crystalclearToneCurve", 0.0f), 0.0f, 1.0f);
+        specData.enableChromaSmooth        = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableChromaSmooth", 0), int32_t(0), int32_t(1));
+        specData.chromaSmoothStrength      = std::clamp(pConfig->getOption<float>("crystalclearChromaSmoothStrength", 0.5f), 0.0f, 1.0f);
+        specData.specularDesat             = std::clamp(pConfig->getOption<float>("crystalclearSpecularDesat", 0.0f), 0.0f, 1.0f);
 
         // Map struct fields to GLSL constant IDs using offsetof
-        VkSpecializationMapEntry mapEntries[34] = {
+        VkSpecializationMapEntry mapEntries[41] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
             {1,  offsetof(CrystalClearSpecData, offset),                    sizeof(float)},
             {2,  offsetof(CrystalClearSpecData, SharpStrength),             sizeof(float)},
@@ -173,12 +187,19 @@ namespace vkBasalt
             {30, offsetof(CrystalClearSpecData, guardStrength),             sizeof(float)},
             {31, offsetof(CrystalClearSpecData, bandPassWidth),             sizeof(float)},
             {32, offsetof(CrystalClearSpecData, extremeProtection),         sizeof(float)},
-            {33, offsetof(CrystalClearSpecData, shimmerReduction),          sizeof(float)}
+            {33, offsetof(CrystalClearSpecData, shimmerReduction),          sizeof(float)},
+            {34, offsetof(CrystalClearSpecData, vibrance),                  sizeof(float)},
+            {35, offsetof(CrystalClearSpecData, enableDeband),              sizeof(int32_t)},
+            {36, offsetof(CrystalClearSpecData, debandStrength),            sizeof(float)},
+            {37, offsetof(CrystalClearSpecData, toneCurve),                 sizeof(float)},
+            {38, offsetof(CrystalClearSpecData, enableChromaSmooth),        sizeof(int32_t)},
+            {39, offsetof(CrystalClearSpecData, chromaSmoothStrength),      sizeof(float)},
+            {40, offsetof(CrystalClearSpecData, specularDesat),             sizeof(float)}
         };
 
         // Setup specialization info with correct data size
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 34;
+        specializationInfo.mapEntryCount = 41;
         specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(CrystalClearSpecData);
         specializationInfo.pData         = &specData;
@@ -208,7 +229,7 @@ namespace vkBasalt
     void CrystalClearEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
         Logger::debug("applying CrystalClearEffect to cb " + convertToString(commandBuffer));
-        
+
         // Used to make the Image accessable by the shader
         VkImageMemoryBarrier memoryBarrier;
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -237,7 +258,6 @@ namespace vkBasalt
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
-
         secondBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         secondBarrier.subresourceRange.baseMipLevel   = 0;
         secondBarrier.subresourceRange.levelCount     = 1;
@@ -245,9 +265,9 @@ namespace vkBasalt
         secondBarrier.subresourceRange.layerCount     = 1;
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, 
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
         Logger::debug("after the first pipeline barrier");
 
@@ -288,7 +308,7 @@ namespace vkBasalt
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
                                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                               VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
+                                               VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                                0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
         Logger::debug("after the second pipeline barrier");
     }
