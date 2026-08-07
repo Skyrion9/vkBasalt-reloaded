@@ -21,15 +21,16 @@ I want to avoid playing catch up with reshade?.. It's a difficult task with how 
 ## 🌟 Custom Shaders & Engine Enhancements
 
 ### Quality/Performance Optimized Shaders
-*   **`crystalclear`**: Singlepass heuristical filter. Combines FXAA (Disabled by default), CAS, Macro Contrast (Clarity-inspired), and Perceptual Film Grain into a **single, highly optimized pass**. Features advanced artifact protection, UI/Text choking, and hybrid multi-scale procedural grain driven by Vulkan UBO. Basically, this shader alone is a suite of highly optimized (Image quality and performance) shaders. Carefully hand-tuned for a delicate balance of 'pop' and minimal artifacts. YMMV between games which is why you've access to ~29 configuration options for this shader alone in `vkBasalt.conf`
-*   **`clarityrcas`**: Another optimized singlepass shader. 5-tap anchored local contrast enhancement hybridized with AMD's FSR RCAS. Uses Gaussian bilateral weights, symmetrical clamping, and band-pass protection for zero-halo micro-sharpening. Ideal for cleaning up smudgy TAA or Frame Generation artifacts for lower end systems. This is a lite version of CrystalClear essentially.
-*   **`clarity`**: An optimized single-pass 9-tap cross-convolution local contrast enhancement. Inspired by Reshade's Clarity.fx, this lightweight, singlepass version delivers macro contrast with a fraction of the processing cost.
+*   **`crystalclear`**: The gem of this repo (and the reason I even worked on this) Singlepass heuristical filter. Combines FXAA (Disabled by default), CAS, Macro Contrast (Clarity-inspired), and Perceptual Film Grain into a **single, highly optimized pass**. Features advanced artifact protection, UI/Text choking, hybrid multi-scale procedural grain driven by Vulkan UBO, and **full HDR (scRGB/HDR10) support with local adaptation scaling**. Basically, this shader alone is a suite of highly optimized (Image quality and performance) shaders. Carefully hand-tuned for a delicate balance of 'pop' and minimal artifacts. YMMV between games which is why you've access to ~34 configuration options for this shader alone in `vkBasalt.conf`
+*   **`clarityrcas`**: Another optimized singlepass shader. 5-tap anchored local contrast enhancement hybridized with AMD's FSR RCAS. Uses Gaussian bilateral weights, symmetrical clamping, and band-pass protection for zero-halo micro-sharpening. Ideal for cleaning up smudgy TAA or Frame Generation artifacts for lower end systems. This is a lite version of CrystalClear essentially. **Now features full HDR support.**
+*   **`clarity`**: An optimized single-pass 9-tap cross-convolution local contrast enhancement. Inspired by Reshade's Clarity.fx, this lightweight, singlepass version delivers macro contrast with a fraction of the processing cost. **Now features full HDR support.**
 
 ### Core Vulkan Engine Fixes (vs. Upstream)
 *   **Hot-Reload Support**: Press `End` to reload `vkBasalt.conf` in real-time, you can safely add, remove or reconfigure effects during runtime, no longer need to restart your game to see changes. 
 
 You can even create a vkBasalt.conf in the game exe's folder AFTER having already booted the game. The hot reload will respect loading order as shown in configuration below, and will load your newly created config so you never have to reboot a game to configure vkBasalt-reloaded. Because we uh reloaded it..
 
+*   **HDR Color Space Support**: Native detection of scRGB linear and HDR10 (ST.2084) swapchains. Automatically scales algorithm thresholds via local adaptation luminance and preserves unbounded color ranges for `crystalclear`, `clarity`, and `clarityrcas`, preventing the "washed out" look or math inversions in bright highlights.
 *   **Synchronization Overhaul**: Pipeline barriers and access masks slimmed down instead of using all-catching parameters we only fetch and deliver what is needed, increasing efficiency and reducing performance cost. Reducing GPU stalls and bandwidth usage.
 *   **Wayland Support**: Added native Wayland keyboard input hooks for toggle/reload hotkeys.
 *   **Tile-Based GPU Optimizations**: Implemented `VK_ATTACHMENT_LOAD_OP_DONT_CARE` across single-pass effects to maximize mobile/handheld/lowend GPU performance, with explicit clear overrides for multi-pass effects like SMAA.
@@ -40,7 +41,7 @@ You can even create a vkBasalt.conf in the game exe's folder AFTER having alread
 ## 🛠️ Building & Installation
 
 ### Automated Scripts (Recommended)
-These scripts automatically apply `-march=native`, ThinLTO, O3, C++20, and assertion stripping. They will prompt for `sudo` to install system-wide and patch the Vulkan manifest for native Proton support.
+These scripts automatically apply `-march=native`, ThinLTO, O3, C++20, the `mold` linker, `ccache` support, and assertion stripping. The meson build system also auto-probes your local `glslang` to target the highest supported Vulkan/SPIR-V version, ensuring seamless compilation on both bleeding-edge and LTS distributions. They will prompt for `sudo` to install system-wide and patch the Vulkan manifest for native Proton support.
 Note that this stripping might break reshade? I haven't tested it but issues are welcome.
 
 1. Clone or download this repo.
@@ -183,6 +184,16 @@ crystalclearFilmGrainMinimum = 0
 crystalclearFineGrainWeight = 0.4
 # CoarseGrainWeight: 1/4th resolution, updates every 2 frames (heavy, cinematic 35mm clumps).
 crystalclearCoarseGrainWeight = 0.8
+# -- Guard & Masking Controls --
+# These control how aggressively the shader protects against artifacts. Lower values = more visible effect, higher values = more protection.
+# GuardStrength: Master multiplier for all protective masks. (0.0=off, 1.0=full protection).
+crystalclearGuardStrength = 0.6
+# BandPassWidth: Upper edge of the local-contrast band-pass window. Wider = effect applies to more contrast levels.
+crystalclearBandPassWidth = 0.8
+# ExtremeProtection: How much to back off at brightness extremes. (0.0=sharpen everything equally, 1.0=full protection).
+crystalclearExtremeProtection = 0.5
+# ShimmerReduction: Strength of the isolation/shimmer averaging gate. (0.0=off, 1.0=full suppression).
+crystalclearShimmerReduction = 0.5
 # -- Dithering & Debug --
 crystalclearEnableDithering = 1
 # Debug Overlays: Red=FXAA, Green=CAS, Blue=Clarity, Cyan=Grain Mask.
