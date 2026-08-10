@@ -40,8 +40,17 @@ if meson compile -C build; then
 
     case "$confirm" in
         y|Y|yes|Yes|YES)
+            read -p "Do you want to strip debug symbols from the binary? [Y/n]: " strip_confirm
+            INSTALL_ARGS="-C build"
+            if [[ ! "$strip_confirm" =~ ^[Nn] ]]; then
+                INSTALL_ARGS="$INSTALL_ARGS --strip"
+                echo "Installation will strip debug symbols."
+            else
+                echo "Installation will keep debug symbols."
+            fi
+
             echo "Running system installation..."
-            sudo meson install -C build
+            sudo meson install $INSTALL_ARGS
             sudo ldconfig
 
             # Patch the Vulkan Manifest to guarantee Proton finds it
@@ -51,12 +60,25 @@ if meson compile -C build; then
                 echo "Patched Vulkan manifest to point to /usr/lib/libvkbasalt.so"
             fi
 
+            # Verify strip succeeded
+            INSTALLED_SO="/usr/lib/libvkbasalt.so"
+            if [ -f "$INSTALLED_SO" ]; then
+                echo ""
+                echo "Installed binary: $INSTALLED_SO"
+                echo "Size: $(du -h "$INSTALLED_SO" | cut -f1)"
+                if file "$INSTALLED_SO" | grep -q 'stripped'; then
+                    echo "Status: symbols stripped ✓"
+                else
+                    echo "Status: debug symbols retained"
+                fi
+            fi
+
             echo ""
             echo "Installation complete!"
             echo "Please FULLY restart Steam (Right-click tray -> Exit) so the Proton container re-reads the manifest. If it's not your first time installing, simply restart your game."
             ;;
         *)
-            echo "Skipping installation. You can deploy it later using: sudo meson install -C build"
+            echo "Skipping installation. You can deploy it later using: sudo meson install -C build [--strip]"
             ;;
     esac
 else
