@@ -34,6 +34,7 @@ vkBasalt_src = [
     'game_detect.cpp',
     'keyboard_input.cpp',
     'keyboard_input_wayland.cpp',
+    'hotkey_manager.cpp',
     'logger.cpp',
     'logical_swapchain.cpp',
     'lut_cube.cpp',
@@ -69,11 +70,13 @@ keyboard_input_x11_lib = static_library('keyboard_input_x11',
     dependencies: [imgui_dep],
 )
 
+vulkan_dep = dependency('vulkan')
+
 shared_library(meson.project_name().to_lower(), 
     vkBasalt_src, shader_include,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
-    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep],
+    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep, vulkan_dep],
     gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)
