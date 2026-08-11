@@ -1,0 +1,71 @@
+#pragma once
+#include "vulkan_include.hpp"
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
+#include <vector>
+
+namespace vkBasalt {
+    struct LogicalDevice;
+    struct LogicalSwapchain;
+    class Config;
+
+    class ImGuiOverlay {
+    public:
+        ImGuiOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, Config* pConfig);
+        ~ImGuiOverlay();
+
+        void processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height);
+        void toggleOverlay();
+        void initImGui(VkFormat format);
+        void reinitImGui();
+        void updateConfig(Config* pConfig) { m_pConfig = pConfig; }
+        void clearUnsavedChanges() { m_hasUnsavedChanges = false; m_previewDirty = false; m_showCloseWarning = false; }
+    
+        bool isOverlayOpen() const { return m_isOpen; }
+        bool isBindingKeys() const { return m_bindingField >= 0; }
+
+
+    private:
+        void updateInput(uint32_t width, uint32_t height);
+        void drawUI();
+        void drawShadersTab();
+        void drawSettingsTab();
+        void drawPresetsTab();
+        void drawStyleTab();
+        void applyKeybind(int field, ImGuiKey key);
+
+        LogicalDevice* m_pDevice;
+        LogicalSwapchain* m_pSwapchain;
+        Config* m_pConfig;
+
+        bool m_isOpen = false;
+        bool m_isInitialized = false;
+        bool m_justOpened = false;
+        bool m_focusSearch = false;
+        float m_cursorScale = 1.0f;
+        float m_uiScale     = 1.0f;
+        float m_fontScale   = 1.0f;
+        VkFormat m_format = VK_FORMAT_UNDEFINED;
+        size_t m_selectedEffectIndex = 0;
+        char m_searchFilter[256] = {};
+        int m_activeTab = 0;   // 0=Shaders, 1=Settings, 2=Presets
+        int m_bindingField = -1; // -1=none, 0=toggle, 1=reload, 2=overlay
+
+        bool m_hasUnsavedChanges = false;
+        bool m_previewDirty = false;
+        float m_lastChangeTime = 0.0f;
+        bool m_showCloseWarning = false;
+        bool m_snapPending = false;
+        bool m_wasWindowMoving = false;
+        bool m_wasMouseDown = false;
+        ImVec2 m_lastWindowPos = {0, 0};
+
+        VkRenderPass m_renderPass = VK_NULL_HANDLE;
+        std::vector<VkFramebuffer> m_framebuffers;
+        std::vector<VkImageView> m_imageViews;
+
+        // Static shared resources across all overlays
+        static VkDescriptorPool s_descriptorPool;
+        static int s_instanceCount;
+    };
+} // namespace vkBasalt
