@@ -26,6 +26,7 @@ vkBasalt_src = [
     'graphics_pipeline.cpp',
     'image.cpp',
     'image_view.cpp',
+    'game_detect.cpp',
     'keyboard_input.cpp',
     'keyboard_input_wayland.cpp',
     'logger.cpp',
@@ -67,6 +68,6 @@ shared_library(meson.project_name().to_lower(),
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
     dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep],
-    gnu_symbol_visibility: 'hidden',  # Only VK_BASALT_EXPORT symbols are visible
+    gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)
