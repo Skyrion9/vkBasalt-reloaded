@@ -26,6 +26,7 @@ vkBasalt_src = [
     'graphics_pipeline.cpp',
     'image.cpp',
     'image_view.cpp',
+    'imgui_theme.cpp',
     'game_detect.cpp',
     'keyboard_input.cpp',
     'keyboard_input_wayland.cpp',
@@ -61,13 +62,14 @@ keyboard_input_x11_lib = static_library('keyboard_input_x11',
     'keyboard_input_x11.cpp',
     # Override: this file needs X11 macros visible, no RTTI stripping
     cpp_args: ['-Wno-unknown-pragmas'],
+    dependencies: [imgui_dep],
 )
 
 shared_library(meson.project_name().to_lower(), 
     vkBasalt_src, shader_include,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
-    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep],
+    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep],
     gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)
