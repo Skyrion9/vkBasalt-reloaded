@@ -7,4 +7,9 @@ namespace vkBasalt
 {
     uint32_t convertToKeySymX11(std::string key);
     bool     isKeyPressedX11(uint32_t ks);
+    float getX11UIScale();
+
+    // Overlay input support
+    void initX11Input(void* display_ptr, void* window_ptr);
+    void updateX11ImGuiIO(bool overlayOpen, float scale = 1.0f);
 } // namespace vkBasalt
