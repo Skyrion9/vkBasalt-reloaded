@@ -1,4 +1,5 @@
-#pragma once
+#ifndef EFFECT_CRYSTALCLEAR_HPP_INCLUDED
+#define EFFECT_CRYSTALCLEAR_HPP_INCLUDED
 
 #include "effect_simple.hpp"
 #include "vulkan_include.hpp"
@@ -25,9 +26,13 @@ namespace vkBasalt
         ~CrystalClearEffect();
 
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        
-        // Override to update UBO every frame
         void updateEffect() override;
+
+        // Declarative parameter interface
+        std::string getName() const override { return "crystalclear"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
+        double getParam(const std::string& key) const override;
+        bool   setParam(const std::string& key, double value) override;
         
     private:
         float radius;
@@ -36,3 +41,5 @@ namespace vkBasalt
         uint32_t m_frameCounter = 0;
     };
 } // namespace vkBasalt
+
+#endif // EFFECT_CRYSTALCLEAR_HPP_INCLUDED

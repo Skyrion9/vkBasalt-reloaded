@@ -273,6 +273,23 @@ namespace vkBasalt
                                                0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
         Logger::debug("after the second pipeline barrier");
     }
+
+    double SimpleEffect::getParam(const std::string& key) const {
+        auto it = m_paramValues.find(key);
+        if (it != m_paramValues.end())
+            return it->second;
+        return 0.0;
+    }
+
+    bool SimpleEffect::setParam(const std::string& key, double value) {
+        auto it = m_paramValues.find(key);
+        if (it == m_paramValues.end())
+            return false;
+        if (it->second == value)
+            return false;
+        it->second = value;
+        return true;
+    }
     
     SimpleEffect::~SimpleEffect()
     {

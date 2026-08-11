@@ -143,48 +143,62 @@ namespace vkBasalt
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
-        // Clamp values using preset defaults as fallback
-        specData.radius                    = std::clamp(this->radius, 0.5f, 8.0f);
-        specData.offset                    = std::clamp(this->offset, 0.5f, 3.0f);
-        specData.SharpStrength             = std::clamp(pConfig->getOption<float>("crystalclearSharpStrength", def_SharpStrength), 0.0f, 5.0f);
-        specData.blendMode                 = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendMode", def_blendMode), int32_t(0), int32_t(6));
-        specData.blendIfDark               = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfDark", def_blendIfDark), int32_t(0), int32_t(255));
-        specData.blendIfLight              = std::clamp(pConfig->getOption<int32_t>("crystalclearBlendIfLight", def_blendIfLight), int32_t(0), int32_t(255));
-        specData.casSharpness              = std::clamp(pConfig->getOption<float>("crystalclearCasSharpness", def_casSharpness), 0.0f, 1.0f);
-        specData.casStrength               = std::clamp(pConfig->getOption<float>("crystalclearCasStrength", def_casStrength), 0.0f, 5.0f);
-        specData.edgeThreshLow             = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshLow", def_edgeThreshLow), 0.0f, 1.0f);
-        specData.edgeThreshHigh            = std::clamp(pConfig->getOption<float>("crystalclearEdgeThreshHigh", def_edgeThreshHigh), 0.0f, 1.0f);
-        specData.enableDithering           = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDithering", 1), int32_t(0), int32_t(1));
-        specData.enableAA                  = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableAA", def_enableAA), int32_t(0), int32_t(1));
-        specData.enableRGBEdgeDetection    = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableRGBEdgeDetection", 1), int32_t(0), int32_t(1));
-        specData.fxaaEdgeThreshold         = std::clamp(pConfig->getOption<float>("crystalclearFxaaEdgeThreshold", def_fxaaEdgeThreshold), 0.001f, 1.0f);
-        specData.fxaaSubpixAmount          = std::clamp(pConfig->getOption<float>("crystalclearFxaaSubpixAmount", def_fxaaSubpixAmount), 0.0f, 1.0f);
-        specData.fxaaSearchScale           = std::clamp(pConfig->getOption<float>("crystalclearFxaaSearchScale", 1.0f), 0.1f, 3.0f);
-        specData.fxaaHardEdgeThreshold     = std::clamp(pConfig->getOption<float>("crystalclearFxaaHardEdgeThreshold", 0.08f), 0.0f, 1.0f);
-        specData.clarityTextureProtection  = std::clamp(pConfig->getOption<float>("crystalclearClarityTextureProtection", def_clarityTextureProtection), 0.0f, 1.0f);
-        specData.fxaaEdgeThresholdMin      = std::clamp(pConfig->getOption<float>("crystalclearFxaaEdgeThresholdMin", 0.0312f), 0.0f, 1.0f);
-        specData.fxaaOnlyMode              = std::clamp(pConfig->getOption<int32_t>("crystalclearFxaaOnlyMode", 0), int32_t(0), int32_t(1));
-        specData.enableDebugAA             = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugAA", 0), int32_t(0), int32_t(1));
-        specData.enableDebugCAS            = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugCAS", 0), int32_t(0), int32_t(1));
-        specData.enableDebugClarity        = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugClarity", 0), int32_t(0), int32_t(1));
-        specData.enableFilmGrain           = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableFilmGrain", def_enableFilmGrain), int32_t(0), int32_t(1));
-        specData.filmGrainStrength         = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainStrength", def_filmGrainStrength), 0.0f, 2.0f);
-        specData.filmGrainMinimum          = std::clamp(pConfig->getOption<float>("crystalclearFilmGrainMinimum", def_filmGrainMinimum), 0.0f, 2.0f);
-        specData.enableDebugGrain          = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDebugGrain", 0), int32_t(0), int32_t(1));
-        specData.fineGrainWeight           = std::clamp(pConfig->getOption<float>("crystalclearFineGrainWeight", def_fineGrainWeight), 0.0f, 1.0f);
-        specData.coarseGrainWeight         = std::clamp(pConfig->getOption<float>("crystalclearCoarseGrainWeight", def_coarseGrainWeight), 0.0f, 1.0f);
+        // Read from config, store in m_paramValues, return the value
+        auto getAndStore = [&](const std::string& key, double defaultVal) -> double {
+            double val = pConfig->getOption<float>(key, (float)defaultVal);
+            m_paramValues[key] = val;
+            return val;
+        };
+        auto getAndStoreInt = [&](const std::string& key, double defaultVal) -> double {
+            double val = (double)pConfig->getOption<int32_t>(key, (int32_t)defaultVal);
+            m_paramValues[key] = val;
+            return val;
+        };
+
+        // Populate m_paramValues and specData simultaneously
+        specData.radius                    = std::clamp((float)this->radius, 0.5f, 8.0f);
+        m_paramValues["crystalclearBilateralRadius"] = specData.radius;
+        specData.offset                    = std::clamp((float)this->offset, 0.5f, 3.0f);
+        m_paramValues["crystalclearBilateralOffset"] = specData.offset;
+        specData.SharpStrength             = std::clamp((float)getAndStore("crystalclearSharpStrength", def_SharpStrength), 0.0f, 5.0f);
+        specData.blendMode                 = std::clamp((int32_t)getAndStoreInt("crystalclearBlendMode", def_blendMode), int32_t(0), int32_t(6));
+        specData.blendIfDark               = std::clamp((int32_t)getAndStoreInt("crystalclearBlendIfDark", def_blendIfDark), int32_t(0), int32_t(255));
+        specData.blendIfLight              = std::clamp((int32_t)getAndStoreInt("crystalclearBlendIfLight", def_blendIfLight), int32_t(0), int32_t(255));
+        specData.casSharpness              = std::clamp((float)getAndStore("crystalclearCasSharpness", def_casSharpness), 0.0f, 1.0f);
+        specData.casStrength               = std::clamp((float)getAndStore("crystalclearCasStrength", def_casStrength), 0.0f, 5.0f);
+        specData.edgeThreshLow             = std::clamp((float)getAndStore("crystalclearEdgeThreshLow", def_edgeThreshLow), 0.0f, 1.0f);
+        specData.edgeThreshHigh            = std::clamp((float)getAndStore("crystalclearEdgeThreshHigh", def_edgeThreshHigh), 0.0f, 1.0f);
+        specData.enableDithering           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableDithering", 1), int32_t(0), int32_t(1));
+        specData.enableAA                  = std::clamp((int32_t)getAndStoreInt("crystalclearEnableAA", def_enableAA), int32_t(0), int32_t(1));
+        specData.enableRGBEdgeDetection    = std::clamp((int32_t)getAndStoreInt("crystalclearEnableRGBEdgeDetection", 1), int32_t(0), int32_t(1));
+        specData.fxaaEdgeThreshold         = std::clamp((float)getAndStore("crystalclearFxaaEdgeThreshold", def_fxaaEdgeThreshold), 0.001f, 1.0f);
+        specData.fxaaSubpixAmount          = std::clamp((float)getAndStore("crystalclearFxaaSubpixAmount", def_fxaaSubpixAmount), 0.0f, 1.0f);
+        specData.fxaaSearchScale           = std::clamp((float)getAndStore("crystalclearFxaaSearchScale", 1.0f), 0.1f, 3.0f);
+        specData.fxaaHardEdgeThreshold     = std::clamp((float)getAndStore("crystalclearFxaaHardEdgeThreshold", 0.08f), 0.0f, 1.0f);
+        specData.clarityTextureProtection  = std::clamp((float)getAndStore("crystalclearClarityTextureProtection", def_clarityTextureProtection), 0.0f, 1.0f);
+        specData.fxaaEdgeThresholdMin      = std::clamp((float)getAndStore("crystalclearFxaaEdgeThresholdMin", 0.0312f), 0.0f, 1.0f);
+        specData.fxaaOnlyMode              = std::clamp((int32_t)getAndStoreInt("crystalclearFxaaOnlyMode", 0), int32_t(0), int32_t(1));
+        specData.enableDebugAA             = std::clamp((int32_t)getAndStoreInt("crystalclearEnableDebugAA", 0), int32_t(0), int32_t(1));
+        specData.enableDebugCAS            = std::clamp((int32_t)getAndStoreInt("crystalclearEnableDebugCAS", 0), int32_t(0), int32_t(1));
+        specData.enableDebugClarity        = std::clamp((int32_t)getAndStoreInt("crystalclearEnableDebugClarity", 0), int32_t(0), int32_t(1));
+        specData.enableFilmGrain           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableFilmGrain", def_enableFilmGrain), int32_t(0), int32_t(1));
+        specData.filmGrainStrength         = std::clamp((float)getAndStore("crystalclearFilmGrainStrength", def_filmGrainStrength), 0.0f, 2.0f);
+        specData.filmGrainMinimum          = std::clamp((float)getAndStore("crystalclearFilmGrainMinimum", def_filmGrainMinimum), 0.0f, 2.0f);
+        specData.enableDebugGrain          = std::clamp((int32_t)getAndStoreInt("crystalclearEnableDebugGrain", 0), int32_t(0), int32_t(1));
+        specData.fineGrainWeight           = std::clamp((float)getAndStore("crystalclearFineGrainWeight", def_fineGrainWeight), 0.0f, 1.0f);
+        specData.coarseGrainWeight         = std::clamp((float)getAndStore("crystalclearCoarseGrainWeight", def_coarseGrainWeight), 0.0f, 1.0f);
         specData.hdrMode                   = isHDR ? 1 : 0;
-        specData.guardStrength             = std::clamp(pConfig->getOption<float>("crystalclearGuardStrength", def_guardStrength), 0.0f, 1.0f);
-        specData.bandPassWidth             = std::clamp(pConfig->getOption<float>("crystalclearBandPassWidth", def_bandPassWidth), 0.3f, 1.5f);
-        specData.extremeProtection         = std::clamp(pConfig->getOption<float>("crystalclearExtremeProtection", def_extremeProtection), 0.0f, 1.0f);
-        specData.shimmerReduction          = std::clamp(pConfig->getOption<float>("crystalclearShimmerReduction", def_shimmerReduction), 0.0f, 1.0f);
-        specData.vibrance                  = std::clamp(pConfig->getOption<float>("crystalclearVibrance", def_vibrance), -1.0f, 1.0f);
-        specData.enableDeband              = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableDeband", def_enableDeband), int32_t(0), int32_t(1));
-        specData.debandStrength            = std::clamp(pConfig->getOption<float>("crystalclearDebandStrength", def_debandStrength), 0.0f, 1.0f);
-        specData.toneCurve                 = std::clamp(pConfig->getOption<float>("crystalclearToneCurve", def_toneCurve), 0.0f, 1.0f);
-        specData.enableChromaSmooth        = std::clamp(pConfig->getOption<int32_t>("crystalclearEnableChromaSmooth", def_enableChromaSmooth), int32_t(0), int32_t(1));
-        specData.chromaSmoothStrength      = std::clamp(pConfig->getOption<float>("crystalclearChromaSmoothStrength", def_chromaSmoothStrength), 0.0f, 1.0f);
-        specData.specularDesat             = std::clamp(pConfig->getOption<float>("crystalclearSpecularDesat", def_specularDesat), 0.0f, 1.0f);
+        specData.guardStrength             = std::clamp((float)getAndStore("crystalclearGuardStrength", def_guardStrength), 0.0f, 1.0f);
+        specData.bandPassWidth             = std::clamp((float)getAndStore("crystalclearBandPassWidth", def_bandPassWidth), 0.3f, 1.5f);
+        specData.extremeProtection         = std::clamp((float)getAndStore("crystalclearExtremeProtection", def_extremeProtection), 0.0f, 1.0f);
+        specData.shimmerReduction          = std::clamp((float)getAndStore("crystalclearShimmerReduction", def_shimmerReduction), 0.0f, 1.0f);
+        specData.vibrance                  = std::clamp((float)getAndStore("crystalclearVibrance", def_vibrance), -1.0f, 1.0f);
+        specData.enableDeband              = std::clamp((int32_t)getAndStoreInt("crystalclearEnableDeband", def_enableDeband), int32_t(0), int32_t(1));
+        specData.debandStrength            = std::clamp((float)getAndStore("crystalclearDebandStrength", def_debandStrength), 0.0f, 1.0f);
+        specData.toneCurve                 = std::clamp((float)getAndStore("crystalclearToneCurve", def_toneCurve), 0.0f, 1.0f);
+        specData.enableChromaSmooth        = std::clamp((int32_t)getAndStoreInt("crystalclearEnableChromaSmooth", def_enableChromaSmooth), int32_t(0), int32_t(1));
+        specData.chromaSmoothStrength      = std::clamp((float)getAndStore("crystalclearChromaSmoothStrength", def_chromaSmoothStrength), 0.0f, 1.0f);
+        specData.specularDesat             = std::clamp((float)getAndStore("crystalclearSpecularDesat", def_specularDesat), 0.0f, 1.0f);
 
         VkSpecializationMapEntry mapEntries[41] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -214,7 +228,7 @@ namespace vkBasalt
             {24, offsetof(CrystalClearSpecData, filmGrainStrength),         sizeof(float)},
             {25, offsetof(CrystalClearSpecData, filmGrainMinimum),          sizeof(float)},
             {26, offsetof(CrystalClearSpecData, enableDebugGrain),          sizeof(int32_t)},
-            {27, offsetof(CrystalClearSpecData, fineGrainWeight),            sizeof(float)},
+            {27, offsetof(CrystalClearSpecData, fineGrainWeight),           sizeof(float)},
             {28, offsetof(CrystalClearSpecData, coarseGrainWeight),         sizeof(float)},
             {29, offsetof(CrystalClearSpecData, hdrMode),                   sizeof(int32_t)},
             {30, offsetof(CrystalClearSpecData, guardStrength),             sizeof(float)},
@@ -287,7 +301,7 @@ namespace vkBasalt
         secondBarrier.subresourceRange.layerCount     = 1;
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        
+
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext             = nullptr;
@@ -305,5 +319,67 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+    }
+
+    // Declarative parameter interface
+    const std::vector<EffectParamDesc>& CrystalClearEffect::getParamDescs() const {
+        static const std::vector<EffectParamDesc> params = {
+            {"crystalclearPreset", "Preset", ParamType::Combo, 0.0, 0.0, 0.0, 0.0, 
+                {"devfav", "esports", "artifactless", "maxsharp", "vibrantsharp", "devfxaa", "cinematic"}},
+            {"crystalclearBilateralRadius",       "Bilateral Radius",       ParamType::Float, 2.5,   0.5,   8.0,   0.1},
+            {"crystalclearBilateralOffset",       "Bilateral Offset",       ParamType::Float, 1.5,   0.5,   3.0,   0.1},
+            {"crystalclearSharpStrength",         "Sharp Strength",         ParamType::Float, 2.5,   0.0,   5.0,   0.1},
+            {"crystalclearBlendMode",             "Blend Mode",             ParamType::Int,   5.0,   0.0,   6.0,   1.0},
+            {"crystalclearBlendIfDark",           "Blend If Dark",          ParamType::Int,   8.0,   0.0, 255.0,   1.0},
+            {"crystalclearBlendIfLight",          "Blend If Light",         ParamType::Int, 248.0,   0.0, 255.0,   1.0},
+            {"crystalclearCasSharpness",          "CAS Sharpness",          ParamType::Float, 1.0,   0.0,   1.0,  0.01},
+            {"crystalclearCasStrength",           "CAS Strength",           ParamType::Float, 3.0,   0.0,   5.0,   0.1},
+            {"crystalclearEdgeThreshLow",         "Edge Thresh Low",        ParamType::Float, 0.03,  0.0,   1.0,  0.01},
+            {"crystalclearEdgeThreshHigh",        "Edge Thresh High",       ParamType::Float, 0.28,  0.0,   1.0,  0.01},
+            {"crystalclearEnableDithering",       "Enable Dithering",       ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
+            {"crystalclearEnableAA",              "Enable AA",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearEnableRGBEdgeDetection","RGB Edge Detection",     ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
+            {"crystalclearFxaaEdgeThreshold",     "FXAA Edge Thresh",       ParamType::Float, 0.05,  0.001, 1.0,  0.01},
+            {"crystalclearFxaaSubpixAmount",      "FXAA Subpix",            ParamType::Float, 1.0,   0.0,   1.0,  0.01},
+            {"crystalclearFxaaSearchScale",       "FXAA Search Scale",      ParamType::Float, 1.0,   0.1,   3.0,   0.1},
+            {"crystalclearFxaaHardEdgeThreshold", "FXAA Hard Edge",         ParamType::Float, 0.08,  0.0,   1.0,  0.01},
+            {"crystalclearClarityTextureProtection","Clarity Protection",   ParamType::Float, 0.35,  0.0,   1.0,  0.01},
+            {"crystalclearFxaaEdgeThresholdMin",  "FXAA Edge Min",          ParamType::Float, 0.0312,0.0,   1.0, 0.001},
+            {"crystalclearFxaaOnlyMode",          "FXAA Only",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearEnableDebugAA",         "Debug AA",               ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearEnableDebugCAS",        "Debug CAS",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearEnableDebugClarity",    "Debug Clarity",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearEnableFilmGrain",       "Enable Film Grain",      ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
+            {"crystalclearFilmGrainStrength",     "Grain Strength",         ParamType::Float, 1.0,   0.0,   2.0,   0.1},
+            {"crystalclearFilmGrainMinimum",      "Grain Minimum",          ParamType::Float, 0.0,   0.0,   2.0,   0.1},
+            {"crystalclearEnableDebugGrain",      "Debug Grain",            ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearFineGrainWeight",       "Fine Grain",             ParamType::Float, 0.4,   0.0,   1.0,  0.01},
+            {"crystalclearCoarseGrainWeight",     "Coarse Grain",           ParamType::Float, 0.8,   0.0,   1.0,  0.01},
+            {"crystalclearGuardStrength",         "Guard Strength",         ParamType::Float, 0.4,   0.0,   1.0,  0.01},
+            {"crystalclearBandPassWidth",         "Band Pass Width",        ParamType::Float, 0.85,  0.3,   1.5,  0.05},
+            {"crystalclearExtremeProtection",     "Extreme Protection",     ParamType::Float, 0.3,   0.0,   1.0,  0.01},
+            {"crystalclearShimmerReduction",      "Shimmer Reduction",      ParamType::Float, 0.4,   0.0,   1.0,  0.01},
+            {"crystalclearVibrance",              "Vibrance",               ParamType::Float, 0.0,  -1.0,   1.0,  0.05},
+            {"crystalclearEnableDeband",          "Enable Deband",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearDebandStrength",        "Deband Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05},
+            {"crystalclearToneCurve",             "Tone Curve",             ParamType::Float, 0.0,   0.0,   1.0,  0.01},
+            {"crystalclearEnableChromaSmooth",    "Chroma Smooth",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearChromaSmoothStrength",  "Chroma Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.01},
+            {"crystalclearSpecularDesat",         "Specular Desat",         ParamType::Float, 0.0,   0.0,   1.0,  0.01},
+        };
+        return params;
+    }
+
+    double CrystalClearEffect::getParam(const std::string& key) const {
+        auto it = m_paramValues.find(key);
+        return (it != m_paramValues.end()) ? it->second : 0.0;
+    }
+
+    bool CrystalClearEffect::setParam(const std::string& key, double value) {
+        auto it = m_paramValues.find(key);
+        if (it == m_paramValues.end()) return false;
+        if (it->second == value) return false;
+        it->second = value;
+        return true;
     }
 } // namespace vkBasalt

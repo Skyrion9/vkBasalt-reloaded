@@ -4,7 +4,6 @@
 #include <fstream>
 #include <string>
 #include <iostream>
-#include <vector>
 #include <unordered_map>
 #include <memory>
 
@@ -35,7 +34,15 @@ namespace vkBasalt
         void virtual applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         virtual ~SimpleEffect();
 
+        // Declarative parameter interface, getParamDescs() inherits the empty-vector default from Effect.
+        double getParam(const std::string& key) const override;
+        bool   setParam(const std::string& key, double value) override;
+
     protected:
+        // Live parameter storage for runtime tweaking via the ImGui overlay. Derived effects populate this map in their constructor from config values,
+        // and read from it when rebuilding specialization constants.
+        std::unordered_map<std::string, double> m_paramValues;
+
         LogicalDevice*               pLogicalDevice;
         std::vector<VkImage>         inputImages;
         std::vector<VkImage>         outputImages;
