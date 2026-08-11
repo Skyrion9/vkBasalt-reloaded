@@ -1,6 +1,17 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include "vulkan_include.hpp"
 
+#define VK_USE_PLATFORM_XLIB_KHR
+#include <X11/Xlib.h>
+#include <vulkan/vulkan_xlib.h>
+#undef None
+#undef Bool
+#undef Status
+#undef Always
+#undef Success
+#undef True
+#undef False
+
 #include <mutex>
 #include <map>
 #include <vector>
@@ -10,6 +21,8 @@
 #include <memory>
 #include <cstring>
 #include <algorithm>
+#include <fstream>
+#include <unistd.h>
 
 #include "util.hpp"
 #include "keyboard_input.hpp"
@@ -18,6 +31,12 @@
 #include <wayland-client.h>
 #include "keyboard_input_wayland.hpp"
 #endif
+
+#include "keyboard_input_x11.hpp"
+#include "hotkey_manager.hpp"
+#include "imgui_overlay.hpp"
+#include "overlay_manager.hpp"
+#include "effect_chain.hpp"
 
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
@@ -60,8 +79,8 @@
 namespace vkBasalt
 {
     std::shared_ptr<Config> pConfig = nullptr;
-
     Logger Logger::s_instance;
+    pid_t g_layer_init_pid = 0;
 
     // layer book-keeping information, to store dispatch tables by key
     std::unordered_map<void*, InstanceDispatch>                           instanceDispatchMap;
@@ -71,6 +90,8 @@ namespace vkBasalt
     std::unordered_map<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>> swapchainMap;
 
     std::mutex globalLock;
+    static OverlayManager g_overlayManager;
+
 #ifdef _GCC_
     using scoped_lock __attribute__((unused)) = std::lock_guard<std::mutex>;
 #else
@@ -87,6 +108,9 @@ namespace vkBasalt
                                                  const VkAllocationCallbacks* pAllocator,
                                                  VkInstance*                  pInstance)
     {
+        if (g_layer_init_pid == 0) {
+            g_layer_init_pid = getpid();
+        }
         VkLayerInstanceCreateInfo* layerCreateInfo = (VkLayerInstanceCreateInfo*) pCreateInfo->pNext;
 
         // step through the chain of pNext until we get to the link info
@@ -281,7 +305,7 @@ namespace vkBasalt
                 VkCommandPoolCreateInfo commandPoolCreateInfo;
                 commandPoolCreateInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
                 commandPoolCreateInfo.pNext            = nullptr;
-                commandPoolCreateInfo.flags            = 0;
+                commandPoolCreateInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
                 commandPoolCreateInfo.queueFamilyIndex = queueInfo.queueFamilyIndex;
 
                 Logger::debug("Found graphics capable queue");
@@ -296,9 +320,9 @@ namespace vkBasalt
 
         if (!pLogicalDevice->queue)
             Logger::err("Did not find a graphics queue!");
-
+        // Cache memory properties before any fork so ImGui can use them without calling vkGetPhysicalDeviceMemoryProperties through the loader
+        pLogicalDevice->vki.GetPhysicalDeviceMemoryProperties(pLogicalDevice->physicalDevice, &pLogicalDevice->memoryProperties);
         deviceMap[GetKey(*pDevice)] = pLogicalDevice;
-
         return VK_SUCCESS;
     }
 
@@ -336,7 +360,7 @@ namespace vkBasalt
         // Grab display pointer
         if (pCreateInfo && pCreateInfo->display)
         {
-            initWaylandInput((void*)pCreateInfo->display);
+            initWaylandInput((void*)pCreateInfo->display, (void*)pCreateInfo->surface);
         }
 
         InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
@@ -348,6 +372,30 @@ namespace vkBasalt
             return fpCreateWaylandSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
         }
         
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+#endif
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+    VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateXlibSurfaceKHR(
+    VkInstance                                  instance,
+    const VkXlibSurfaceCreateInfoKHR*           pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkSurfaceKHR*                               pSurface)
+    {
+    scoped_lock l(globalLock);
+    Logger::trace("vkCreateXlibSurfaceKHR");
+        // Grab display pointer and window handle for X11 input
+        if (pCreateInfo && pCreateInfo->dpy)
+        {
+            initX11Input((void*)pCreateInfo->dpy, (void*)(uintptr_t)pCreateInfo->window);
+        }
+        InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
+        PFN_vkCreateXlibSurfaceKHR fpCreateXlibSurfaceKHR = 
+            (PFN_vkCreateXlibSurfaceKHR)dispatchTable.GetInstanceProcAddr(instance, "vkCreateXlibSurfaceKHR");
+        if (fpCreateXlibSurfaceKHR)
+        {
+            return fpCreateXlibSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
+        }
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 #endif
@@ -409,163 +457,6 @@ namespace vkBasalt
         return result;
     }
 
-    // Centralized effect creation, command buffer allocation, and semaphore creation
-    void initializeSwapchainEffects(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, VkSwapchainKHR swapchain)
-    {
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-
-        VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->format);
-        VkFormat srgbFormat  = convertToSRGB(pLogicalSwapchain->format);
-
-        for (uint32_t i = 0; i < effectStrings.size(); i++)
-        {
-            Logger::debug("current effectString " + effectStrings[i]);
-            std::vector<VkImage> firstImages(pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * i,
-                                             pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 1));
-            Logger::debug(std::to_string(firstImages.size()) + " images in firstImages");
-            std::vector<VkImage> secondImages;
-            if (i == effectStrings.size() - 1)
-            {
-                secondImages = pLogicalDevice->supportsMutableFormat
-                                 ? pLogicalSwapchain->images
-                                 : std::vector<VkImage>(pLogicalSwapchain->fakeImages.end() - pLogicalSwapchain->imageCount,
-                                                         pLogicalSwapchain->fakeImages.end());
-                Logger::debug("using swapchain images as second images");
-            }
-            else
-            {
-                secondImages = std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 1),
-                                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 2));
-                Logger::debug("not using swapchain images as second images");
-            }
-            Logger::debug(std::to_string(secondImages.size()) + " images in secondImages");
-            if (effectStrings[i] == std::string("fxaa"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new FxaaEffect(pLogicalDevice, srgbFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
-                Logger::debug("created FxaaEffect");
-            }
-            else if (effectStrings[i] == std::string("cas"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new CasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
-                Logger::debug("created CasEffect");
-            }
-            else if (effectStrings[i] == std::string("deband"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new DebandEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
-                Logger::debug("created DebandEffect");
-            }
-            else if (effectStrings[i] == std::string("smaa"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new SmaaEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
-                Logger::debug("created SmaaEffect");
-            }
-            else if (effectStrings[i] == std::string("lut"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new LutEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
-                Logger::debug("created LutEffect");
-            }
-            else if (effectStrings[i] == std::string("dls"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new DlsEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get())));
-                Logger::debug("created DlsEffect");
-            }
-            else if (effectStrings[i] == std::string("clarity"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new ClarityEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get(), pLogicalSwapchain->colorSpace)));
-                Logger::debug("created ClarityEffect");
-            }
-            else if (effectStrings[i] == std::string("clarityrcas"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new ClarityRcasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get(), pLogicalSwapchain->colorSpace)));
-                Logger::debug("created ClarityRcasEffect");
-            }
-            else if (effectStrings[i] == std::string("crystalclear"))
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new CrystalClearEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig.get(), pLogicalSwapchain->colorSpace)));
-                Logger::debug("created CrystalClearEffect");
-            }
-            else
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new ReshadeEffect(pLogicalDevice,
-                                                                                                 pLogicalSwapchain->format,
-                                                                                                 pLogicalSwapchain->imageExtent,
-                                                                                                 firstImages,
-                                                                                                 secondImages,
-                                                                                                 pConfig.get(),
-                                                                                                 effectStrings[i])));
-                Logger::debug("created ReshadeEffect");
-            }
-        }
-
-        if (!pLogicalDevice->supportsMutableFormat)
-        {
-            pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new TransferEffect(
-                pLogicalDevice,
-                pLogicalSwapchain->format,
-                pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.end() - pLogicalSwapchain->imageCount, pLogicalSwapchain->fakeImages.end()),
-                pLogicalSwapchain->images,
-                pConfig.get())));
-        }
-
-        VkImageView depthImageView = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImageViews[0] : VK_NULL_HANDLE;
-        VkImage     depthImage     = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImages[0] : VK_NULL_HANDLE;
-        VkFormat    depthFormat    = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthFormats[0] : VK_FORMAT_UNDEFINED;
-
-        Logger::debug("effect string count: " + std::to_string(effectStrings.size()));
-        Logger::debug("effect count: " + std::to_string(pLogicalSwapchain->effects.size()));
-
-        pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-        if (swapchain != VK_NULL_HANDLE) {
-            Logger::debug("allocated ComandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain "
-                          + convertToString(swapchain));
-        } else {
-            Logger::debug("allocated ComandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain (rebuild)");
-        }
-
-        writeCommandBuffers(
-            pLogicalDevice, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
-        Logger::debug("wrote CommandBuffers");
-
-        pLogicalSwapchain->semaphores = createSemaphores(pLogicalDevice, pLogicalSwapchain->imageCount);
-        Logger::debug("created semaphores");
-        for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++)
-        {
-            Logger::debug(std::to_string(i) + " written commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersEffect[i]));
-        }
-
-        pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
-            pLogicalDevice,
-            pLogicalSwapchain->format,
-            pLogicalSwapchain->imageExtent,
-            std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
-            pLogicalSwapchain->images,
-            pConfig.get()));
-
-        pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-
-        writeCommandBuffers(pLogicalDevice,
-                            {pLogicalSwapchain->defaultTransfer},
-                            VK_NULL_HANDLE,
-                            VK_NULL_HANDLE,
-                            VK_FORMAT_UNDEFINED,
-                            pLogicalSwapchain->commandBuffersNoEffect);
-
-        for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++)
-        {
-            Logger::debug(std::to_string(i) + " written commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersNoEffect[i]));
-        }
-    }
-
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_GetSwapchainImagesKHR(VkDevice       device,
                                                                    VkSwapchainKHR swapchain,
                                                                    uint32_t*      pCount,
@@ -604,7 +495,7 @@ namespace vkBasalt
             createFakeSwapchainImages(pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, fakeImageCount, pLogicalSwapchain->fakeImageMemory);
         Logger::debug("created fake swapchain images");
 
-        initializeSwapchainEffects(pLogicalDevice, pLogicalSwapchain, swapchain);
+        buildEffectChain(pLogicalDevice, pLogicalSwapchain, swapchain, pConfig.get(), g_overlayManager);
         Logger::trace("vkGetSwapchainImagesKHR");
 
         *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
@@ -612,140 +503,20 @@ namespace vkBasalt
         return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
     }
 
-    void rebuildSwapchainEffects(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain)
-    {
-        Logger::debug("Rebuilding effects for swapchain...");
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-
-        // Wait for GPU to finish using old resources (Using QueueWaitIdle as DeviceWaitIdle is unmapped)
-        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
-
-        uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
-
-        // dyanmic check, if the new chain requires more images than we currently have, 
-        // can't resize the array because the game holds the old handles we must force the game to recreate the swapchain.
-        if (requiredFakeImageCount > pLogicalSwapchain->fakeImages.size()) {
-            Logger::debug("Effect chain grew beyond allocated pool. Forcing game to recreate swapchain...");
-            pLogicalSwapchain->forceSwapchainRebuild = true;
-            
-            if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
-                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
-                    pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
-                pLogicalSwapchain->commandBuffersEffect.clear();
-            }
-            if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
-                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
-                    pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
-                pLogicalSwapchain->commandBuffersNoEffect.clear();
-            }
-            
-            pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-            pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-            
-            pLogicalSwapchain->effects.clear();
-            pLogicalSwapchain->defaultTransfer.reset();
-            
-            pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
-                pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
-                pLogicalSwapchain->images, pConfig.get()));
-                
-            writeCommandBuffers(pLogicalDevice, {pLogicalSwapchain->defaultTransfer}, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED, pLogicalSwapchain->commandBuffersNoEffect);
-            
-            return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
-        }
-
-        Logger::debug("Effect chain fits in existing pool. Rebuilding in-place...");
-        
-        if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
-                pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
-            pLogicalSwapchain->commandBuffersEffect.clear();
-        }
-        if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 
-                pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
-            pLogicalSwapchain->commandBuffersNoEffect.clear();
-        }
-
-        for (auto sem : pLogicalSwapchain->semaphores) {
-            pLogicalDevice->vkd.DestroySemaphore(pLogicalDevice->device, sem, nullptr);
-        }
-        pLogicalSwapchain->semaphores.clear();
-
-        pLogicalSwapchain->effects.clear();
-        pLogicalSwapchain->defaultTransfer.reset();
-
-        initializeSwapchainEffects(pLogicalDevice, pLogicalSwapchain, VK_NULL_HANDLE);
-        
-        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
-        
-        Logger::debug("Rebuild complete.");
-    }
-
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
     {
         scoped_lock l(globalLock);
 
-        static uint32_t keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
-        static uint32_t reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-
-        static bool pressed       = false;
-        static bool reloadPressed = false;
-        static bool presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
-        static bool skipNextPresent = false;
-
-        if (isKeyPressed(keySymbol))
-        {
-            if (!pressed)
-            {
-                presentEffect = !presentEffect;
-                pressed       = true;
-
-                Logger::debug(presentEffect ? "vkBasalt effects enabled" : "vkBasalt effects disabled");
-            }
-        }
-        else
-        {
-            pressed = false;
-        }
-
-        if (isKeyPressed(reloadKeySymbol))
-        {
-            if (!reloadPressed)
-            {
-                reloadPressed = true;
-                skipNextPresent = true; 
-                Logger::debug("Reloading vkBasalt config...");
-                
-                // Reload Config from disk
-                pConfig = std::shared_ptr<Config>(new Config());
-                
-                // Update keybinds and default state
-                keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
-                reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-                presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
-                
-                // Rebuild all active swapchains
-                for (auto& pair : swapchainMap)
-                {
-                    rebuildSwapchainEffects(pair.second->pLogicalDevice, pair.second.get());
-                }
-                Logger::debug("vkBasalt config reloaded successfully!");
-            }
-        }
-        else
-        {
-            reloadPressed = false;
+        if (processHotkeysAndReloads(pConfig, swapchainMap, g_overlayManager)) {
+            LogicalDevice* pDev = deviceMap[GetKey(queue)].get();
+            return pDev->vkd.QueuePresentKHR(queue, pPresentInfo);
         }
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(queue)].get();
 
-        if (skipNextPresent) {
-            skipNextPresent = false;
-            Logger::debug("Skipping present frame to allow layout stabilization...");
-            return pLogicalDevice->vkd.QueuePresentKHR(queue, pPresentInfo);
-        }
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+        ensureWaylandRegistryBound();
+#endif
 
         std::vector<VkSemaphore> presentSemaphores;
         presentSemaphores.reserve(pPresentInfo->swapchainCount);
@@ -780,6 +551,8 @@ namespace vkBasalt
                 continue; 
             }
 
+            std::lock_guard<std::mutex> lock(pLogicalSwapchain->effectMutex);
+
             for (auto& effect : pLogicalSwapchain->effects)
             {
                 effect->updateEffect();
@@ -793,7 +566,7 @@ namespace vkBasalt
             submitInfo.pWaitDstStageMask  = i == 0 ? waitStages.data() : nullptr;
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers =
-                presentEffect ? &(pLogicalSwapchain->commandBuffersEffect[index]) : &(pLogicalSwapchain->commandBuffersNoEffect[index]);
+                g_effectsEnabled.load() ? &(pLogicalSwapchain->commandBuffersEffect[index]) : &(pLogicalSwapchain->commandBuffersNoEffect[index]);
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores    = &(pLogicalSwapchain->semaphores[index]);
 
@@ -805,8 +578,12 @@ namespace vkBasalt
             {
                 return vr;
             }
-        }
 
+            // ImGui use return value to decide semaphore swap not isOverlayOpen() as the overlay may close itself during rendering.
+            if (g_overlayManager.renderOverlay(pLogicalDevice, pLogicalSwapchain, swapchain, index)) {
+                presentSemaphores.back() = g_overlayManager.getOverlaySemaphore(swapchain, index);
+            }
+        }
         VkPresentInfoKHR presentInfo   = *pPresentInfo;
         presentInfo.waitSemaphoreCount = presentSemaphores.size();
         presentInfo.pWaitSemaphores    = presentSemaphores.data();
@@ -830,9 +607,19 @@ namespace vkBasalt
         // we need to delete the infos of the oldswapchain
         
         Logger::trace("vkDestroySwapchainKHR " + convertToString(swapchain));
+
+        // Cleanup rebuild fence before destroying the swapchain
+        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+        if (swapchainMap[swapchain]->rebuildFence != VK_NULL_HANDLE) {
+            pLogicalDevice->vkd.DestroyFence(pLogicalDevice->device, swapchainMap[swapchain]->rebuildFence, nullptr);
+            swapchainMap[swapchain]->rebuildFence = VK_NULL_HANDLE;
+        }
+
         swapchainMap[swapchain]->destroy();
         swapchainMap.erase(swapchain);
-        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+
+        // Cleanup Overlay Resources
+        g_overlayManager.destroyOverlay(pLogicalDevice, swapchain);
 
         pLogicalDevice->vkd.DestroySwapchainKHR(device, swapchain, pAllocator);
     }
@@ -1095,6 +882,11 @@ extern "C"
 #else
 #define VKBASALT_INTERCEPT_WAYLAND
 #endif
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+#define VKBASALT_INTERCEPT_XLIB GETPROCADDR(CreateXlibSurfaceKHR);
+#else
+#define VKBASALT_INTERCEPT_XLIB
+#endif
 
 #define INTERCEPT_CALLS \
     /* instance chain functions we intercept */ \
@@ -1105,6 +897,7 @@ extern "C"
     GETPROCADDR(CreateInstance); \
     GETPROCADDR(DestroyInstance); \
     VKBASALT_INTERCEPT_WAYLAND \
+    VKBASALT_INTERCEPT_XLIB \
 \
     /* device chain functions we intercept*/ \
     if (!std::strcmp(pName, "vkGetDeviceProcAddr")) \
