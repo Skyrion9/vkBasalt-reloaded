@@ -12,6 +12,7 @@ project('vkBasalt', ['c', 'cpp'],
 
 cpp = meson.get_compiler('cpp')
 c = meson.get_compiler('c')
+imgui_dep = dependency('imgui')
 
 # Shared library hardening + performance flags
 cpp_args_common = cpp.get_supported_arguments([

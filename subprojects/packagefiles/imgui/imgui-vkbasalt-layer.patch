@@ -1,0 +1,80 @@
+diff --git a/backends/imgui_impl_vulkan.cpp b/backends/imgui_impl_vulkan.cpp
+index ef7dd625f..17d08f7a7 100644
+--- a/backends/imgui_impl_vulkan.cpp
++++ b/backends/imgui_impl_vulkan.cpp
+@@ -434,12 +434,19 @@ static ImGui_ImplVulkan_Data* ImGui_ImplVulkan_GetBackendData()
+     return ImGui::GetCurrentContext() ? (ImGui_ImplVulkan_Data*)ImGui::GetIO().BackendRendererUserData : nullptr;
+ }
+ 
++// Cached memory properties from vkBasalt layer (avoids loader PID check in forked processes)
++static VkPhysicalDeviceMemoryProperties g_imguiMemoryProperties = {};
++
++void ImGui_ImplVulkan_SetMemoryProperties(const VkPhysicalDeviceMemoryProperties* props)
++{
++    g_imguiMemoryProperties = *props;
++}
++
+ static uint32_t ImGui_ImplVulkan_MemoryType(VkMemoryPropertyFlags properties, uint32_t type_bits)
+ {
+-    ImGui_ImplVulkan_Data* bd = ImGui_ImplVulkan_GetBackendData();
+-    ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
+-    VkPhysicalDeviceMemoryProperties prop;
+-    vkGetPhysicalDeviceMemoryProperties(v->PhysicalDevice, &prop);
++    // PATCHED: Use cached memory properties from vkBasalt layer to avoid
++    // calling vkGetPhysicalDeviceMemoryProperties with an invalid physicalDevice handle.
++    VkPhysicalDeviceMemoryProperties prop = g_imguiMemoryProperties;
+     for (uint32_t i = 0; i < prop.memoryTypeCount; i++)
+         if ((prop.memoryTypes[i].propertyFlags & properties) == properties && type_bits & (1 << i))
+             return i;
+@@ -916,12 +923,22 @@ void ImGui_ImplVulkan_UpdateTexture(ImTextureData* tex)
+             end_info.pCommandBuffers = &bd->TexCommandBuffer;
+             err = vkEndCommandBuffer(bd->TexCommandBuffer);
+             check_vk_result(err);
+-            err = vkQueueSubmit(v->Queue, 1, &end_info, VK_NULL_HANDLE);
++            
++            // PATCHED: Use fence instead of vkQueueWaitIdle to avoid deadlocks in Vulkan layers
++            VkFenceCreateInfo fence_info = {};
++            fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
++            VkFence fence;
++            err = vkCreateFence(v->Device, &fence_info, v->Allocator, &fence);
+             check_vk_result(err);
++            
++            err = vkQueueSubmit(v->Queue, 1, &end_info, fence);
++            check_vk_result(err);
++            
++            err = vkWaitForFences(v->Device, 1, &fence, VK_TRUE, UINT64_MAX);
++            check_vk_result(err);
++            
++            vkDestroyFence(v->Device, fence, v->Allocator);
+         }
+-
+-        err = vkQueueWaitIdle(v->Queue); // FIXME-OPT: Suboptimal!
+-        check_vk_result(err);
+         vkDestroyBuffer(v->Device, upload_buffer, v->Allocator);
+         vkFreeMemory(v->Device, upload_buffer_memory, v->Allocator);
+ 
+@@ -1391,10 +1408,8 @@ bool    ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info)
+         IM_ASSERT(info->PipelineInfoMain.RenderPass == VK_NULL_HANDLE);
+ 
+     bd->VulkanInitInfo = *info;
+-
+-    VkPhysicalDeviceProperties properties;
+-    vkGetPhysicalDeviceProperties(info->PhysicalDevice, &properties);
+-    bd->NonCoherentAtomSize = properties.limits.nonCoherentAtomSize;
++    // PATCHED: Hardcode nonCoherentAtomSize to avoid vkGetPhysicalDeviceProperties loader PID check in forked processes. 256 is safe for all GPUs.
++    bd->NonCoherentAtomSize = 256;
+ 
+     if (!ImGui_ImplVulkan_CreateDeviceObjects())
+         IM_ASSERT(0 && "ImGui_ImplVulkan_CreateDeviceObjects() failed!"); // <- Can't be hit yet.
+diff --git a/backends/imgui_impl_vulkan.h b/backends/imgui_impl_vulkan.h
+index cf6a3be15..a6f70826d 100644
+--- a/backends/imgui_impl_vulkan.h
++++ b/backends/imgui_impl_vulkan.h
+@@ -140,6 +140,7 @@ struct ImGui_ImplVulkan_InitInfo
+ 
+ // Follow "Getting Started" link and check examples/ folder to learn about using backends!
+ IMGUI_IMPL_API bool             ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info);
++IMGUI_IMPL_API void             ImGui_ImplVulkan_SetMemoryProperties(const VkPhysicalDeviceMemoryProperties* props);
+ IMGUI_IMPL_API void             ImGui_ImplVulkan_Shutdown();
+ IMGUI_IMPL_API void             ImGui_ImplVulkan_NewFrame();
+ IMGUI_IMPL_API void             ImGui_ImplVulkan_RenderDrawData(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline = VK_NULL_HANDLE);
