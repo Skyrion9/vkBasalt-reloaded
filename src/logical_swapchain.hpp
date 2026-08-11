@@ -7,6 +7,8 @@
 #include<iostream>
 #include<vector>
 #include<memory>
+#include<mutex>
+#include<atomic>
 
 #include"effect.hpp"
 
@@ -38,6 +40,14 @@ namespace vkBasalt
         // flag to force the game to recreate the swapchain if the effect chain grows dynamically.
         // prevents device loss by letting the game engine cleanly release its cached VkImage handles.
         bool                                 forceSwapchainRebuild = false;
+
+        // Thread safe runtime state management for ImGui
+        mutable std::mutex                   effectMutex;
+        std::atomic<bool>                    needsRecreation{false};
+
+        // Fence based deferred rebuild (avoids QueueWaitIdle deadlock in QueuePresentKHR)
+        VkFence                              rebuildFence = VK_NULL_HANDLE;
+        bool                                 pendingRebuild = false;
 
         void destroy();
     };

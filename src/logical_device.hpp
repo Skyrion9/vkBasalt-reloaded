@@ -25,6 +25,7 @@ namespace vkBasalt
         std::vector<VkImage>     depthImages;
         std::vector<VkFormat>    depthFormats;
         std::vector<VkImageView> depthImageViews;
+        VkPhysicalDeviceMemoryProperties memoryProperties;
     };
 } // namespace vkBasalt
 

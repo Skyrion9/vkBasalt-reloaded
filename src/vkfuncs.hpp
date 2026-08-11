@@ -1,4 +1,3 @@
-
 #define VK_INSTANCE_FUNCS \
     FORVKFUNC(DestroyInstance) \
     FORVKFUNC(EnumerateDeviceExtensionProperties) \
@@ -29,6 +28,7 @@
     FORVKFUNC(CreateCommandPool) \
     FORVKFUNC(CreateDescriptorPool) \
     FORVKFUNC(CreateDescriptorSetLayout) \
+    FORVKFUNC(CreateFence) \
     FORVKFUNC(CreateFramebuffer) \
     FORVKFUNC(CreateGraphicsPipelines) \
     FORVKFUNC(CreateImage) \
@@ -44,6 +44,7 @@
     FORVKFUNC(DestroyDescriptorPool) \
     FORVKFUNC(DestroyDescriptorSetLayout) \
     FORVKFUNC(DestroyDevice) \
+    FORVKFUNC(DestroyFence) \
     FORVKFUNC(DestroyFramebuffer) \
     FORVKFUNC(DestroyImage) \
     FORVKFUNC(DestroyImageView) \
@@ -57,6 +58,7 @@
     FORVKFUNC(EndCommandBuffer) \
     FORVKFUNC(FreeCommandBuffers) \
     FORVKFUNC(FreeMemory) \
+    FORVKFUNC(FlushMappedMemoryRanges) \
     FORVKFUNC(GetBufferMemoryRequirements) \
     FORVKFUNC(GetDeviceProcAddr) \
     FORVKFUNC(GetDeviceQueue) \
@@ -67,5 +69,8 @@
     FORVKFUNC(QueuePresentKHR) \
     FORVKFUNC(QueueSubmit) \
     FORVKFUNC(QueueWaitIdle) \
+    FORVKFUNC(ResetCommandBuffer) \
+    FORVKFUNC(ResetFences) \
     FORVKFUNC(UnmapMemory) \
-    FORVKFUNC(UpdateDescriptorSets)
+    FORVKFUNC(UpdateDescriptorSets) \
+    FORVKFUNC(WaitForFences)
