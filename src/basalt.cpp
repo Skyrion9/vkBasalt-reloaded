@@ -524,14 +524,20 @@ namespace vkBasalt
 
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
     {
-        scoped_lock l(globalLock);
-
-        if (processHotkeysAndReloads(pConfig, swapchainMap, g_overlayManager)) {
-            LogicalDevice* pDev = deviceMap[GetKey(queue)].get();
-            return pDev->vkd.QueuePresentKHR(queue, pPresentInfo);
+        // Hold lock only for map lookups and hotkey processing. Release before GPU work.
+        std::shared_ptr<LogicalDevice> pLogicalDevice;
+        std::unordered_map<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>> localSwapchainMap;
+        {
+            scoped_lock l(globalLock);
+            if (processHotkeysAndReloads(pConfig, swapchainMap, g_overlayManager)) {
+                LogicalDevice* pDev = deviceMap[GetKey(queue)].get();
+                return pDev->vkd.QueuePresentKHR(queue, pPresentInfo);
+            }
+            pLogicalDevice = deviceMap[GetKey(queue)];
+            localSwapchainMap = swapchainMap; // shallow copy of shared_ptrs
         }
 
-        LogicalDevice* pLogicalDevice = deviceMap[GetKey(queue)].get();
+        if (!pLogicalDevice) return VK_ERROR_DEVICE_LOST;
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
         ensureWaylandRegistryBound();
@@ -548,8 +554,8 @@ namespace vkBasalt
         {
             uint32_t          index             = (*pPresentInfo).pImageIndices[i];
             VkSwapchainKHR    swapchain         = (*pPresentInfo).pSwapchains[i];
-            auto scIt = swapchainMap.find(swapchain);
-            if (scIt == swapchainMap.end()) continue;
+            auto scIt = localSwapchainMap.find(swapchain);
+            if (scIt == localSwapchainMap.end()) continue;
             LogicalSwapchain* pLogicalSwapchain = scIt->second.get();
 
             // If the effect chain grew dynamically submit the fallback and signal OUT_OF_DATE
@@ -601,7 +607,7 @@ namespace vkBasalt
             }
 
             // ImGui use return value to decide semaphore swap not isOverlayOpen() as the overlay may close itself during rendering.
-            if (g_overlayManager.renderOverlay(pLogicalDevice, pLogicalSwapchain, swapchain, index)) {
+            if (g_overlayManager.renderOverlay(pLogicalDevice.get(), pLogicalSwapchain, swapchain, index)) {
                 presentSemaphores.back() = g_overlayManager.getOverlaySemaphore(swapchain, index);
             }
         }
