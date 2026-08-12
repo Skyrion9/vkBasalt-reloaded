@@ -49,9 +49,9 @@ namespace vkBasalt
         memoryBarrier.subresourceRange.baseArrayLayer = 0;
         memoryBarrier.subresourceRange.layerCount     = 1;
 
-        // Fixed: Use COLOR_ATTACHMENT_OUTPUT_BIT instead of BOTTOM_OF_PIPE_BIT
+        // Image comes from present engine (not a pipeline stage), wait for all prior commands (Previously had changed BOTTOM_OF_PIPE_BIT -> COLOR_ATTACHMENT_OUTPUT_BIT)
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
         memoryBarrier.image         = outputImages[imageIndex];
         memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
