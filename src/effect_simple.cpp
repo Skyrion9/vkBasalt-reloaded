@@ -181,7 +181,7 @@ namespace vkBasalt
         // Used to make the Image accessable by the shader
         VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT; 
+        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
         memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -193,7 +193,7 @@ namespace vkBasalt
         VkImageMemoryBarrier secondBarrier = {};
         secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        secondBarrier.dstAccessMask       = 0;
+        secondBarrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         secondBarrier.newLayout           = finalLayout; // Respect the final layout defined by the effect
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -202,11 +202,10 @@ namespace vkBasalt
         secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, 
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
+            commandBuffer,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,  // Present engine wrote this image
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        Logger::debug("after the first pipeline barrier");
 
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -268,9 +267,9 @@ namespace vkBasalt
         Logger::debug("after end renderpass");
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
-                                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                               VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
-                                               0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,  // Next effect or present engine reads this
+            0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
         Logger::debug("after the second pipeline barrier");
     }
 
