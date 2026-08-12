@@ -80,6 +80,11 @@ namespace vkBasalt
     void
     convertReshadeFilter(const reshadefx::texture_filter& textureFilter, VkFilter& minFilter, VkFilter& magFilter, VkSamplerMipmapMode& mipmapMode)
     {
+        // Initialize to safe defaults in case of unknown enum value
+        minFilter  = VK_FILTER_LINEAR;
+        magFilter  = VK_FILTER_LINEAR;
+        mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
         switch (textureFilter)
         {
             case reshadefx::texture_filter::min_mag_mip_point:
