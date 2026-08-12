@@ -13,16 +13,13 @@
 
 namespace vkBasalt {
 
-    // ---------------------------------------------------------------------------
     // Helpers
-    // ---------------------------------------------------------------------------
     static std::string sanitizeName(const std::string& s) {
         std::string result;
         for (char c : s) {
             if (std::isalnum((unsigned char)c)) result += c;
             else if (c == ' ' || c == '-' || c == '_') result += '_';
         }
-        // Collapse multiple underscores
         std::string collapsed;
         for (size_t i = 0; i < result.size(); i++) {
             if (result[i] == '_' && i + 1 < result.size() && result[i + 1] == '_') continue;
@@ -31,9 +28,7 @@ namespace vkBasalt {
         return collapsed;
     }
 
-    // ---------------------------------------------------------------------------
     // Steam ACF parsing
-    // ---------------------------------------------------------------------------
     static std::string findSteamGameName(const std::string& appId) {
         const char* home = std::getenv("HOME");
         if (!home) return "";
@@ -92,9 +87,7 @@ namespace vkBasalt {
         return "";
     }
 
-    // ---------------------------------------------------------------------------
     // MD5 (RFC 1321)
-    // ---------------------------------------------------------------------------
     std::string md5Hash(const std::string& msg) {
         uint32_t h0 = 0x67452301, h1 = 0xefcdab89, h2 = 0x98badcfe, h3 = 0x10325476;
 
@@ -159,9 +152,78 @@ namespace vkBasalt {
         return std::string(hex);
     }
 
-    // ---------------------------------------------------------------------------
+    // Binary content hashing (first 4MB + file size for performance)
+    static std::string hashBinaryContent(const std::string& path) {
+        std::ifstream f(path, std::ios::binary);
+        if (!f.good()) return "";
+
+        const size_t CHUNK = 4 * 1024 * 1024; // 4MB
+        std::vector<char> buf(CHUNK);
+        f.read(buf.data(), CHUNK);
+        size_t bytesRead = (size_t)f.gcount();
+        if (bytesRead == 0) return "";
+
+        std::string content(buf.data(), bytesRead);
+
+        // Append file size to distinguish files with identical first 4MB
+        f.seekg(0, std::ios::end);
+        size_t fileSize = (size_t)f.tellg();
+        content += "|" + std::to_string(fileSize);
+
+        return md5Hash(content);
+    }
+
+    // Persistent game registry (so we can judge if a game was moved, updated or is entirely different game.)
+    struct GameEntry {
+        std::string id;
+        std::string exeName;
+        std::string path;
+        std::string binaryMd5;
+    };
+
+    static std::string registryPath() {
+        const char* home = std::getenv("HOME");
+        std::string root = home ? home : ".";
+        return root + "/.config/vkBasalt-reloaded/games/registry.conf";
+    }
+
+    static std::vector<GameEntry> loadRegistry() {
+        std::vector<GameEntry> entries;
+        std::ifstream f(registryPath());
+        if (!f.good()) return entries;
+
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            // Format: id|exe_name|path|binary_md5
+            std::stringstream ss(line);
+            GameEntry e;
+            if (std::getline(ss, e.id, '|') &&
+                std::getline(ss, e.exeName, '|') &&
+                std::getline(ss, e.path, '|') &&
+                std::getline(ss, e.binaryMd5)) {
+                entries.push_back(e);
+            }
+        }
+        return entries;
+    }
+
+    static void saveRegistry(const std::vector<GameEntry>& entries) {
+        std::error_code ec;
+        std::filesystem::create_directories(
+            std::filesystem::path(registryPath()).parent_path(), ec);
+
+        std::ofstream f(registryPath());
+        if (!f.good()) return;
+
+        f << "# vkBasalt-reloaded game registry\n";
+        f << "# Format: id|exe_name|last_known_path|binary_md5\n";
+        for (auto& e : entries) {
+            f << e.id << "|" << e.exeName << "|" << e.path << "|" << e.binaryMd5 << "\n";
+        }
+    }
+
     // Public API
-    // ---------------------------------------------------------------------------
     std::string computeGameId() {
         // 1. Steam environment variables
         const char* steamGameId = std::getenv("SteamGameId");
@@ -178,22 +240,77 @@ namespace vkBasalt {
             return "steam_" + appId;
         }
 
-        // 2. Non-Steam: exe path + MD5
+        // 2. Non-Steam: registry-based identification
         char exePath[4096] = {0};
         ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
         std::string fullPath = (len > 0) ? std::string(exePath, (size_t)len) : std::string("unknown");
+
         std::string exeName = fullPath;
         size_t slash = fullPath.find_last_of('/');
         if (slash != std::string::npos) exeName = fullPath.substr(slash + 1);
         if (exeName.empty()) exeName = "unknown";
 
-        if (exeName.size() >= 4) {
-            std::string ext = exeName.substr(exeName.size() - 4);
+        std::string cleanName = exeName;
+        if (cleanName.size() >= 4) {
+            std::string ext = cleanName.substr(cleanName.size() - 4);
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            if (ext == ".exe") exeName = exeName.substr(0, exeName.size() - 4);
+            if (ext == ".exe") cleanName = cleanName.substr(0, cleanName.size() - 4);
         }
 
-        return exeName + "_" + md5Hash(fullPath);
+        std::string binaryMd5 = hashBinaryContent(fullPath);
+
+        auto entries = loadRegistry();
+        bool registryDirty = false;
+
+        // handles game updated in-place
+        for (auto& e : entries) {
+            if (e.path == fullPath) {
+                if (!binaryMd5.empty() && e.binaryMd5 != binaryMd5) {
+                    e.binaryMd5 = binaryMd5;
+                    registryDirty = true;
+                    Logger::debug("Game matched by path (binary updated): " + e.id);
+                } else {
+                    Logger::debug("Game matched by path: " + e.id);
+                }
+                if (registryDirty) saveRegistry(entries);
+                return e.id;
+            }
+        }
+
+        // handles game moved to new directory
+        if (!binaryMd5.empty()) {
+            for (auto& e : entries) {
+                if (e.binaryMd5 == binaryMd5) {
+                    std::string oldPath = e.path;
+                    e.path = fullPath;
+                    saveRegistry(entries);
+                    Logger::debug("Game matched by binary (moved from " + oldPath + "): " + e.id);
+                    return e.id;
+                }
+            }
+        }
+
+        // generate ID for new game
+        std::string newId = cleanName + "_" + md5Hash(fullPath).substr(0, 8);
+
+        // Ensure uniqueness
+        for (auto& e : entries) {
+            if (e.id == newId) {
+                newId += "_" + md5Hash(fullPath + "salt").substr(0, 4);
+                break;
+            }
+        }
+
+        GameEntry newEntry;
+        newEntry.id = newId;
+        newEntry.exeName = cleanName;
+        newEntry.path = fullPath;
+        newEntry.binaryMd5 = binaryMd5;
+        entries.push_back(newEntry);
+        saveRegistry(entries);
+
+        Logger::debug("New game registered: " + newId + " (" + fullPath + ")");
+        return newId;
     }
 
 } // namespace vkBasalt
