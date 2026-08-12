@@ -65,15 +65,15 @@ namespace vkBasalt
 
     static std::map<struct wl_display *, wayland_display> displays;
 
-    static int   g_outputScale = 1;
+static int   g_outputScale = 1; // Tracks the maximum scale across all displays
 
     // wl_output listener for integer scale fallback
     static void wl_output_geometry(void*, struct wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*, int32_t) {}
     static void wl_output_mode(void*, struct wl_output*, uint32_t, int32_t, int32_t, int32_t) {}
     static void wl_output_done(void*, struct wl_output*) {}
     static void wl_output_scale(void*, struct wl_output*, int32_t factor) {
-        g_outputScale = factor;
-        Logger::debug("wl_output scale: " + std::to_string(factor));
+        if (factor > g_outputScale) g_outputScale = factor;
+        Logger::debug("wl_output scale: " + std::to_string(factor) + " (max: " + std::to_string(g_outputScale) + ")");
     }
     static void wl_output_name(void*, struct wl_output*, const char*) {}
     static void wl_output_description(void*, struct wl_output*, const char*) {}
