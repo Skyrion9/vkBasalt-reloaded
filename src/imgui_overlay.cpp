@@ -194,6 +194,7 @@ namespace vkBasalt {
             // which crashes because the VkPhysicalDevice handle is wrapped by the layer chain.
             auto loader_func = [](const char* function_name, void* user_data) -> PFN_vkVoidFunction {
                 LogicalDevice* dev = static_cast<LogicalDevice*>(user_data);
+                if (!dev || dev->device == VK_NULL_HANDLE) return nullptr;
                 PFN_vkVoidFunction func = dev->vkd.GetDeviceProcAddr(dev->device, function_name);
                 if (!func) {
                     func = dev->vki.GetInstanceProcAddr(dev->instance, function_name);
