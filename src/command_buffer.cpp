@@ -119,7 +119,8 @@ namespace vkBasalt
 
         for (uint32_t i = 0; i < count; i++)
         {
-            pLogicalDevice->vkd.CreateSemaphore(pLogicalDevice->device, &info, nullptr, &semaphores[i]);
+            VkResult result = pLogicalDevice->vkd.CreateSemaphore(pLogicalDevice->device, &info, nullptr, &semaphores[i]);
+            ASSERT_VULKAN(result);
         }
         return semaphores;
     }
