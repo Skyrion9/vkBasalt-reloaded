@@ -21,6 +21,7 @@ namespace vkBasalt
         double      maxVal;
         double      step;
         std::vector<std::string> comboOptions;
+        std::string category; // optional, empty auto-detects.
     };
 
     class Effect

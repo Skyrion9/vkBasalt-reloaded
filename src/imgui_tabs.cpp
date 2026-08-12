@@ -286,6 +286,7 @@ namespace vkBasalt {
             bool hasSearch = !searchLower.empty();
 
             for (const auto& p : params) {
+
                 if (hasSearch) {
                     std::string labelLower(p.label);
                     std::transform(labelLower.begin(), labelLower.end(), labelLower.begin(), ::tolower);
@@ -294,8 +295,11 @@ namespace vkBasalt {
                     if (labelLower.find(searchLower) == std::string::npos &&
                         keyLower.find(searchLower) == std::string::npos) continue;
                 }
+
                 const char* cat = "General";
-                if (p.key.find("Preset") != std::string::npos) cat = "Preset";
+                if (!p.category.empty()) {
+                    cat = p.category.c_str();
+                } else if (p.key.find("Preset") != std::string::npos) cat = "Preset";
                 else if (p.key.find("Sharp") != std::string::npos || p.key.find("Cas") != std::string::npos || p.key.find("Bilateral") != std::string::npos) cat = "Sharpening";
                 else if (p.key.find("AA") != std::string::npos || p.key.find("Fxaa") != std::string::npos || p.key.find("Edge") != std::string::npos || p.key.find("Dithering") != std::string::npos) cat = "Anti-Aliasing";
                 else if (p.key.find("Blend") != std::string::npos) cat = "Blending";
