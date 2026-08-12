@@ -724,7 +724,7 @@ namespace vkBasalt
                     for (auto& it_swap : swapchainMap)
                     {
                         LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
-                        if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice)
+                        if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice && !pLogicalSwapchain->effects.empty())
                         {
                             if (pLogicalSwapchain->commandBuffersEffect.size())
                             {
@@ -782,7 +782,7 @@ namespace vkBasalt
                 for (auto& it_swap : swapchainMap)
                 {
                     LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
-                    if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice)
+                    if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice && !pLogicalSwapchain->effects.empty())
                     {
                         if (pLogicalSwapchain->commandBuffersEffect.size())
                         {
