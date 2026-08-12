@@ -26,6 +26,8 @@ namespace vkBasalt
         std::vector<VkFormat>    depthFormats;
         std::vector<VkImageView> depthImageViews;
         VkPhysicalDeviceMemoryProperties memoryProperties;
+        VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+        std::string pipelineCachePath;
     };
 } // namespace vkBasalt
 

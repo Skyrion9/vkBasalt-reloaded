@@ -47,6 +47,7 @@
 #include "descriptor_set.hpp"
 #include "shader.hpp"
 #include "graphics_pipeline.hpp"
+#include "pipeline_cache.hpp"
 #include "command_buffer.hpp"
 #include "buffer.hpp"
 #include "config.hpp"
@@ -322,6 +323,17 @@ namespace vkBasalt
             Logger::err("Did not find a graphics queue!");
         // Cache memory properties before any fork so ImGui can use them without calling vkGetPhysicalDeviceMemoryProperties through the loader
         pLogicalDevice->vki.GetPhysicalDeviceMemoryProperties(pLogicalDevice->physicalDevice, &pLogicalDevice->memoryProperties);
+
+        // Initialize pipeline cache (loaded from disk, saved on device destroy)
+        pLogicalDevice->pipelineCachePath = getPipelineCachePath(pLogicalDevice->physicalDevice, pLogicalDevice->vki);
+        VkPipelineCacheCreateInfo cacheInfo = {};
+        cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        std::vector<uint8_t> cacheData = loadPipelineCacheData(pLogicalDevice->pipelineCachePath);
+        if (!cacheData.empty()) {
+            cacheInfo.initialDataSize = cacheData.size();
+            cacheInfo.pInitialData = cacheData.data();
+        }
+        pLogicalDevice->vkd.CreatePipelineCache(pLogicalDevice->device, &cacheInfo, nullptr, &pLogicalDevice->pipelineCache);
         deviceMap[GetKey(*pDevice)] = pLogicalDevice;
         return VK_SUCCESS;
     }
@@ -336,6 +348,15 @@ namespace vkBasalt
         Logger::trace("vkDestroyDevice");
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+        // Save pipeline cache to disk before destroying
+        savePipelineCacheData(device, pLogicalDevice->vkd, pLogicalDevice->pipelineCache, pLogicalDevice->pipelineCachePath);
+
+        if (pLogicalDevice->pipelineCache != VK_NULL_HANDLE)
+        {
+            pLogicalDevice->vkd.DestroyPipelineCache(device, pLogicalDevice->pipelineCache, nullptr);
+            pLogicalDevice->pipelineCache = VK_NULL_HANDLE;
+        }
+
         if (pLogicalDevice->commandPool != VK_NULL_HANDLE)
         {
             Logger::debug("DestroyCommandPool");

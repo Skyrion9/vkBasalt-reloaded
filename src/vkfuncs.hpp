@@ -29,6 +29,7 @@
     FORVKFUNC(CreateDescriptorPool) \
     FORVKFUNC(CreateDescriptorSetLayout) \
     FORVKFUNC(CreateFence) \
+    FORVKFUNC(CreatePipelineCache) \
     FORVKFUNC(CreateFramebuffer) \
     FORVKFUNC(CreateGraphicsPipelines) \
     FORVKFUNC(CreateImage) \
@@ -45,6 +46,7 @@
     FORVKFUNC(DestroyDescriptorSetLayout) \
     FORVKFUNC(DestroyDevice) \
     FORVKFUNC(DestroyFence) \
+    FORVKFUNC(DestroyPipelineCache) \
     FORVKFUNC(DestroyFramebuffer) \
     FORVKFUNC(DestroyImage) \
     FORVKFUNC(DestroyImageView) \
@@ -64,6 +66,7 @@
     FORVKFUNC(GetDeviceQueue) \
     FORVKFUNC(GetDeviceQueue2) \
     FORVKFUNC(GetImageMemoryRequirements) \
+    FORVKFUNC(GetPipelineCacheData) \
     FORVKFUNC(GetSwapchainImagesKHR) \
     FORVKFUNC(MapMemory) \
     FORVKFUNC(QueuePresentKHR) \

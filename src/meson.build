@@ -35,6 +35,7 @@ vkBasalt_src = [
     'keyboard_input.cpp',
     'keyboard_input_wayland.cpp',
     'hotkey_manager.cpp',
+    'pipeline_cache.cpp',
     'logger.cpp',
     'logical_swapchain.cpp',
     'lut_cube.cpp',

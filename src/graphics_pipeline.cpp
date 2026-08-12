@@ -188,7 +188,7 @@ namespace vkBasalt
         pipelineCreateInfo.basePipelineHandle  = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex   = -1;
 
-        result = pLogicalDevice->vkd.CreateGraphicsPipelines(pLogicalDevice->device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        result = pLogicalDevice->vkd.CreateGraphicsPipelines(pLogicalDevice->device, pLogicalDevice->pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         ASSERT_VULKAN(result);
 
         return pipeline;

@@ -23,6 +23,7 @@
 #include "effect_reshade.hpp"
 #include "effect_smaa.hpp"
 #include "effect_transfer.hpp"
+#include "pipeline_cache.hpp"
 
 #include <fstream>
 #include <unistd.h>
@@ -233,6 +234,10 @@ namespace vkBasalt {
         if (swapchain != VK_NULL_HANDLE) {
             overlayManager.initOverlay(pLogicalDevice, pLogicalSwapchain, swapchain, unormFormat, pConfig);
         }
+
+        // Save pipeline cache after all pipelines are compiled. Game might exit without calling vkDestroyDevice, so this is the reliable save point.
+        savePipelineCacheData(pLogicalDevice->device, pLogicalDevice->vkd,
+                              pLogicalDevice->pipelineCache, pLogicalDevice->pipelineCachePath);
     }
 
     void rebuildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
