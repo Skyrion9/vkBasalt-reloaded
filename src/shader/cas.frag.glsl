@@ -21,6 +21,7 @@
 
 layout(set=0, binding=0) uniform sampler2D img;
 layout(constant_id = 0) const float sharpness = 0.4;
+layout(constant_id = 1) const int hdrMode = 0;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
@@ -44,30 +45,34 @@ void main()
     vec3 h = textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb;
     vec3 i = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb;
 
-    // AMD's intentional "soft min/max" bias. 
+    // AMD's intentional "soft min/max" bias.
     // Soft min and max.
     //  a b c             b
     //  d e f * 0.5  +  d e f * 0.5
     //  g h i             h
     vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
     vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
-    mnRGB += mnRGB2; 
+    mnRGB += mnRGB2;
 
     vec3 mxRGB  = max(max(max(d,e),max(f,b)),h);
     vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
-    mxRGB += mxRGB2; 
-
-    // Prevent divide-by-zero on pure black pixels
-    vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
+    mxRGB += mxRGB2;
+    // SDR formula uses absolute headroom (2.0 - mxRGB) which collapses to 0 when mxRGB > 2.0.
+    // Use a scale invariant local contrast ratio for HDR.
+    vec3 ampRGB;
+    if (hdrMode == 1) {
+        ampRGB = clamp(mnRGB / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
+    } else {
+        ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
+    }
     float peak = 8.0 - 3.0 * sharpness;
-
     //                          0 w 0
     //  Filter shape:           w 1 w
-    //                          0 w 0  
-    
+    //                          0 w 0
+
     // Prevent divide-by-zero in inversesqrt
     vec3 invAmp = inversesqrt(max(ampRGB, vec3(0.0001)));
-    
+
     // ALGEBRAIC REDUCTION:
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. Perfectly stable.
     vec3 P = invAmp * peak;
@@ -75,6 +80,7 @@ void main()
     
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. No divide-by-zero possible.
     vec3 outColor = clamp((e * P - window) / (P - 4.0), 0.0, 1.0);
-
-    fragColor = vec4(outColor, inputColor.a);
+    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
+    vec3 finalColor = (hdrMode == 1) ? max(outColor, 0.0) : outColor;
+    fragColor = vec4(finalColor, inputColor.a);
 }

@@ -26,6 +26,7 @@ layout(set=0, binding=0) uniform sampler2D img;
 
 layout (constant_id = 0) const float sharpen = 0.5;
 layout (constant_id = 1) const float denoise = 0.17;
+layout (constant_id = 2) const int hdrMode = 0;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
@@ -88,6 +89,8 @@ void main()
     float lg = GetLuma(g);
     float lh = GetLuma(h);
 
+    // HDR adaptation luminance: reference level for threshold scaling. SDR -> 1.0 (no-op).
+    float hdrNorm = (hdrMode == 1) ? clamp(lx, 0.18, 16.0) : 1.0;
     // cross min/max
     const float ncmin = min(min(le, lf), min(lg, lh));
     const float ncmax = max(max(le, lf), max(lg, lh));
@@ -100,9 +103,11 @@ void main()
     float lmin = 0.5 * min(ncmin, npmin) + 0.5 * npmin;
     float lmax = 0.5 * max(ncmax, npmax) + 0.5 * npmax;
 
-    // compute local contrast enhancement kernel
-    float lw = lmin / (lmax + kLowBlock);
-    float hw = Square(1.0 - Square(max(lmax - kHighBlock, 0.0) / ((1.0 - kHighBlock))));
+    // compute local contrast enhancement kernel, scale kLowBlock with hdrNorm so shadow protection adapts to HDR luminance
+    float lw = lmin / (lmax + kLowBlock * hdrNorm);
+    // Scale kHighBlock with hdrNorm so highlight fall-off adapts to HDR luminance
+    float kHighBlockScaled = kHighBlock * hdrNorm;
+    float hw = Square(1.0 - Square(max(lmax - kHighBlockScaled, 0.0) / max(hdrNorm - kHighBlockScaled, 0.0001)));
 
     // noise suppression
     // Note: Ensure that the denoiseFactor is in the range of (10, 1000) on the CPU-side prior to launching this shader.
@@ -112,7 +117,7 @@ void main()
     //      float kernelDenoise = 1.0 / (kDenoiseMin + (kDenoiseMax - kDenoiseMin) * min(max(denoise, 0.0), 1.0));
     // where kernelDenoise is the value to be passed in to this shader (the amount of noise suppression is inversely proportional to this value),
     //       denoise is the value chosen by the user, in the range (0, 1)
-	const float kernelDenoise = 1.0 / (kDenoiseMin + (kDenoiseMax - kDenoiseMin) * denoise);
+    const float kernelDenoise = 1.0 / (kDenoiseMin + (kDenoiseMax - kDenoiseMin) * denoise);
     const float nw = Square((lmax - lmin) * kernelDenoise);
 
     // pick conservative boost
@@ -142,11 +147,13 @@ void main()
     // normalize (divide the accumulator by the sum of convolution weights)
     accum /= 1.0 + 6.0 * k;
 
-    // accumulator is in linear light space            
+    // accumulator is in linear light space
     float delta = accum - lx;
     x.x += delta;
     x.y += delta;
     x.z += delta;
 
-    fragColor = x;
+    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
+    vec3 finalColor = (hdrMode == 1) ? max(x.rgb, 0.0) : clamp(x.rgb, 0.0, 1.0);
+    fragColor = vec4(finalColor, x.a);
 }
