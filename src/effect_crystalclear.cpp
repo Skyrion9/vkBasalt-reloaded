@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <algorithm>
 #include <string>
+#include <unordered_map>
+
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -70,40 +72,58 @@ namespace vkBasalt
         float def_fineGrainWeight = 0.4f;
         float def_coarseGrainWeight = 0.8f;
 
-        // Override defaults based on preset
-        if (preset == "esports") {
-            def_SharpStrength = 2.0f; def_casStrength = 2.5f; def_guardStrength = 0.6f;
-            def_extremeProtection = 0.5f; def_shimmerReduction = 0.6f; def_enableFilmGrain = 0;
-            def_vibrance = 0.2f; def_blendIfDark = 15; def_blendIfLight = 240;
-        } else if (preset == "artifactless") {
-            def_SharpStrength = 1.2f; def_casStrength = 1.5f; def_guardStrength = 0.9f;
-            def_extremeProtection = 0.8f; def_shimmerReduction = 0.8f; def_bandPassWidth = 0.6f;
-            def_edgeThreshLow = 0.05f; def_edgeThreshHigh = 0.35f; def_clarityTextureProtection = 0.6f;
-            def_enableFilmGrain = 0; def_enableDeband = 1; def_debandStrength = 0.4f;
-            def_enableChromaSmooth = 1; def_chromaSmoothStrength = 0.4f; def_specularDesat = 0.2f;
-        } else if (preset == "maxsharp") {
-            def_SharpStrength = 3.5f; def_casStrength = 4.0f; def_casSharpness = 1.0f;
-            def_guardStrength = 0.2f; def_extremeProtection = 0.1f; def_shimmerReduction = 0.2f;
-            def_bandPassWidth = 1.2f; def_edgeThreshLow = 0.02f; def_edgeThreshHigh = 0.20f;
-            def_clarityTextureProtection = 0.1f; def_filmGrainStrength = 0.8f;
-        } else if (preset == "vibrantsharp") {
-            def_SharpStrength = 2.5f; def_casStrength = 2.5f; def_guardStrength = 0.5f;
-            def_extremeProtection = 0.4f; def_shimmerReduction = 0.5f; def_filmGrainStrength = 0.6f;
-            def_enableDeband = 1; def_debandStrength = 0.6f; def_toneCurve = 0.2f;
-            def_vibrance = 0.6f; def_specularDesat = 0.1f;
-        } else if (preset == "devfxaa") {
-            def_enableAA = 1; def_fxaaEdgeThreshold = 0.04f; def_fxaaSubpixAmount = 0.8f;
-            def_SharpStrength = 2.0f; def_casStrength = 2.5f; def_guardStrength = 0.6f;
-            def_filmGrainStrength = 0.8f;
-        } else if (preset == "cinematic") {
-            def_SharpStrength = 1.8f; def_casStrength = 1.5f; def_guardStrength = 0.7f;
-            def_extremeProtection = 0.6f; def_shimmerReduction = 0.5f; def_bandPassWidth = 0.7f;
-            def_filmGrainStrength = 1.2f; def_filmGrainMinimum = 0.1f; def_coarseGrainWeight = 0.9f;
-            def_enableDeband = 1; def_debandStrength = 0.5f; def_toneCurve = 0.5f;
-            def_vibrance = -0.1f; def_enableChromaSmooth = 1; def_chromaSmoothStrength = 0.6f;
-            def_specularDesat = 0.4f; def_blendIfDark = 20; def_blendIfLight = 230;
+        // Override defaults based on preset via lookup table
+        struct PresetOverride {
+            float    SharpStrength = -1; float casStrength = -1; float casSharpness = -1;
+            float    guardStrength = -1; float extremeProtection = -1; float shimmerReduction = -1;
+            float    bandPassWidth = -1; float edgeThreshLow = -1; float edgeThreshHigh = -1;
+            float    clarityTextureProtection = -1; int32_t enableAA = -1; float fxaaEdgeThreshold = -1;
+            float    fxaaSubpixAmount = -1; float filmGrainStrength = -1; float filmGrainMinimum = -1;
+            float    coarseGrainWeight = -1; int32_t enableFilmGrain = -1; int32_t enableDeband = -1;
+            float    debandStrength = -1; float toneCurve = -1; float vibrance = -999;
+            int32_t  enableChromaSmooth = -1; float chromaSmoothStrength = -1; float specularDesat = -1;
+            int32_t  blendIfDark = -1; int32_t blendIfLight = -1;
+        };
+
+        static const std::unordered_map<std::string, PresetOverride> presetTable = {
+            {"esports",       {2.0f, 2.5f, -1,   0.6f, 0.5f, 0.6f, -1,  -1,   -1,   -1,  -1, -1,    -1,   0.8f, -1,   -1,  0,  -1, -1,  -1,   0.2f,  -1, -1,   -1,  15, 240}},
+            {"artifactless",  {1.2f, 1.5f, -1,   0.9f, 0.8f, 0.8f, 0.6f, 0.05f, 0.35f, 0.6f, -1, -1,    -1,   -1,   -1,   -1,  0,  1,  0.4f, -1,   -1,     1,  0.4f, 0.2f, -1, -1}},
+            {"maxsharp",      {3.5f, 4.0f, 1.0f, 0.2f, 0.1f, 0.2f, 1.2f, 0.02f, 0.20f, 0.1f, -1, -1,    -1,   0.8f, -1,   -1,  -1, -1, -1,  -1,   -1,     -1, -1,   -1,   -1, -1}},
+            {"vibrantsharp",  {2.5f, 2.5f, -1,   0.5f, 0.4f, 0.5f, -1,  -1,   -1,   -1,  -1, -1,    -1,   0.6f, -1,   -1,  -1, 1,  0.6f, 0.2f, 0.6f,  -1, -1,   0.1f, -1, -1}},
+            {"devfxaa",       {2.0f, 2.5f, -1,   0.6f, -1,  -1,  -1,  -1,   -1,   -1,   1,  0.04f, 0.8f, 0.8f, -1,   -1,  -1, -1, -1,  -1,   -1,     -1, -1,   -1,   -1, -1}},
+            {"cinematic",     {1.8f, 1.5f, -1,   0.7f, 0.6f, 0.5f, 0.7f, -1,   -1,   -1,  -1, -1,    -1,   1.2f, 0.1f, 0.9f, -1, 1,  0.5f, 0.5f, -0.1f,  1,  0.6f, 0.4f, 20, 230}},
+        };
+
+        auto presetIt = presetTable.find(preset);
+        if (presetIt != presetTable.end()) {
+            const auto& p = presetIt->second;
+            if (p.SharpStrength >= 0)          def_SharpStrength = p.SharpStrength;
+            if (p.casStrength >= 0)            def_casStrength = p.casStrength;
+            if (p.casSharpness >= 0)           def_casSharpness = p.casSharpness;
+            if (p.guardStrength >= 0)          def_guardStrength = p.guardStrength;
+            if (p.extremeProtection >= 0)      def_extremeProtection = p.extremeProtection;
+            if (p.shimmerReduction >= 0)       def_shimmerReduction = p.shimmerReduction;
+            if (p.bandPassWidth >= 0)          def_bandPassWidth = p.bandPassWidth;
+            if (p.edgeThreshLow >= 0)          def_edgeThreshLow = p.edgeThreshLow;
+            if (p.edgeThreshHigh >= 0)         def_edgeThreshHigh = p.edgeThreshHigh;
+            if (p.clarityTextureProtection >= 0) def_clarityTextureProtection = p.clarityTextureProtection;
+            if (p.enableAA >= 0)               def_enableAA = p.enableAA;
+            if (p.fxaaEdgeThreshold >= 0)      def_fxaaEdgeThreshold = p.fxaaEdgeThreshold;
+            if (p.fxaaSubpixAmount >= 0)       def_fxaaSubpixAmount = p.fxaaSubpixAmount;
+            if (p.filmGrainStrength >= 0)      def_filmGrainStrength = p.filmGrainStrength;
+            if (p.filmGrainMinimum >= 0)       def_filmGrainMinimum = p.filmGrainMinimum;
+            if (p.coarseGrainWeight >= 0)      def_coarseGrainWeight = p.coarseGrainWeight;
+            if (p.enableFilmGrain >= 0)        def_enableFilmGrain = p.enableFilmGrain;
+            if (p.enableDeband >= 0)           def_enableDeband = p.enableDeband;
+            if (p.debandStrength >= 0)         def_debandStrength = p.debandStrength;
+            if (p.toneCurve >= 0)              def_toneCurve = p.toneCurve;
+            if (p.vibrance > -999)             def_vibrance = p.vibrance;
+            if (p.enableChromaSmooth >= 0)     def_enableChromaSmooth = p.enableChromaSmooth;
+            if (p.chromaSmoothStrength >= 0)   def_chromaSmoothStrength = p.chromaSmoothStrength;
+            if (p.specularDesat >= 0)          def_specularDesat = p.specularDesat;
+            if (p.blendIfDark >= 0)            def_blendIfDark = p.blendIfDark;
+            if (p.blendIfLight >= 0)           def_blendIfLight = p.blendIfLight;
         }
-        // "devfav" or unknown falls through to base defaults
 
         this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", def_radius), 0.5f, 8.0f);
         this->offset = std::clamp(pConfig->getOption<float>("crystalclearBilateralOffset", def_offset), 0.5f, 3.0f);
