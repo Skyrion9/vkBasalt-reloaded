@@ -26,12 +26,12 @@ namespace vkBasalt
 
         return commandBuffers;
     }
-        void writeCommandBuffers(LogicalDevice*                                 pLogicalDevice,
-                             std::vector<std::shared_ptr<vkBasalt::Effect>> effects,
-                             VkImage                                        depthImage,
-                             VkImageView                                    depthImageView,
-                             VkFormat                                       depthFormat,
-                             std::vector<VkCommandBuffer>                   commandBuffers)
+        void writeCommandBuffers(LogicalDevice*                                           pLogicalDevice,
+                             const std::vector<std::shared_ptr<vkBasalt::Effect>>&        effects,
+                             VkImage                                                      depthImage,
+                             VkImageView                                                  depthImageView,
+                             VkFormat                                                     depthFormat,
+                             std::vector<VkCommandBuffer>                                 commandBuffers)
     {
         VkCommandBufferBeginInfo beginInfo = {};
 
