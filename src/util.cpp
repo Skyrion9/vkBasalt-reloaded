@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <unistd.h>
+#include <cstring>
 
 namespace vkBasalt
 {
@@ -9,7 +10,7 @@ namespace vkBasalt
     {
         for (const char* other : stringVector)
         {
-            if (other == std::string(addString))
+            if (strcmp(other, addString) == 0)
             {
                 return;
             }
