@@ -73,7 +73,12 @@ namespace vkBasalt
         memoryAllocateInfo.memoryTypeIndex = findMemoryTypeIndex(pLogicalDevice, memoryRequirements.memoryTypeBits, properties);
 
         result = pLogicalDevice->vkd.AllocateMemory(pLogicalDevice->device, &memoryAllocateInfo, nullptr, &imageMemory);
-        ASSERT_VULKAN(result);
+        if (result != VK_SUCCESS) {
+            for (uint32_t i = 0; i < count; i++)
+                pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, images[i], nullptr);
+            images.clear();
+            ASSERT_VULKAN(result);
+        }
 
         for (uint32_t i = 0; i < count; i++)
         {
