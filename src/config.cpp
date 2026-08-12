@@ -154,7 +154,10 @@ namespace vkBasalt
             }
             switch (nextChar)
             {
-                case '#': goto BREAK;
+                case '#':
+                    if (!foundEquals || key.empty() || value.empty()) goto BREAK;
+                    appendChar(nextChar);
+                    break;
                 case '"': inQuotes = true; break;
                 case '\t':
                 case ' ': break;
