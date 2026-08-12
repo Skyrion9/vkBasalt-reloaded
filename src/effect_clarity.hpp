@@ -23,6 +23,10 @@ namespace vkBasalt
         ~ClarityEffect();
 
         void virtual applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
+
+        // Declarative parameter interface
+        std::string getName() const override { return "clarity"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
         
         private:
         float radius;

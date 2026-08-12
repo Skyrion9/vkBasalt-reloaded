@@ -26,6 +26,9 @@ namespace vkBasalt
                   Config*              pConfig);
         ~LutEffect();
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
+    
+        std::string getName() const override { return "lut"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
 
     private:
         VkImage               lutImage;

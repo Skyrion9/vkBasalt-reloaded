@@ -33,35 +33,36 @@ namespace vkBasalt
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = clarity_frag;
 
-        // Dynamic push constant size based on the ClarityPushConstants struct (.hpp).
         this->pushConstantSize = sizeof(ClarityPushConstants);
 
-        this->radius = pConfig->getOption<float>("clarityRadius", 2.0f);
-        this->offset = pConfig->getOption<float>("clarityOffset", 1.5f);
+        auto getAndStore = [&](const std::string& key, double defaultVal) -> double {
+            double val = pConfig->getOption<float>(key, (float)defaultVal);
+            m_paramValues[key] = val;
+            return val;
+        };
+        auto getAndStoreInt = [&](const std::string& key, double defaultVal) -> double {
+            double val = (double)pConfig->getOption<int32_t>(key, (int32_t)defaultVal);
+            m_paramValues[key] = val;
+            return val;
+        };
+
+        this->radius = std::clamp((float)getAndStore("clarityRadius", 2.0f), 1.0f, 8.0f);
+        this->offset = std::clamp((float)getAndStore("clarityOffset", 1.5f), 0.5f, 3.0f);
 
         float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
         float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
-
         float rawOffset = 1.5f * radius * offset;
         float baseOffset = std::floor(rawOffset) + 0.5f;
 
-        // Synced to PushVec2 struct
         pushConstants.step1.x = baseOffset * texelSizeX;
         pushConstants.step1.y = baseOffset * texelSizeY;
         pushConstants.step2.x = pushConstants.step1.x * 3.0f;
         pushConstants.step2.y = pushConstants.step1.y * 3.0f;
 
         struct ClaritySpecData {
-            float radius;
-            float offset;
-            float strength;
-            int32_t blendMode;
-            int32_t blendIfDark;
-            int32_t blendIfLight;
-            float edgeThreshLow;
-            float edgeThreshHigh;
-            int32_t enableDithering;
-            int32_t hdrMode;
+            float radius; float offset; float strength; int32_t blendMode;
+            int32_t blendIfDark; int32_t blendIfLight; float edgeThreshLow;
+            float edgeThreshHigh; int32_t enableDithering; int32_t hdrMode;
         };
 
         bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
@@ -73,13 +74,13 @@ namespace vkBasalt
         ClaritySpecData specData;
         specData.radius          = this->radius;
         specData.offset          = this->offset;
-        specData.strength        = std::clamp(pConfig->getOption<float>("clarityStrength", 1.0f), 0.0f, 5.0f);
-        specData.blendMode       = std::clamp(pConfig->getOption<int32_t>("clarityBlendMode", 1), 0, 6);
-        specData.blendIfDark     = std::clamp(pConfig->getOption<int32_t>("clarityBlendIfDark", 40), 0, 255);
-        specData.blendIfLight    = std::clamp(pConfig->getOption<int32_t>("clarityBlendIfLight", 220), 0, 255);
-        specData.edgeThreshLow   = std::clamp(pConfig->getOption<float>("clarityEdgeThreshLow", 0.05f), 0.0f, 1.0f);
-        specData.edgeThreshHigh  = std::clamp(pConfig->getOption<float>("clarityEdgeThreshHigh", 0.25f), 0.0f, 1.0f);
-        specData.enableDithering = std::clamp(pConfig->getOption<int32_t>("clarityEnableDithering", 1), 0, 1);
+        specData.strength        = std::clamp((float)getAndStore("clarityStrength", 1.0f), 0.0f, 5.0f);
+        specData.blendMode       = std::clamp((int32_t)getAndStoreInt("clarityBlendMode", 1), 0, 6);
+        specData.blendIfDark     = std::clamp((int32_t)getAndStoreInt("clarityBlendIfDark", 40), 0, 255);
+        specData.blendIfLight    = std::clamp((int32_t)getAndStoreInt("clarityBlendIfLight", 220), 0, 255);
+        specData.edgeThreshLow   = std::clamp((float)getAndStore("clarityEdgeThreshLow", 0.05f), 0.0f, 1.0f);
+        specData.edgeThreshHigh  = std::clamp((float)getAndStore("clarityEdgeThreshHigh", 0.25f), 0.0f, 1.0f);
+        specData.enableDithering = std::clamp((int32_t)getAndStoreInt("clarityEnableDithering", 1), 0, 1);
         specData.hdrMode         = isHDR ? 1 : 0;
 
         VkSpecializationMapEntry mapEntries[10] = {
@@ -186,6 +187,21 @@ namespace vkBasalt
                                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
                                                0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
         Logger::debug("after the second pipeline barrier");
+    }
+
+    const std::vector<EffectParamDesc>& ClarityEffect::getParamDescs() const {
+        static const std::vector<EffectParamDesc> params = {
+            {"clarityStrength",      "Strength",        ParamType::Float, 1.0,   0.0,   5.0,   0.1},
+            {"clarityRadius",        "Radius",          ParamType::Float, 2.0,   1.0,   8.0,   1.0},
+            {"clarityOffset",        "Offset",          ParamType::Float, 1.5,   0.5,   3.0,   0.1},
+            {"clarityBlendMode",     "Blend Mode",      ParamType::Int,   1.0,   0.0,   6.0,   1.0},
+            {"clarityBlendIfDark",   "Blend If Dark",   ParamType::Int,  40.0,   0.0, 255.0,   1.0},
+            {"clarityBlendIfLight",  "Blend If Light",  ParamType::Int, 220.0,   0.0, 255.0,   1.0},
+            {"clarityEdgeThreshLow", "Edge Thresh Low", ParamType::Float, 0.05,  0.0,   1.0,  0.01},
+            {"clarityEdgeThreshHigh","Edge Thresh High",ParamType::Float, 0.25,  0.0,   1.0,  0.01},
+            {"clarityEnableDithering","Enable Dithering",ParamType::Bool, 1.0,   0.0,   1.0,   1.0},
+        };
+        return params;
     }
 
 } // namespace vkBasalt

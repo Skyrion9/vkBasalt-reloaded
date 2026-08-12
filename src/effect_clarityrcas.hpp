@@ -27,6 +27,10 @@ namespace vkBasalt
         
         // Override to update UBO every frame
         void updateEffect() override;
+
+        // Declarative parameter interface
+        std::string getName() const override { return "clarityrcas"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
         
     private:
         float radius;

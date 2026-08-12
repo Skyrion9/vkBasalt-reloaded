@@ -10,7 +10,7 @@
 
 namespace vkBasalt
 {
-    enum class ParamType { Float, Int, Bool, Combo };
+    enum class ParamType { Float, Int, Bool, Combo, FilePath };
 
     struct EffectParamDesc {
         std::string key;
