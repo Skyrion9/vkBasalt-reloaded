@@ -3,6 +3,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <cstring>
+#include <array>
 
 namespace vkBasalt
 {
@@ -20,48 +21,45 @@ namespace vkBasalt
 
     void outputInColor(std::string output, Color foreground, Color background)
     {
-        std::vector<std::string> magicNumbers;
+        std::array<std::string, 2> magicNumbers;
+        size_t magicCount = 0;
         switch (foreground)
         {
-            case Color::black: magicNumbers.push_back("30"); break;
-            case Color::red: magicNumbers.push_back("31"); break;
-            case Color::green: magicNumbers.push_back("32"); break;
-            case Color::yellow: magicNumbers.push_back("33"); break;
-            case Color::blue: magicNumbers.push_back("34"); break;
-            case Color::magenta: magicNumbers.push_back("35"); break;
-            case Color::cyan: magicNumbers.push_back("36"); break;
-            case Color::white: magicNumbers.push_back("37"); break;
+            case Color::black:   magicNumbers[magicCount++] = "30"; break;
+            case Color::red:     magicNumbers[magicCount++] = "31"; break;
+            case Color::green:   magicNumbers[magicCount++] = "32"; break;
+            case Color::yellow:  magicNumbers[magicCount++] = "33"; break;
+            case Color::blue:    magicNumbers[magicCount++] = "34"; break;
+            case Color::magenta: magicNumbers[magicCount++] = "35"; break;
+            case Color::cyan:    magicNumbers[magicCount++] = "36"; break;
+            case Color::white:   magicNumbers[magicCount++] = "37"; break;
             default: break;
         }
         switch (background)
         {
-            case Color::black: magicNumbers.push_back("40"); break;
-            case Color::red: magicNumbers.push_back("41"); break;
-            case Color::green: magicNumbers.push_back("42"); break;
-            case Color::yellow: magicNumbers.push_back("43"); break;
-            case Color::blue: magicNumbers.push_back("44"); break;
-            case Color::magenta: magicNumbers.push_back("45"); break;
-            case Color::cyan: magicNumbers.push_back("46"); break;
-            case Color::white: magicNumbers.push_back("47"); break;
+            case Color::black:   magicNumbers[magicCount++] = "40"; break;
+            case Color::red:     magicNumbers[magicCount++] = "41"; break;
+            case Color::green:   magicNumbers[magicCount++] = "42"; break;
+            case Color::yellow:  magicNumbers[magicCount++] = "43"; break;
+            case Color::blue:    magicNumbers[magicCount++] = "44"; break;
+            case Color::magenta: magicNumbers[magicCount++] = "45"; break;
+            case Color::cyan:    magicNumbers[magicCount++] = "46"; break;
+            case Color::white:   magicNumbers[magicCount++] = "47"; break;
             default: break;
         }
         std::string magicString = "";
-        for (bool first = true; auto& magicNumber : magicNumbers)
+        for (size_t i = 0; i < magicCount; i++)
         {
-            if (!first)
-            {
-                magicString += ";";
-            }
-            magicString += magicNumber;
-            first = false;
+            if (i > 0) magicString += ";";
+            magicString += magicNumbers[i];
         }
         if (magicString.size() == 0 || !isatty(fileno(stdout)))
         {
-            std::cout << output << std::endl;
+            std::cout << output << '\n';
         }
         else
         {
-            std::cout << "\033[" << magicString << "m" << output << "\033[0m" << std::endl;
+            std::cout << "\033[" << magicString << "m" << output << "\033[0m" << '\n';
         }
     }
 } // namespace vkBasalt
