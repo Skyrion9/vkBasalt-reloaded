@@ -1,20 +1,29 @@
 #include "shader.hpp"
 
 #include <array>
-#include <filesystem>
+#include <cstring>
 
 namespace vkBasalt
 {
     void createShaderModule(LogicalDevice* pLogicalDevice, const std::vector<char>& code, VkShaderModule* shaderModule)
     {
-        VkShaderModuleCreateInfo shaderCreateInfo;
+        // Ensure 4-byte alignment for SPIR-V. Copy if the source buffer is misaligned.
+        const uint32_t* spirvData;
+        std::vector<uint32_t> alignedCopy;
+        if (reinterpret_cast<uintptr_t>(code.data()) % alignof(uint32_t) == 0) {
+            spirvData = reinterpret_cast<const uint32_t*>(code.data());
+        } else {
+            alignedCopy.resize(code.size() / sizeof(uint32_t));
+            std::memcpy(alignedCopy.data(), code.data(), code.size());
+            spirvData = alignedCopy.data();
+        }
 
+        VkShaderModuleCreateInfo shaderCreateInfo;
         shaderCreateInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         shaderCreateInfo.pNext    = nullptr;
         shaderCreateInfo.flags    = 0;
         shaderCreateInfo.codeSize = code.size();
-        shaderCreateInfo.pCode    = (uint32_t*) code.data();
-
+        shaderCreateInfo.pCode    = spirvData;
         VkResult result = pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
         ASSERT_VULKAN(result);
     }
