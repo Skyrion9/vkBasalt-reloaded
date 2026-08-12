@@ -252,18 +252,43 @@ namespace vkBasalt {
             pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         }
 
-        // Recreate fake images if the count changed (effect chain grew/shrunk)
         uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
-        if (pLogicalSwapchain->fakeImages.size() != requiredFakeImageCount) {
-            for (auto image : pLogicalSwapchain->fakeImages) {
-                pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, image, nullptr);
+
+        // Chain GREW beyond allocated pool, game holds old VkImage handles, so we must force the game to recreate its swapchain.
+        if (requiredFakeImageCount > pLogicalSwapchain->fakeImages.size()) {
+            Logger::debug("Effect chain grew beyond allocated pool. Forcing swapchain rebuild...");
+            pLogicalSwapchain->forceSwapchainRebuild = true;
+
+            if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
+                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
+                                                       pLogicalSwapchain->commandBuffersEffect.size(),
+                                                       pLogicalSwapchain->commandBuffersEffect.data());
+                pLogicalSwapchain->commandBuffersEffect.clear();
             }
-            pLogicalSwapchain->fakeImages.clear();
-            pLogicalSwapchain->fakeImages = createFakeSwapchainImages(
-                pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo,
-                requiredFakeImageCount, pLogicalSwapchain->fakeImageMemory);
-            Logger::debug("recreated fake swapchain images: " + std::to_string(requiredFakeImageCount));
+            if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
+                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
+                                                       pLogicalSwapchain->commandBuffersNoEffect.size(),
+                                                       pLogicalSwapchain->commandBuffersNoEffect.data());
+                pLogicalSwapchain->commandBuffersNoEffect.clear();
+            }
+
+            pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+            pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+
+            pLogicalSwapchain->effects.clear();
+            pLogicalSwapchain->defaultTransfer.reset();
+
+            pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
+                pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                pLogicalSwapchain->images, pConfig));
+
+            writeCommandBuffers(pLogicalDevice, {pLogicalSwapchain->defaultTransfer}, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED, pLogicalSwapchain->commandBuffersNoEffect);
+            return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
         }
+
+        // Chain SHRUNK or same size, rebuild in-place using existing pool. The game's cached VkImage handles remain valid.
+        Logger::debug("Effect chain fits in existing pool. Rebuilding in-place...");
 
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
