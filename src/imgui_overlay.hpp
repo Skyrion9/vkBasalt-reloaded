@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 #include <vector>
+#include <algorithm>
 
 namespace vkBasalt {
     struct LogicalDevice;

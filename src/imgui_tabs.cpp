@@ -9,6 +9,7 @@
 #include "imgui.h"
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace vkBasalt {
 
@@ -58,6 +59,11 @@ namespace vkBasalt {
         }
     }
 
+    static const char* kBuiltInEffects[] = {
+        "fxaa", "cas", "deband", "smaa", "lut", "dls",
+        "clarity", "clarityrcas", "crystalclear"
+    };
+
     void ImGuiOverlay::applyKeybind(int field, ImGuiKey key) {
         const char* configKeys[] = {"toggleKey", "reloadConfigKey", "overlayToggleKey"};
         std::string newName = imguiKeyToConfigName(key);
@@ -80,42 +86,179 @@ namespace vkBasalt {
         }
     }
 
+    // Effect category priority for auto sort
+    static int getEffectSortPriority(const std::string& name) {
+        // 1. AA
+        if (name == "smaa" || name == "fxaa") return 0;
+        // 2.Debanding
+        if (name == "deband") return 1;
+        // 3. Color grading / LUT
+        if (name == "lut" || name == "dls") return 2;
+        // 4. Contrast / Clarity (CrystalClear includes CAS + grain, must come later.)
+        if (name == "clarity" || name == "clarityrcas") return 3;
+        if (name == "crystalclear") return 4;
+        // 5. Standalone sharpening
+        if (name == "cas") return 5;
+        // 6. Unknown / ReShade effects
+        return 6;
+    }
+
     void ImGuiOverlay::drawShadersTab() {
-        if (!m_pSwapchain || m_pSwapchain->effects.empty()) {
-            ImGui::Text("No effects loaded.");
-            return;
-        }
-        if (m_selectedEffectIndex >= m_pSwapchain->effects.size()) {
-            m_selectedEffectIndex = 0;
+        if (!m_pSwapchain) { ImGui::Text("No swapchain."); return; }
+
+        // Read the current effect chain from config
+        std::vector<std::string> chainList = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+
+        // Build unified list all built in shaders + any ReShade effects in the chain
+        std::vector<std::string> allEffects;
+        for (const char* b : kBuiltInEffects) allEffects.push_back(b);
+        for (auto& name : chainList) {
+            bool isBuiltin = false;
+            for (const char* b : kBuiltInEffects) { if (name == b) { isBuiltin = true; break; } }
+            if (!isBuiltin) allEffects.push_back(name); // ReShade effect
         }
 
-        ImGui::BeginChild("##effect_list", ImVec2(200, 0), true);
-        ImGui::Text("Effects");
+        auto isInChain = [&](const std::string& name) {
+            return std::find(chainList.begin(), chainList.end(), name) != chainList.end();
+        };
+
+        if (m_selectedEffectIndex >= allEffects.size()) m_selectedEffectIndex = 0;
+
+        ImGui::BeginChild("##effect_list", ImVec2(260, 0), true);
+        ImGui::Text("Effect Chain");
+        ImGui::TextDisabled("Checked = active, order top to bottom");
         ImGui::Separator();
-        for (size_t i = 0; i < m_pSwapchain->effects.size(); i++) {
-            auto& eff = m_pSwapchain->effects[i];
-            bool is_selected = (m_selectedEffectIndex == i);
-            if (ImGui::Selectable(eff->getName().c_str(), is_selected, 0, ImVec2(0, ImGui::GetFrameHeight()))) {
-                m_selectedEffectIndex = i;
+
+        // Active effects iterate chainList directly so visual order = execution order
+        for (size_t ci = 0; ci < chainList.size(); ci++) {
+            // Map back to allEffects index for selection tracking
+            size_t allIdx = 0;
+            for (size_t i = 0; i < allEffects.size(); i++) {
+                if (allEffects[i] == chainList[ci]) { allIdx = i; break; }
             }
+
+            ImGui::PushID((int)allIdx);
+
+            bool checked = true;
+            if (ImGui::Checkbox("##en", &checked)) {
+                chainList.erase(chainList.begin() + ci);
+                std::string newOrder;
+                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
+                m_pConfig->setOption("effects", newOrder);
+                m_hasUnsavedChanges = true;
+                g_triggerPreviewReload = true;
+                ImGui::PopID();
+                break; // List mutated, stop iterating
+            }
+            ImGui::SameLine();
+
+            float arrowBtnSize = ImGui::GetFrameHeight();
+            float spacing = ImGui::GetStyle().ItemSpacing.x;
+            float arrowsTotalWidth = arrowBtnSize * 2 + spacing * 3;
+            float selectableWidth = ImGui::GetContentRegionAvail().x - arrowsTotalWidth;
+
+            bool is_selected = (m_selectedEffectIndex == allIdx);
+            if (ImGui::Selectable(chainList[ci].c_str(), is_selected, 0, ImVec2(selectableWidth, ImGui::GetFrameHeight())))
+                m_selectedEffectIndex = allIdx;
+
+            // Up arrow
+            ImGui::SameLine(0, spacing);
+            ImGui::BeginDisabled(ci == 0);
+            if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
+                std::iter_swap(chainList.begin() + ci, chainList.begin() + ci - 1);
+                std::string newOrder;
+                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
+                m_pConfig->setOption("effects", newOrder);
+                m_hasUnsavedChanges = true;
+                g_triggerPreviewReload = true;
+            }
+            ImGui::EndDisabled();
+
+            // Down arrow
+            ImGui::SameLine();
+            ImGui::BeginDisabled(ci == chainList.size() - 1);
+            if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
+                std::iter_swap(chainList.begin() + ci, chainList.begin() + ci + 1);
+                std::string newOrder;
+                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
+                m_pConfig->setOption("effects", newOrder);
+                m_hasUnsavedChanges = true;
+                g_triggerPreviewReload = true;
+            }
+            ImGui::EndDisabled();
+
+            ImGui::PopID();
+        }
+
+        ImGui::Separator();
+        ImGui::TextDisabled("Inactive:");
+
+        // Inactive effects (not in chain)
+        for (size_t i = 0; i < allEffects.size(); i++) {
+            if (isInChain(allEffects[i])) continue;
+            ImGui::PushID((int)i);
+
+            bool checked = false;
+            if (ImGui::Checkbox("##en", &checked)) {
+                // Add to chain
+                chainList.push_back(allEffects[i]);
+                std::string newOrder;
+                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
+                m_pConfig->setOption("effects", newOrder);
+                m_hasUnsavedChanges = true;
+                g_triggerPreviewReload = true; // Immediate rebuild
+            }
+            ImGui::SameLine();
+
+            bool is_selected = (m_selectedEffectIndex == i);
+            ImVec4 col(0.5f, 0.5f, 0.5f, 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_Text, col);
+            float selWidth = ImGui::GetContentRegionAvail().x;
+            if (ImGui::Selectable(allEffects[i].c_str(), is_selected, 0, ImVec2(selWidth, ImGui::GetFrameHeight())))
+                m_selectedEffectIndex = i;
+            ImGui::PopStyleColor();
+
+            ImGui::PopID();
+        }
+
+        ImGui::Separator();
+        if (ImGui::Button("Auto-Sort (AA > Deband > Color > Contrast > Sharpen)")) {
+            std::stable_sort(chainList.begin(), chainList.end(),
+                [](const std::string& a, const std::string& b) {
+                    return getEffectSortPriority(a) < getEffectSortPriority(b);
+                });
+            std::string newOrder;
+            for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
+            m_pConfig->setOption("effects", newOrder);
+            m_hasUnsavedChanges = true;
+            g_triggerPreviewReload = true;
         }
         ImGui::EndChild();
 
         ImGui::SameLine();
 
+        // Right panel parameters for selected effect
         ImGui::BeginChild("##effect_params", ImVec2(0, 0), true);
-        auto& selectedEffect = m_pSwapchain->effects[m_selectedEffectIndex];
-        ImGui::Text("Effect: %s", selectedEffect->getName().c_str());
+        std::string selectedName = allEffects[m_selectedEffectIndex];
+        bool inChain = isInChain(selectedName);
 
-        if (g_effectsEnabled.load()) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "[ON]");
-        } else {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "[OFF]");
-        }
+        ImGui::Text("Effect: %s", selectedName.c_str());
+        if (inChain) { ImGui::SameLine(); ImGui::TextColored(ImVec4(0.3f,0.9f,0.4f,1), "[ACTIVE]"); }
+        else         { ImGui::SameLine(); ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "[INACTIVE]"); }
         ImGui::Separator();
 
+        // Find the live effect object
+        Effect* selectedEffect = nullptr;
+        for (auto& eff : m_pSwapchain->effects)
+            if (eff->getName() == selectedName) { selectedEffect = eff.get(); break; }
+
+        if (!selectedEffect) {
+            ImGui::TextWrapped("Tick the checkbox to add this effect to the chain and edit its parameters.");
+            ImGui::EndChild();
+            return;
+        }
+
+        // Search filter
         if (m_focusSearch) {
             ImGui::SetKeyboardFocusHere();
             m_focusSearch = false;
@@ -149,9 +292,7 @@ namespace vkBasalt {
                     std::string keyLower(p.key);
                     std::transform(keyLower.begin(), keyLower.end(), keyLower.begin(), ::tolower);
                     if (labelLower.find(searchLower) == std::string::npos &&
-                        keyLower.find(searchLower) == std::string::npos) {
-                        continue;
-                    }
+                        keyLower.find(searchLower) == std::string::npos) continue;
                 }
                 const char* cat = "General";
                 if (p.key.find("Preset") != std::string::npos) cat = "Preset";
@@ -172,14 +313,10 @@ namespace vkBasalt {
                 bool open = ImGui::CollapsingHeader(cat.name, ImGuiTreeNodeFlags_DefaultOpen);
                 ImGui::PopStyleColor();
                 if (!open) continue;
-
                 ImGui::Indent(8.0f);
                 for (const auto* p : cat.items) {
                     ImGui::PushID(p->key.c_str());
-                    if (m_justOpened && !focusedFirst) {
-                        ImGui::SetKeyboardFocusHere();
-                        focusedFirst = true;
-                    }
+                    if (m_justOpened && !focusedFirst) { ImGui::SetKeyboardFocusHere(); focusedFirst = true; }
                     switch (p->type) {
                         case ParamType::Float: {
                             float val = (float)selectedEffect->getParam(p->key);
@@ -239,21 +376,82 @@ namespace vkBasalt {
                         case ParamType::Combo: {
                             std::string currentStr = m_pConfig->getOption<std::string>(p->key, "");
                             int currentIdx = 0;
-                            for (size_t i = 0; i < p->comboOptions.size(); i++) {
-                                if (p->comboOptions[i] == currentStr) { currentIdx = (int)i; break; }
+                            for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
+                                if (p->comboOptions[ci] == currentStr) { currentIdx = (int)ci; break; }
                             }
                             const char* preview = p->comboOptions.empty() ? "" : p->comboOptions[currentIdx].c_str();
                             if (ImGui::BeginCombo(p->label.c_str(), preview)) {
-                                for (size_t i = 0; i < p->comboOptions.size(); i++) {
-                                    bool is_sel = (currentIdx == (int)i);
-                                    if (ImGui::Selectable(p->comboOptions[i].c_str(), is_sel)) {
-                                        m_pConfig->setOption(p->key, p->comboOptions[i]);
-                                        m_pConfig->savePerGame();
-                                        g_triggerSoftReload = true;
+                                for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
+                                    bool is_sel = (currentIdx == (int)ci);
+                                    if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
+                                        m_pConfig->setOption(p->key, p->comboOptions[ci]);
+                                        m_hasUnsavedChanges = true;
+                                        g_triggerPreviewReload = true;
                                     }
                                     if (is_sel) ImGui::SetItemDefaultFocus();
                                 }
                                 ImGui::EndCombo();
+                            }
+                            break;
+                        }
+                        case ParamType::FilePath: {
+                            // Show current path
+                            std::string currentPath = m_pConfig->getOption<std::string>(p->key, "");
+                            char pathBuf[1024] = {};
+                            strncpy(pathBuf, currentPath.c_str(), sizeof(pathBuf) - 1);
+
+                            ImGui::Text("%s", p->label.c_str());
+                            ImGui::PushItemWidth(-1.0f);
+                            if (ImGui::InputText("##filepath", pathBuf, sizeof(pathBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
+                                m_pConfig->setOption(p->key, std::string(pathBuf));
+                                m_hasUnsavedChanges = true;
+                                m_previewDirty = true;
+                                m_lastChangeTime = ImGui::GetTime();
+                            }
+                            ImGui::PopItemWidth();
+
+                            // Simple file browser that lists .cube files from common directories
+                            static bool showBrowser = false;
+                            static std::string browserDir;
+                            if (browserDir.empty()) {
+                                const char* home = getenv("HOME");
+                                browserDir = home ? std::string(home) : ".";
+                            }
+
+                            if (ImGui::Button("Browse...")) {
+                                showBrowser = !showBrowser;
+                            }
+
+                            if (showBrowser) {
+                                ImGui::BeginChild("##file_browser", ImVec2(0, 200), true);
+                                ImGui::Text("Directory: %s", browserDir.c_str());
+
+                                // List .cube files in current directory
+                                std::error_code ec;
+                                if (std::filesystem::exists(browserDir, ec)) {
+                                    for (auto& entry : std::filesystem::directory_iterator(browserDir, ec)) {
+                                        std::string name = entry.path().filename().string();
+                                        if (entry.is_directory()) {
+                                            if (ImGui::Selectable(("[DIR] " + name).c_str())) {
+                                                browserDir = entry.path().string();
+                                            }
+                                        } else if (name.size() > 5 && name.substr(name.size() - 5) == ".cube") {
+                                            if (ImGui::Selectable(name.c_str())) {
+                                                m_pConfig->setOption(p->key, entry.path().string());
+                                                m_hasUnsavedChanges = true;
+                                                g_triggerPreviewReload = true;
+                                                showBrowser = false;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Navigate up
+                                if (ImGui::Button(".. (parent)")) {
+                                    std::filesystem::path parent = std::filesystem::path(browserDir).parent_path();
+                                    if (!parent.empty()) browserDir = parent.string();
+                                }
+                                ImGui::EndChild();
                             }
                             break;
                         }
@@ -265,6 +463,7 @@ namespace vkBasalt {
             m_justOpened = false;
         }
 
+        // Live preview debounce (for parameter sliders, not checkbox toggles)
         if (m_previewDirty && m_hasUnsavedChanges) {
             float elapsed = ImGui::GetTime() - m_lastChangeTime;
             if (elapsed > 0.25f) {
@@ -395,15 +594,22 @@ namespace vkBasalt {
         ImGui::SameLine();
         if (ImGui::Button("Save Current as Preset")) {
             if (presetName[0] != '\0') {
-                if (m_pSwapchain && !m_pSwapchain->effects.empty() && m_selectedEffectIndex < m_pSwapchain->effects.size()) {
-                    auto& eff = m_pSwapchain->effects[m_selectedEffectIndex];
-                    const auto& params = eff->getParamDescs();
-                    for (const auto& p : params) {
-                        if (p.type == ParamType::Combo) continue;
-                        double val = eff->getParam(p.key);
-                        std::string valStr = std::to_string(val);
-                        std::replace(valStr.begin(), valStr.end(), ',', '.');
-                        m_pConfig->setOption(p.key, valStr);
+                // Resolve selected effect by name, not by index into the active chain
+                std::vector<std::string> effectNames = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+                if (m_pSwapchain && m_selectedEffectIndex < effectNames.size()) {
+                    std::string selectedName = effectNames[m_selectedEffectIndex];
+                    for (auto& eff : m_pSwapchain->effects) {
+                        if (eff->getName() == selectedName) {
+                            const auto& params = eff->getParamDescs();
+                            for (const auto& p : params) {
+                                if (p.type == ParamType::Combo) continue;
+                                double val = eff->getParam(p.key);
+                                std::string valStr = std::to_string(val);
+                                std::replace(valStr.begin(), valStr.end(), ',', '.');
+                                m_pConfig->setOption(p.key, valStr);
+                            }
+                            break;
+                        }
                     }
                 }
                 m_pConfig->savePreset(std::string(presetName));

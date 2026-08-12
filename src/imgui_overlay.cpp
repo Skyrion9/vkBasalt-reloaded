@@ -523,17 +523,24 @@ namespace vkBasalt {
 
         // Footer
         ImGui::Separator();
-        if (m_activeTab == 0) { // Shaders
+        if (m_activeTab == 0) { // Shaders tab
             if (ImGui::Button("Save & Apply")) {
-                if (m_pSwapchain && !m_pSwapchain->effects.empty() && m_selectedEffectIndex < m_pSwapchain->effects.size()) {
-                    auto& eff = m_pSwapchain->effects[m_selectedEffectIndex];
-                    const auto& params = eff->getParamDescs();
-                    for (const auto& p : params) {
-                        if (p.type == ParamType::Combo) continue;
-                        double val = eff->getParam(p.key);
-                        std::string valStr = std::to_string(val);
-                        std::replace(valStr.begin(), valStr.end(), ',', '.');
-                        m_pConfig->setOption(p.key, valStr);
+                // Resolve selected effect by name, not by index into the active chain
+                std::vector<std::string> effectNames = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+                if (m_pSwapchain && m_selectedEffectIndex < effectNames.size()) {
+                    std::string selectedName = effectNames[m_selectedEffectIndex];
+                    for (auto& eff : m_pSwapchain->effects) {
+                        if (eff->getName() == selectedName) {
+                            const auto& params = eff->getParamDescs();
+                            for (const auto& p : params) {
+                                if (p.type == ParamType::Combo) continue;
+                                double val = eff->getParam(p.key);
+                                std::string valStr = std::to_string(val);
+                                std::replace(valStr.begin(), valStr.end(), ',', '.');
+                                m_pConfig->setOption(p.key, valStr);
+                            }
+                            break;
+                        }
                     }
                 }
                 m_pConfig->savePerGame();
@@ -543,30 +550,25 @@ namespace vkBasalt {
                 g_triggerSoftReload = true;
             }
             ImGui::SameLine();
-
             ImGui::BeginDisabled(!m_hasUnsavedChanges);
             if (ImGui::Button("Revert Changes")) {
                 m_hasUnsavedChanges = false;
                 m_previewDirty = false;
                 m_showCloseWarning = false;
-                m_showCloseWarning = false;
                 g_triggerRevertReload = true;
             }
             ImGui::EndDisabled();
-            ImGui::SameLine();
-
             if (m_hasUnsavedChanges) {
                 ImGui::SameLine();
                 ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "(unsaved)");
             }
-            } else if (m_activeTab == 1) { // Settings
-                if (ImGui::Button("Save Settings & Apply")) {
-                    m_pConfig->savePerGame();
-                    m_isOpen = false;
-                    g_triggerHotReload = true;
-                }
-                ImGui::SameLine();
+        } else if (m_activeTab == 1) { // Settings tab
+            if (ImGui::Button("Save Settings & Apply")) {
+                m_pConfig->savePerGame();
+                m_isOpen = false;
+                g_triggerHotReload = true;
             }
+        }
 
         // Close with unsaved-changes warning
         if (ImGui::Button("Close")) {
@@ -582,9 +584,9 @@ namespace vkBasalt {
         }
 
         // Legend (dynamic keybinds)
-        std::string kbToggle  = m_pConfig->getOption<std::string>("toggleKey", "Home");
+        std::string kbToggle  = m_pConfig->getOption<std::string>("toggleKey", "Insert");
         std::string kbReload  = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
-        std::string kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Insert");
+        std::string kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         ImGui::Text("[Tab/Arrows] Navigate    [Enter] Edit    [Left/Right] Adjust    [Shift+Left/Right] Switch tab    [/] Search");
         ImGui::Text("[Space] Toggle checkbox    [Esc] Close    [%s] Toggle effects    [%s] Reload    [%s] Overlay",
