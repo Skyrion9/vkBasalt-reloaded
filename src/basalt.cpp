@@ -178,15 +178,13 @@ namespace vkBasalt
     {
         if (!instance)
             return;
-
         scoped_lock l(globalLock);
-
         Logger::trace("vkDestroyInstance");
-
+    #ifdef VK_USE_PLATFORM_WAYLAND_KHR
+        shutdownWaylandInput();
+    #endif
         InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
-
         dispatchTable.DestroyInstance(instance, pAllocator);
-
         instanceDispatchMap.erase(GetKey(instance));
         instanceMap.erase(GetKey(instance));
         instanceVersionMap.erase(GetKey(instance));

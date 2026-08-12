@@ -36,19 +36,24 @@ namespace vkBasalt
         struct wl_pointer *pointer = nullptr;
         struct xkb_keymap *keymap_xkb = nullptr;
         struct xkb_state *state_xkb = nullptr;
+        std::vector<struct wl_output*> outputs;
         std::set<xkb_keysym_t> wl_pressed_keys;
         
         float mouse_x = 0.0f, mouse_y = 0.0f;
         bool mouse_down[5] = {false, false, false, false, false};
         float mouse_wheel = 0.0f;
         bool mouse_valid = false;
-        
+
         std::vector<uint32_t> typed_chars;
         std::vector<std::pair<xkb_keysym_t, bool>> key_events; // (keysym, is_pressed)
 
         ~wayland_display()
         {
             wl_pressed_keys.clear();
+            for (auto* out : outputs) {
+                if (out) wl_output_destroy(out);
+            }
+            outputs.clear();
             if (keyboard) wl_keyboard_destroy(keyboard);
             if (pointer) wl_pointer_destroy(pointer);
             if (seat) wl_seat_destroy(seat);
@@ -323,6 +328,7 @@ namespace vkBasalt
     static void registry_handle_global(void *data, struct wl_registry* registry, uint32_t name, const char *interface, uint32_t version) {
         if (!data) return;
         wayland_display *wayland = (wayland_display *)data;
+
         if (strcmp(interface, wl_seat_interface.name) == 0 && !wayland->seat) {
             uint32_t bind_version = (version < 9) ? version : 9;
             struct wl_seat* seat = (struct wl_seat*)wl_registry_bind(registry, name, &wl_seat_interface, bind_version);
@@ -330,10 +336,12 @@ namespace vkBasalt
             wayland->seat = seat;
             wl_seat_add_listener(wayland->seat, &seat_listener, data);
         }
+
         if (strcmp(interface, wl_output_interface.name) == 0) {
             struct wl_output* output = (struct wl_output*)wl_registry_bind(registry, name, &wl_output_interface, version < 4 ? version : 4);
             wl_proxy_set_queue((struct wl_proxy*)output, wayland->queue);
             wl_output_add_listener(output, &output_listener, nullptr);
+            wayland->outputs.push_back(output);
         }
     }
 
@@ -503,5 +511,16 @@ namespace vkBasalt
             wayland.mouse_wheel = 0.0f;
             break; 
         }
+    }
+
+    void shutdownWaylandInput() {
+        displays.clear(); // wayland_display destructors clean up all Wayland resources
+        if (context_xkb) {
+            xkb_context_unref(context_xkb);
+            context_xkb = nullptr;
+        }
+        g_registryInitialized = false;
+        g_pendingDisplay = nullptr;
+        Logger::debug("Wayland input shut down.");
     }
 } // namespace vkBasalt

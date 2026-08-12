@@ -14,6 +14,7 @@ namespace vkBasalt
     
     float getWaylandUIScale();
     bool  isWaylandInputActive();
+    void shutdownWaylandInput();
     uint32_t convertToKeySymWayland(std::string key);
     bool isKeyPressedWayland(uint32_t ks);
 } // namespace vkBasalt
