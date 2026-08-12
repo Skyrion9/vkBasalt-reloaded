@@ -550,7 +550,9 @@ namespace vkBasalt
         {
             uint32_t          index             = (*pPresentInfo).pImageIndices[i];
             VkSwapchainKHR    swapchain         = (*pPresentInfo).pSwapchains[i];
-            LogicalSwapchain* pLogicalSwapchain = swapchainMap[swapchain].get();
+            auto scIt = swapchainMap.find(swapchain);
+            if (scIt == swapchainMap.end()) continue;
+            LogicalSwapchain* pLogicalSwapchain = scIt->second.get();
 
             // If the effect chain grew dynamically submit the fallback and signal OUT_OF_DATE
             if (pLogicalSwapchain->forceSwapchainRebuild) {
