@@ -106,17 +106,21 @@ namespace vkBasalt {
     void ImGuiOverlay::drawShadersTab() {
         if (!m_pSwapchain) { ImGui::Text("No swapchain."); return; }
 
-        // Read the current effect chain from config
-        std::vector<std::string> chainList = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-
-        // Build unified list all built in shaders + any ReShade effects in the chain
-        std::vector<std::string> allEffects;
-        for (const char* b : kBuiltInEffects) allEffects.push_back(b);
-        for (auto& name : chainList) {
-            bool isBuiltin = false;
-            for (const char* b : kBuiltInEffects) { if (name == b) { isBuiltin = true; break; } }
-            if (!isBuiltin) allEffects.push_back(name); // ReShade effect
+        // Rebuild cache only when a reload trigger fired
+        if (m_chainCacheDirty || g_triggerPreviewReload || g_triggerSoftReload || g_triggerRevertReload) {
+            m_cachedChainList = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+            m_cachedAllEffects.clear();
+            for (const char* b : kBuiltInEffects) m_cachedAllEffects.push_back(b);
+            for (auto& name : m_cachedChainList) {
+                bool isBuiltin = false;
+                for (const char* b : kBuiltInEffects) { if (name == b) { isBuiltin = true; break; } }
+                if (!isBuiltin) m_cachedAllEffects.push_back(name);
+            }
+            m_chainCacheDirty = false;
         }
+
+        std::vector<std::string> chainList = m_cachedChainList;
+        std::vector<std::string>& allEffects = m_cachedAllEffects;
 
         auto isInChain = [&](const std::string& name) {
             return std::find(chainList.begin(), chainList.end(), name) != chainList.end();
@@ -145,6 +149,7 @@ namespace vkBasalt {
                 std::string newOrder;
                 for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
                 m_pConfig->setOption("effects", newOrder);
+                m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true;
                 ImGui::PopID();
@@ -169,6 +174,7 @@ namespace vkBasalt {
                 std::string newOrder;
                 for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
                 m_pConfig->setOption("effects", newOrder);
+                m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true;
             }
@@ -182,6 +188,7 @@ namespace vkBasalt {
                 std::string newOrder;
                 for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
                 m_pConfig->setOption("effects", newOrder);
+                m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true;
             }
@@ -205,6 +212,7 @@ namespace vkBasalt {
                 std::string newOrder;
                 for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
                 m_pConfig->setOption("effects", newOrder);
+                m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true; // Immediate rebuild
             }
@@ -230,6 +238,7 @@ namespace vkBasalt {
             std::string newOrder;
             for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
             m_pConfig->setOption("effects", newOrder);
+            m_chainCacheDirty = true;
             m_hasUnsavedChanges = true;
             g_triggerPreviewReload = true;
         }

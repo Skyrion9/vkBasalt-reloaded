@@ -56,6 +56,7 @@ namespace vkBasalt {
         bool m_hasUnsavedChanges = false;
         bool m_previewDirty = false;
         float m_lastChangeTime = 0.0f;
+        bool m_chainCacheDirty = true;
         bool m_showCloseWarning = false;
         bool m_snapPending = false;
         bool m_wasWindowMoving = false;
@@ -65,6 +66,8 @@ namespace vkBasalt {
         VkRenderPass m_renderPass = VK_NULL_HANDLE;
         std::vector<VkFramebuffer> m_framebuffers;
         std::vector<VkImageView> m_imageViews;
+        std::vector<std::string> m_cachedChainList;
+        std::vector<std::string> m_cachedAllEffects;
 
         // Static shared resources across all overlays
         static VkDescriptorPool s_descriptorPool;
