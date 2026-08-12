@@ -4,29 +4,36 @@ namespace vkBasalt
 {
     void LogicalSwapchain::destroy()
     {
-        if (imageCount > 0)
-        {
-            effects.clear();
-            defaultTransfer.reset();
+        effects.clear();
+        defaultTransfer.reset();
 
+        if (!commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(
                 pLogicalDevice->device, pLogicalDevice->commandPool, commandBuffersEffect.size(), commandBuffersEffect.data());
+            commandBuffersEffect.clear();
+        }
+        if (!commandBuffersNoEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(
                 pLogicalDevice->device, pLogicalDevice->commandPool, commandBuffersNoEffect.size(), commandBuffersNoEffect.data());
-            Logger::debug("after free commandbuffer");
-
-            pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, fakeImageMemory, nullptr);
-
-            for (uint32_t i = 0; i < fakeImages.size(); i++)
-            {
-                pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, fakeImages[i], nullptr);
-            }
-
-            for (unsigned int i = 0; i < imageCount; i++)
-            {
-                pLogicalDevice->vkd.DestroySemaphore(pLogicalDevice->device, semaphores[i], nullptr);
-            }
-            Logger::debug("after DestroySemaphore");
+            commandBuffersNoEffect.clear();
         }
+
+        if (fakeImageMemory != VK_NULL_HANDLE) {
+            pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, fakeImageMemory, nullptr);
+            fakeImageMemory = VK_NULL_HANDLE;
+        }
+        for (auto& img : fakeImages) {
+            if (img != VK_NULL_HANDLE)
+                pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, img, nullptr);
+        }
+        fakeImages.clear();
+
+        for (auto& sem : semaphores) {
+            if (sem != VK_NULL_HANDLE)
+                pLogicalDevice->vkd.DestroySemaphore(pLogicalDevice->device, sem, nullptr);
+        }
+        semaphores.clear();
+
+        imageCount = 0;
     }
 } // namespace vkBasalt
