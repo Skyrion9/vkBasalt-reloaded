@@ -1,7 +1,7 @@
 #include "effect_deband.hpp"
-
 #include <cstring>
-
+#include <algorithm>
+#include <string>
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -10,7 +10,7 @@
 #include "framebuffer.hpp"
 #include "shader.hpp"
 #include "sampler.hpp"
-
+#include "format.hpp"
 #include "shader_sources.hpp"
 
 namespace vkBasalt
@@ -20,13 +20,19 @@ namespace vkBasalt
                                VkExtent2D           imageExtent,
                                std::vector<VkImage> inputImages,
                                std::vector<VkImage> outputImages,
-                               Config*              pConfig)
+                               Config*              pConfig,
+                               VkColorSpaceKHR      colorSpace)
     {
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = deband_frag;
 
-        struct
-        {
+        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
+                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
+                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
+                      isExtendedRangeFormat(format));
+
+        struct DebandSpecData {
             float   screenWidth;
             float   screenHeight;
             float   reverseScreenWidth;
@@ -36,40 +42,63 @@ namespace vkBasalt
             float   debandMiddiff;
             float   range;
             int32_t iterations;
-        } debandOptions{};
+            int32_t hdrMode;
+        };
 
-        debandOptions.screenWidth         = (float) imageExtent.width;
-        debandOptions.screenHeight        = (float) imageExtent.height;
-        debandOptions.reverseScreenWidth  = 1.0f / imageExtent.width;
-        debandOptions.reverseScreenHeight = 1.0f / imageExtent.height;
+        DebandSpecData specData{};
+        specData.screenWidth         = (float)imageExtent.width;
+        specData.screenHeight        = (float)imageExtent.height;
+        specData.reverseScreenWidth  = 1.0f / imageExtent.width;
+        specData.reverseScreenHeight = 1.0f / imageExtent.height;
+        specData.debandAvgdiff       = std::clamp(pConfig->getOption<float>("debandAvgdiff", 3.4f), 0.0f, 20.0f);
+        specData.debandMaxdiff       = std::clamp(pConfig->getOption<float>("debandMaxdiff", 6.8f), 0.0f, 40.0f);
+        specData.debandMiddiff       = std::clamp(pConfig->getOption<float>("debandMiddiff", 3.3f), 0.0f, 20.0f);
+        specData.range               = std::clamp(pConfig->getOption<float>("debandRange", 16.0f), 1.0f, 64.0f);
+        specData.iterations          = std::clamp(pConfig->getOption<int32_t>("debandIterations", 4), 1, 8);
+        specData.hdrMode             = isHDR ? 1 : 0;
 
-        // get Options
-        debandOptions.debandAvgdiff = pConfig->getOption<float>("debandAvgdiff", 3.4f);
-        debandOptions.debandMaxdiff = pConfig->getOption<float>("debandMaxdiff", 6.8f);
-        debandOptions.debandMiddiff = pConfig->getOption<float>("debandMiddiff", 3.3f);
-        debandOptions.range         = pConfig->getOption<float>("debandRange", 16.0f);
-        debandOptions.iterations    = pConfig->getOption<int32_t>("debandIterations", 4);
+        m_paramValues["debandAvgdiff"]   = specData.debandAvgdiff;
+        m_paramValues["debandMaxdiff"]   = specData.debandMaxdiff;
+        m_paramValues["debandMiddiff"]   = specData.debandMiddiff;
+        m_paramValues["debandRange"]     = specData.range;
+        m_paramValues["debandIterations"] = specData.iterations;
 
-        std::vector<VkSpecializationMapEntry> specMapEntrys(9);
-        for (uint32_t i = 0; i < specMapEntrys.size(); i++)
-        {
-            specMapEntrys[i].constantID = i;
-            specMapEntrys[i].offset     = sizeof(float) * i; // TODO not clean to assume that sizeof(int32_t) == sizeof(float)
-            specMapEntrys[i].size       = sizeof(float);
-        }
+        VkSpecializationMapEntry mapEntries[10] = {
+            {0, offsetof(DebandSpecData, screenWidth),         sizeof(float)},
+            {1, offsetof(DebandSpecData, screenHeight),        sizeof(float)},
+            {2, offsetof(DebandSpecData, reverseScreenWidth),  sizeof(float)},
+            {3, offsetof(DebandSpecData, reverseScreenHeight), sizeof(float)},
+            {4, offsetof(DebandSpecData, debandAvgdiff),       sizeof(float)},
+            {5, offsetof(DebandSpecData, debandMaxdiff),       sizeof(float)},
+            {6, offsetof(DebandSpecData, debandMiddiff),       sizeof(float)},
+            {7, offsetof(DebandSpecData, range),               sizeof(float)},
+            {8, offsetof(DebandSpecData, iterations),          sizeof(int32_t)},
+            {9, offsetof(DebandSpecData, hdrMode),             sizeof(int32_t)}
+        };
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = specMapEntrys.size();
-        specializationInfo.pMapEntries   = specMapEntrys.data();
-        specializationInfo.dataSize      = sizeof(debandOptions);
-        specializationInfo.pData         = &debandOptions;
+        specializationInfo.mapEntryCount = 10;
+        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.dataSize      = sizeof(DebandSpecData);
+        specializationInfo.pData         = &specData;
 
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &specializationInfo;
 
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
     }
-    DebandEffect::~DebandEffect()
-    {
+
+    DebandEffect::~DebandEffect() {}
+
+    const std::vector<EffectParamDesc>& DebandEffect::getParamDescs() const {
+        static const std::vector<EffectParamDesc> params = {
+            {"debandAvgdiff",   "Avg Diff Threshold",  ParamType::Float, 3.4,  0.0, 20.0, 0.1},
+            {"debandMaxdiff",   "Max Diff Threshold",  ParamType::Float, 6.8,  0.0, 40.0, 0.1},
+            {"debandMiddiff",   "Mid Diff Threshold",  ParamType::Float, 3.3,  0.0, 20.0, 0.1},
+            {"debandRange",     "Range",               ParamType::Float, 16.0, 1.0, 64.0, 1.0},
+            {"debandIterations","Iterations",          ParamType::Int,   4.0,  1.0,  8.0, 1.0},
+        };
+        return params;
     }
+
 } // namespace vkBasalt

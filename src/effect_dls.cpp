@@ -1,7 +1,7 @@
 #include "effect_dls.hpp"
-
 #include <cstring>
-
+#include <algorithm>
+#include <string>
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -10,7 +10,7 @@
 #include "framebuffer.hpp"
 #include "shader.hpp"
 #include "sampler.hpp"
-
+#include "format.hpp"
 #include "shader_sources.hpp"
 
 namespace vkBasalt
@@ -20,36 +20,58 @@ namespace vkBasalt
                          VkExtent2D           imageExtent,
                          std::vector<VkImage> inputImages,
                          std::vector<VkImage> outputImages,
-                         Config*              pConfig)
+                         Config*              pConfig,
+                         VkColorSpaceKHR      colorSpace)
     {
-        float sharpness = pConfig->getOption<float>("dlsSharpness", 0.5f);
-        float denoise   = pConfig->getOption<float>("dlsDenoise", 0.17f);
-
-        float specData[2] = {sharpness, denoise};
-
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = dls_frag;
 
-        VkSpecializationMapEntry mapEntries[2];
-        mapEntries[0].constantID = 0;
-        mapEntries[0].offset     = 0;
-        mapEntries[0].size       = sizeof(float);
-        mapEntries[1].constantID = 1;
-        mapEntries[1].offset     = sizeof(float);
-        mapEntries[1].size       = sizeof(float);
+        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
+                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
+                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
+                      isExtendedRangeFormat(format));
 
-        VkSpecializationInfo fragmentSpecializationInfo;
-        fragmentSpecializationInfo.mapEntryCount = 2; // Fixed: Was 1, which completely ignored the denoise parameter
-        fragmentSpecializationInfo.pMapEntries   = mapEntries;
-        fragmentSpecializationInfo.dataSize      = sizeof(float) * 2;
-        fragmentSpecializationInfo.pData         = specData;
+        struct DlsSpecData {
+            float sharpen;
+            float denoise;
+            int32_t hdrMode;
+        };
+
+        DlsSpecData specData;
+        specData.sharpen  = std::clamp(pConfig->getOption<float>("dlsSharpness", 0.5f), 0.0f, 1.0f);
+        specData.denoise  = std::clamp(pConfig->getOption<float>("dlsDenoise", 0.17f), 0.0f, 1.0f);
+        specData.hdrMode  = isHDR ? 1 : 0;
+
+        m_paramValues["dlsSharpness"] = specData.sharpen;
+        m_paramValues["dlsDenoise"]   = specData.denoise;
+
+        VkSpecializationMapEntry mapEntries[3] = {
+            {0, offsetof(DlsSpecData, sharpen),  sizeof(float)},
+            {1, offsetof(DlsSpecData, denoise),  sizeof(float)},
+            {2, offsetof(DlsSpecData, hdrMode),  sizeof(int32_t)}
+        };
+
+        VkSpecializationInfo specializationInfo;
+        specializationInfo.mapEntryCount = 3;
+        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.dataSize      = sizeof(DlsSpecData);
+        specializationInfo.pData         = &specData;
 
         pVertexSpecInfo   = nullptr;
-        pFragmentSpecInfo = &fragmentSpecializationInfo;
+        pFragmentSpecInfo = &specializationInfo;
 
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
     }
-    DlsEffect::~DlsEffect()
-    {
+
+    DlsEffect::~DlsEffect() {}
+
+    const std::vector<EffectParamDesc>& DlsEffect::getParamDescs() const {
+        static const std::vector<EffectParamDesc> params = {
+            {"dlsSharpness", "Sharpness", ParamType::Float, 0.5,  0.0, 1.0, 0.01},
+            {"dlsDenoise",   "Denoise",   ParamType::Float, 0.17, 0.0, 1.0, 0.01},
+        };
+        return params;
     }
+
 } // namespace vkBasalt

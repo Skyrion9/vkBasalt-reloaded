@@ -28,8 +28,53 @@
 #include <fstream>
 #include <unistd.h>
 #include <algorithm>
+#include <functional>
+#include <unordered_map>
 
 namespace vkBasalt {
+
+    // Effect Factory
+    using EffectCreator = std::function<std::shared_ptr<Effect>(
+        LogicalDevice* pLogicalDevice,
+        VkFormat unormFormat,
+        VkFormat srgbFormat,
+        VkExtent2D imageExtent,
+        const std::vector<VkImage>& firstImages,
+        const std::vector<VkImage>& secondImages,
+        Config* pConfig,
+        VkColorSpaceKHR colorSpace,
+        const std::string& name
+    )>;
+
+    static const std::unordered_map<std::string, EffectCreator> builtinEffects = {
+        {"fxaa", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<FxaaEffect>(dev, sf, ext, in, out, cfg);
+        }},
+        {"cas", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<CasEffect>(dev, uf, ext, in, out, cfg, cs);
+        }},
+        {"deband", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<DebandEffect>(dev, uf, ext, in, out, cfg, cs);
+        }},
+        {"smaa", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg);
+        }},
+        {"lut", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<LutEffect>(dev, uf, ext, in, out, cfg, cs);
+        }},
+        {"dls", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<DlsEffect>(dev, uf, ext, in, out, cfg, cs);
+        }},
+        {"clarity", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<ClarityEffect>(dev, uf, ext, in, out, cfg, cs);
+        }},
+        {"clarityrcas", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<ClarityRcasEffect>(dev, uf, ext, in, out, cfg, cs);
+        }},
+        {"crystalclear", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+            return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs);
+        }}
+    };
 
     void buildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
                           VkSwapchainKHR swapchain, Config* pConfig,
@@ -69,62 +114,18 @@ namespace vkBasalt {
             }
             Logger::debug(std::to_string(secondImages.size()) + " images in secondImages");
 
-            if (effectStrings[i] == "fxaa")
+            // Dispatch via factory map
+            auto it = builtinEffects.find(effectStrings[i]);
+            if (it != builtinEffects.end())
             {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new FxaaEffect(pLogicalDevice, srgbFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig)));
-                Logger::debug("created FxaaEffect");
-            }
-            else if (effectStrings[i] == "cas")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new CasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig)));
-                Logger::debug("created CasEffect");
-            }
-            else if (effectStrings[i] == "deband")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new DebandEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig)));
-                Logger::debug("created DebandEffect");
-            }
-            else if (effectStrings[i] == "smaa")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new SmaaEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig)));
-                Logger::debug("created SmaaEffect");
-            }
-            else if (effectStrings[i] == "lut")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new LutEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig)));
-                Logger::debug("created LutEffect");
-            }
-            else if (effectStrings[i] == "dls")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new DlsEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig)));
-                Logger::debug("created DlsEffect");
-            }
-            else if (effectStrings[i] == "clarity")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new ClarityEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig, pLogicalSwapchain->colorSpace)));
-                Logger::debug("created ClarityEffect");
-            }
-            else if (effectStrings[i] == "clarityrcas")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new ClarityRcasEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig, pLogicalSwapchain->colorSpace)));
-                Logger::debug("created ClarityRcasEffect");
-            }
-            else if (effectStrings[i] == "crystalclear")
-            {
-                pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
-                    new CrystalClearEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent, firstImages, secondImages, pConfig, pLogicalSwapchain->colorSpace)));
-                Logger::debug("created CrystalClearEffect");
+                pLogicalSwapchain->effects.push_back(
+                    it->second(pLogicalDevice, unormFormat, srgbFormat, pLogicalSwapchain->imageExtent,
+                               firstImages, secondImages, pConfig, pLogicalSwapchain->colorSpace, effectStrings[i]));
+                Logger::debug("created " + effectStrings[i] + " effect");
             }
             else
             {
+                // ReShade fallback
                 std::string shaderPath = pConfig->getOption<std::string>("reshadeShaderPath", "");
                 if (shaderPath.empty()) shaderPath = pConfig->getOption<std::string>("reshadeTexturePath", "");
                 if (shaderPath.empty()) shaderPath = pConfig->getOption<std::string>("reshadeIncludePath", "");
@@ -138,13 +139,9 @@ namespace vkBasalt {
                 }
 
                 if (fileExists) {
-                    pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new ReshadeEffect(pLogicalDevice,
-                                                                                                    pLogicalSwapchain->format,
-                                                                                                    pLogicalSwapchain->imageExtent,
-                                                                                                    firstImages,
-                                                                                                    secondImages,
-                                                                                                    pConfig,
-                                                                                                    effectStrings[i])));
+                    pLogicalSwapchain->effects.push_back(std::make_shared<ReshadeEffect>(
+                        pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                        firstImages, secondImages, pConfig, effectStrings[i]));
                     Logger::debug("created ReshadeEffect for " + effectStrings[i]);
                 } else {
                     Logger::err("Unknown or missing effect: '" + effectStrings[i] + "'. Skipping.");

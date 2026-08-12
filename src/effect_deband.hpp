@@ -23,8 +23,12 @@ namespace vkBasalt
                      VkExtent2D           imageExtent,
                      std::vector<VkImage> inputImages,
                      std::vector<VkImage> outputImages,
-                     Config*              pConfig);
+                     Config*              pConfig,
+                     VkColorSpaceKHR      colorSpace);
         ~DebandEffect();
+
+        std::string getName() const override { return "deband"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
     };
 } // namespace vkBasalt
 

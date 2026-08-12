@@ -22,7 +22,11 @@ namespace vkBasalt
                   VkExtent2D           imageExtent,
                   std::vector<VkImage> inputImages,
                   std::vector<VkImage> outputImages,
-                  Config*              pConfig);
+                  Config*              pConfig,
+                  VkColorSpaceKHR      colorSpace);
         ~DlsEffect();
+
+        std::string getName() const override { return "dls"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
     };
 } // namespace vkBasalt

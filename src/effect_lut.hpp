@@ -23,7 +23,8 @@ namespace vkBasalt
                   VkExtent2D           imageExtent,
                   std::vector<VkImage> inputImages,
                   std::vector<VkImage> outputImages,
-                  Config*              pConfig);
+                  Config*              pConfig,
+                  VkColorSpaceKHR      colorSpace);
         ~LutEffect();
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
     
