@@ -64,22 +64,25 @@ namespace vkBasalt
 
     void Logger::emitMsg(LogLevel level, const std::string& message)
     {
-        if (level >= m_minLevel)
+        if (level < m_minLevel) return;
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        static constexpr std::array<const char*, 5> s_prefixes = {
+            {"vkBasalt trace: ", "vkBasalt debug: ", "vkBasalt info:  ", "vkBasalt warn:  ", "vkBasalt err:   "}};
+        const char* prefix = s_prefixes.at(static_cast<uint32_t>(level));
+
+        // Fast path when no newline in message
+        if (message.find('\n') == std::string::npos) {
+            *m_outStream << prefix << message << '\n';
+            return;
+        }
+
+        // Slow path when multiline message
+        std::stringstream stream(message);
+        std::string       line;
+        while (std::getline(stream, line, '\n'))
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
-
-            static std::array<const char*, 5> s_prefixes = {
-                {"vkBasalt trace: ", "vkBasalt debug: ", "vkBasalt info:  ", "vkBasalt warn:  ", "vkBasalt err:   "}};
-
-            const char* prefix = s_prefixes.at(static_cast<uint32_t>(level));
-
-            std::stringstream stream(message);
-            std::string       line;
-
-            while (std::getline(stream, line, '\n'))
-            {
-                *m_outStream << prefix << line << std::endl;
-            }
+            *m_outStream << prefix << line << '\n';
         }
     }
 
