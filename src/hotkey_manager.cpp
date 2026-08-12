@@ -21,9 +21,9 @@ namespace vkBasalt {
         std::unordered_map<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>>& swapchainMap,
         OverlayManager& overlayManager)
     {
-        static uint32_t keySymbol       = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
-        static uint32_t reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-        static uint32_t overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Insert"));
+        static uint32_t keySymbol        = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
+        static uint32_t reloadKeySymbol  = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
+        static uint32_t overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
         static std::string cachedToggleKey, cachedReloadKey, cachedOverlayKey;
         static bool pressed       = false;
         static bool reloadPressed = false;
@@ -33,11 +33,32 @@ namespace vkBasalt {
 
         g_effectsEnabled = presentEffect;
 
-        // Refresh cached keysyms whenever the config keybind values change
+        // Helpers
+        auto reloadConfig = [&]() {
+            pConfig = std::make_shared<Config>();
+            keySymbol        = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
+            reloadKeySymbol  = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
+            overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
+            presentEffect    = pConfig->getOption<bool>("enableOnLaunch", true);
+            g_effectsEnabled = presentEffect;
+            
+            // Sync caches to prevent the refresh block below from desync
+            cachedToggleKey  = pConfig->getOption<std::string>("toggleKey", "Insert");
+            cachedReloadKey  = pConfig->getOption<std::string>("reloadConfigKey", "End");
+            cachedOverlayKey = pConfig->getOption<std::string>("overlayToggleKey", "Home");
+        };
+
+        auto rebuildAll = [&]() {
+            for (auto& pair : swapchainMap) {
+                rebuildEffectChain(pair.second->pLogicalDevice, pair.second.get(), pConfig.get(), overlayManager);
+            }
+        };
+
+        // Refresh cached keysyms whenever the config keybind values changes in memory
         {
-            std::string tk = pConfig->getOption<std::string>("toggleKey", "Home");
+            std::string tk = pConfig->getOption<std::string>("toggleKey", "Insert");
             std::string rk = pConfig->getOption<std::string>("reloadConfigKey", "End");
-            std::string ok = pConfig->getOption<std::string>("overlayToggleKey", "Insert");
+            std::string ok = pConfig->getOption<std::string>("overlayToggleKey", "Home");
             if (tk != cachedToggleKey)  { keySymbol = convertToKeySym(tk);        cachedToggleKey = tk; }
             if (rk != cachedReloadKey)  { reloadKeySymbol = convertToKeySym(rk);  cachedReloadKey = rk; }
             if (ok != cachedOverlayKey) { overlayKeySymbol = convertToKeySym(ok); cachedOverlayKey = ok; }
@@ -45,6 +66,7 @@ namespace vkBasalt {
 
         // Check if any overlay is in keybinding mode (suppress all hotkeys)
         bool anyBinding = overlayManager.anyBinding();
+
         if (!anyBinding && isKeyPressed(keySymbol)) {
             if (!pressed) {
                 presentEffect = !presentEffect;
@@ -55,20 +77,14 @@ namespace vkBasalt {
         } else {
             pressed = false;
         }
+
         if (!anyBinding && isKeyPressed(reloadKeySymbol)) {
             if (!reloadPressed) {
                 reloadPressed = true;
                 skipNextPresent = true;
                 Logger::debug("Reloading vkBasalt config...");
-                pConfig = std::shared_ptr<Config>(new Config());
-                keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
-                reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-                overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Insert"));
-                presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
-                g_effectsEnabled = presentEffect;
-                for (auto& pair : swapchainMap) {
-                    rebuildEffectChain(pair.second->pLogicalDevice, pair.second.get(), pConfig.get(), overlayManager);
-                }
+                reloadConfig();
+                rebuildAll();
                 overlayManager.updateAllOverlays(pConfig.get(), true);
                 Logger::debug("vkBasalt config reloaded successfully!");
             }
@@ -92,67 +108,46 @@ namespace vkBasalt {
             return true;
         }
 
-        // Preview 'reload'
+        // Preview reload (in-memory config, no disk read)
         if (g_triggerPreviewReload.exchange(false)) {
             Logger::debug("Live preview rebuild (in-memory config)...");
-            for (auto& pair : swapchainMap) {
-                rebuildEffectChain(pair.second->pLogicalDevice, pair.second.get(), pConfig.get(), overlayManager);
-            }
+            rebuildAll();
             Logger::debug("Preview rebuild complete.");
             return true;
         }
 
-        // Revert reload
+        // Revert reload (disk read, keep overlay open)
         if (g_triggerRevertReload.exchange(false)) {
             Logger::debug("Revert: reloading config from disk...");
-            pConfig = std::shared_ptr<Config>(new Config());
-            keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
-            reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-            overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Insert"));
-            presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
-            g_effectsEnabled = presentEffect;
-            for (auto& pair : swapchainMap) {
-                rebuildEffectChain(pair.second->pLogicalDevice, pair.second.get(), pConfig.get(), overlayManager);
-            }
+            reloadConfig();
+            rebuildAll();
             overlayManager.updateAllOverlays(pConfig.get(), false);
             Logger::debug("Revert complete. Config restored from disk.");
             return true;
         }
 
+        // Soft reload (disk read, keep overlay open)
         if (g_triggerSoftReload.exchange(false)) {
             Logger::debug("ImGui requested soft reload (params only)...");
-            pConfig = std::shared_ptr<Config>(new Config());
-            keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
-            reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-            overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Insert"));
-            presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
-            g_effectsEnabled = presentEffect;
-            for (auto& pair : swapchainMap) {
-                rebuildEffectChain(pair.second->pLogicalDevice, pair.second.get(), pConfig.get(), overlayManager);
-            }
+            reloadConfig();
+            rebuildAll();
             overlayManager.updateAllOverlays(pConfig.get(), false);
             Logger::debug("ImGui soft reload complete. Overlay remains open.");
             return true;
         }
 
+        // Hot reload (disk read, close overlay, full reinit)
         if (g_triggerHotReload.exchange(false)) {
             Logger::debug("ImGui requested hot reload via UI...");
-            pConfig = std::shared_ptr<Config>(new Config());
-            keySymbol = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Home"));
-            reloadKeySymbol = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-            overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Insert"));
-            presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
-            g_effectsEnabled = presentEffect;
+            reloadConfig();
             overlayManager.closeAllOverlays();
-            for (auto& pair : swapchainMap) {
-                rebuildEffectChain(pair.second->pLogicalDevice, pair.second.get(), pConfig.get(), overlayManager);
-            }
+            rebuildAll();
             overlayManager.updateAllOverlays(pConfig.get(), true);
             Logger::debug("ImGui hot reload complete.");
             return true;
         }
 
-        return false; // No skip necessary continue rendering normally
+        return false; // No skip necessary, continue rendering normally
     }
 
 } // namespace vkBasalt

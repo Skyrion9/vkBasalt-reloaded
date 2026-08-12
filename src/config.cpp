@@ -98,9 +98,9 @@ namespace vkBasalt
         out << "# Enable effects on launch (on/off)\n";
         out << "enableOnLaunch=true\n\n";
         out << "# Keybinds\n";
-        out << "toggleKey = Home\n";
+        out << "toggleKey = Insert\n";
         out << "reloadConfigKey = End\n";
-        out << "overlayToggleKey = Insert\n\n";
+        out << "overlayToggleKey = Home\n\n";
         out << "# Choose a preset: devfav, esports, artifactless, maxsharp, vibrantsharp, devfxaa, cinematic\n";
         out << "crystalclearPreset = devfav\n\n";
         out << "# Depth capture (on/off) - experimental\n";
