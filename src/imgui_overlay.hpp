@@ -4,6 +4,7 @@
 #include "imgui_impl_vulkan.h"
 #include <vector>
 #include <algorithm>
+#include <atomic>
 
 namespace vkBasalt {
     struct LogicalDevice;
@@ -39,7 +40,7 @@ namespace vkBasalt {
         LogicalSwapchain* m_pSwapchain;
         Config* m_pConfig;
 
-        bool m_isOpen = false;
+        std::atomic<bool> m_isOpen{false};
         bool m_isInitialized = false;
         bool m_justOpened = false;
         bool m_focusSearch = false;
