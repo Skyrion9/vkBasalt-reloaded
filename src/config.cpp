@@ -108,6 +108,7 @@ namespace vkBasalt
         out << "toggleKey = Insert\n";
         out << "reloadConfigKey = End\n";
         out << "overlayToggleKey = Home\n\n";
+        out << "screenshotKey = Delete\n";
         out << "# Choose a preset: devfav, esports, artifactless, maxsharp, vibrantsharp, devfxaa, cinematic\n";
         out << "crystalclearPreset = devfav\n\n";
         out << "# Depth capture (on/off) - experimental\n";

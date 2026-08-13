@@ -51,6 +51,7 @@
 #include "command_buffer.hpp"
 #include "config.hpp"
 #include "fake_swapchain.hpp"
+#include "screenshot.hpp"
 #include "format.hpp"
 #include "logger.hpp"
 
@@ -599,6 +600,14 @@ namespace vkBasalt
             // ImGui use return value to decide semaphore swap not isOverlayOpen() as the overlay may close itself during rendering.
             if (g_overlayManager.renderOverlay(pLogicalDevice.get(), pLogicalSwapchain, swapchain, index)) {
                 presentSemaphores.back() = g_overlayManager.getOverlaySemaphore(swapchain, index);
+            }
+
+            // Screenshot capture (synchronous, one-time hitch on trigger)
+            if (g_triggerScreenshot.load()) {
+                g_triggerScreenshot = false;
+                bool beforeAfter = pConfig->getOption<bool>("screenshotBeforeAfter", false);
+                std::string path = pConfig->getOption<std::string>("screenshotPath", "");
+                captureScreenshot(pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path);
             }
         }
         VkPresentInfoKHR presentInfo   = *pPresentInfo;

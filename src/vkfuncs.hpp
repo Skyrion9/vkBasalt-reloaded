@@ -23,6 +23,7 @@
     FORVKFUNC(CmdDraw) \
     FORVKFUNC(CmdEndRenderPass) \
     FORVKFUNC(CmdPipelineBarrier) \
+    FORVKFUNC(CmdCopyImageToBuffer) \
     FORVKFUNC(CmdPushConstants) \
     FORVKFUNC(CreateBuffer) \
     FORVKFUNC(CreateCommandPool) \

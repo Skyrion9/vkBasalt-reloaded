@@ -593,9 +593,10 @@ namespace vkBasalt {
         std::string kbReload  = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
         std::string kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
+        std::string kbScreenshot = m_pConfig->getOption<std::string>("screenshotKey", "Delete");
         ImGui::Text("[Tab/Arrows] Navigate    [Enter] Edit    [Left/Right] Adjust    [Shift+Left/Right] Switch tab    [/] Search");
-        ImGui::Text("[Space] Toggle checkbox    [Esc] Close    [%s] Toggle effects    [%s] Reload    [%s] Overlay",
-                    kbToggle.c_str(), kbReload.c_str(), kbOverlay.c_str());
+        ImGui::Text("[Space] Toggle checkbox    [Esc] Close    [%s] Toggle    [%s] Reload    [%s] Overlay    [%s] Screenshot",
+                    kbToggle.c_str(), kbReload.c_str(), kbOverlay.c_str(), kbScreenshot.c_str());
         ImGui::PopStyleColor();
         ImGui::End();
     }

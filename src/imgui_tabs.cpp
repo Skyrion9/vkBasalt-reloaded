@@ -3,6 +3,7 @@
 #include "overlay_manager.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"
+#include "screenshot.hpp"
 #include "effect.hpp"
 #include "imgui.h"
 #include <algorithm>
@@ -69,12 +70,12 @@ namespace vkBasalt {
     };
 
     void ImGuiOverlay::applyKeybind(int field, ImGuiKey key) {
-        const char* configKeys[] = {"toggleKey", "reloadConfigKey", "overlayToggleKey"};
+        const char* configKeys[] = {"toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey"};
         std::string newName = imguiKeyToConfigName(key);
         if (newName.empty()) return;
         std::string myOldKey = m_pConfig->getOption<std::string>(configKeys[field], "");
         int otherField = -1;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             if (i == field) continue;
             if (m_pConfig->getOption<std::string>(configKeys[i], "") == newName) {
                 otherField = i;
@@ -549,10 +550,10 @@ namespace vkBasalt {
         ImGui::TextDisabled("Click a binding, then press a key. Esc cancels.");
         ImGui::Spacing();
 
-        const char* kbLabels[]  = {"Toggle Effects", "Reload Config", "Open Overlay"};
-        const char* kbConfigs[] = {"toggleKey", "reloadConfigKey", "overlayToggleKey"};
+        const char* kbLabels[]  = {"Toggle Effects", "Reload Config", "Open Overlay", "Screenshot"};
+        const char* kbConfigs[] = {"toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey"};
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             std::string current = m_pConfig->getOption<std::string>(kbConfigs[i], "");
             ImGui::AlignTextToFramePadding();
             ImGui::Text("%s", kbLabels[i]);
@@ -586,7 +587,41 @@ namespace vkBasalt {
             }
         }
         ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Text("Screenshot");
+        ImGui::Spacing();
 
+        bool saveBeforeAfter = m_pConfig->getOption<bool>("screenshotBeforeAfter", false);
+        if (ImGui::Checkbox("Save before/after comparison", &saveBeforeAfter)) {
+            m_pConfig->setOption("screenshotBeforeAfter", saveBeforeAfter ? "true" : "false");
+            m_pConfig->savePerGame();
+        }
+        ImGui::TextDisabled("When enabled, screenshots include both the raw game output and the post-processed result.");
+
+        ImGui::Spacing();
+        static char screenshotDir[512] = {};
+        static bool dirLoaded = false;
+        if (!dirLoaded) {
+            std::string dir = m_pConfig->getOption<std::string>("screenshotPath", "");
+            strncpy(screenshotDir, dir.c_str(), sizeof(screenshotDir) - 1);
+            dirLoaded = true;
+        }
+        ImGui::PushItemWidth(300);
+        if (ImGui::InputTextWithHint("##ssdir", "Screenshot directory (empty = $HOME)", screenshotDir, sizeof(screenshotDir),
+                                    ImGuiInputTextFlags_EnterReturnsTrue)) {
+            m_pConfig->setOption("screenshotPath", std::string(screenshotDir));
+            m_pConfig->savePerGame();
+        }
+        ImGui::PopItemWidth();
+
+        ImGui::Spacing();
+        if (ImGui::Button("Take Screenshot")) {
+            g_triggerScreenshot = true;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(saved as PNG)");
+
+        ImGui::Spacing();
         ImGui::Separator();
         ImGui::Text("Behavior");
         ImGui::Spacing();

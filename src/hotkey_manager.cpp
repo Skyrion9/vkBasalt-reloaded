@@ -1,6 +1,7 @@
 #include "hotkey_manager.hpp"
 #include "overlay_manager.hpp"
 #include "effect_chain.hpp"
+#include "screenshot.hpp"
 #include "config.hpp"
 #include "keyboard_input.hpp"
 #include "logger.hpp"
@@ -101,6 +102,16 @@ namespace vkBasalt {
             }
         } else {
             overlayPressed = false;
+        }
+
+        // Screenshot hotkey
+        static uint32_t screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
+        static std::string cachedScreenshotKey;
+        std::string sk = pConfig->getOption<std::string>("screenshotKey", "Delete");
+        if (sk != cachedScreenshotKey) { screenshotKeySymbol = convertToKeySym(sk); cachedScreenshotKey = sk; }
+
+        if (!anyBinding && isKeyPressed(screenshotKeySymbol)) {
+            g_triggerScreenshot = true;
         }
 
         // Skip present (from End key reload)

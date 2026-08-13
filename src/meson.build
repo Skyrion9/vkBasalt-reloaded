@@ -44,8 +44,10 @@ vkBasalt_src = [
     'reshade_uniforms.cpp',
     'sampler.cpp',
     'shader.cpp',
+    'screenshot.cpp',
     'stb_image.c',
     'stb_image_resize.c',
+    'stb_image_write.c',
     'util.cpp',
     'vkdispatch.cpp',
 ]
