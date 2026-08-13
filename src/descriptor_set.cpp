@@ -1,17 +1,21 @@
 #include "descriptor_set.hpp"
+#include <algorithm>
 
 namespace vkBasalt
 {
 
     VkDescriptorPool createDescriptorPool(LogicalDevice* pLogicalDevice, const std::vector<VkDescriptorPoolSize>& poolSizes)
     {
-        uint32_t setCount = 0;
+        // maxSets = number of sets to allocate, not total descriptor count. For a single pool size, descriptorCount == maxSets.
+        // For multiple pool sizes, use the minimum descriptorCount across entries (each set consumes one descriptor from each pool size).
+        uint32_t setCount = poolSizes.empty() ? 0 : poolSizes[0].descriptorCount;
+
+        for (uint32_t i = 1; i < poolSizes.size(); i++)
+        {
+            setCount = std::min(setCount, poolSizes[i].descriptorCount);
+        }
 
         VkDescriptorPool descriptorPool;
-        for (uint32_t i = 0; i < poolSizes.size(); i++)
-        {
-            setCount += poolSizes[i].descriptorCount;
-        }
         VkDescriptorPoolCreateInfo descriptorPoolCreateInfo;
         descriptorPoolCreateInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         descriptorPoolCreateInfo.pNext         = nullptr;
