@@ -494,7 +494,10 @@ namespace vkBasalt {
         }
 
         // Footer height
-        float legendHeight = (ImGui::GetTextLineHeightWithSpacing() * 2) + ImGui::GetFrameHeightWithSpacing() + style.ItemSpacing.y * 2 + 8;
+        float legendHeight = ImGui::GetFrameHeightWithSpacing()       // button row
+                       + (ImGui::GetTextLineHeightWithSpacing() * 2)  // 2 legend text lines
+                       + style.ItemSpacing.y * 4                      // spacing between all footer elements
+                       + 6;                                           // separator + bottom padding
         ImGui::BeginChild("##content_area", ImVec2(0, -legendHeight), false);
 
         if (ImGui::BeginTabBar("##main_tabs", ImGuiTabBarFlags_None)) {
