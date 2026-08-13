@@ -141,8 +141,6 @@ namespace vkBasalt
 
     void ClarityRcasEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
-        Logger::debug("applying ClarityRcasEffect to cb " + convertToString(commandBuffer));
-        
         VkImageMemoryBarrier memoryBarrier;
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memoryBarrier.pNext               = nullptr;
@@ -168,7 +166,6 @@ namespace vkBasalt
         secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        Logger::debug("after the first pipeline barrier");
 
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -187,7 +184,6 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
-        Logger::debug("after the second pipeline barrier");
     }
 
     const std::vector<EffectParamDesc>& ClarityRcasEffect::getParamDescs() const {

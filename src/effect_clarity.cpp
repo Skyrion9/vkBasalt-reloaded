@@ -114,8 +114,6 @@ namespace vkBasalt
 
     void ClarityEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
-        Logger::debug("applying ClarityEffect to cb " + convertToString(commandBuffer));
-        
         VkImageMemoryBarrier memoryBarrier;
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memoryBarrier.pNext               = nullptr;
@@ -145,7 +143,6 @@ namespace vkBasalt
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        Logger::debug("after the first pipeline barrier");
 
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -155,16 +152,12 @@ namespace vkBasalt
         renderPassBeginInfo.renderArea.offset = {0, 0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
-        Logger::debug("before beginn renderpass");
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        Logger::debug("after beginn renderpass");
 
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
-        Logger::debug("after binding image sampler");
 
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-        Logger::debug("after bind pipeliene");
 
         pLogicalDevice->vkd.CmdPushConstants(
             commandBuffer,
@@ -176,16 +169,13 @@ namespace vkBasalt
         );
 
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
-        Logger::debug("after draw");
 
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
-        Logger::debug("after end renderpass");
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
                                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
                                                0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
-        Logger::debug("after the second pipeline barrier");
     }
 
     const std::vector<EffectParamDesc>& ClarityEffect::getParamDescs() const {
