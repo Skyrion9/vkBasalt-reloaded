@@ -36,6 +36,12 @@ namespace vkBasalt {
 
         auto overlay = std::make_shared<ImGuiOverlay>(pDevice, pSwapchain, pConfig);
         overlay->initImGui(format);
+
+        if (m_lastOverlayOpenState) {
+            overlay->toggleOverlay();
+            m_lastOverlayOpenState = false;
+        }
+
         m_overlayMap[swapchain] = overlay;
         m_commandBuffersMap[swapchain] = allocateCommandBuffer(pDevice, pSwapchain->imageCount);
         m_semaphoresMap[swapchain] = createSemaphores(pDevice, pSwapchain->imageCount);
@@ -82,6 +88,10 @@ namespace vkBasalt {
     }
 
     void OverlayManager::destroyOverlay(LogicalDevice* pDevice, VkSwapchainKHR swapchain) {
+        auto it = m_overlayMap.find(swapchain);
+        if (it != m_overlayMap.end() && it->second) {
+            m_lastOverlayOpenState = it->second->isOverlayOpen();
+        }
         m_overlayMap.erase(swapchain);
 
         if (m_commandBuffersMap.count(swapchain)) {

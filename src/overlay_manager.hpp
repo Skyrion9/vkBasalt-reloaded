@@ -55,6 +55,8 @@ namespace vkBasalt {
         std::shared_ptr<ImGuiOverlay> getOverlay(VkSwapchainKHR swapchain) const;
 
     private:
+        bool m_lastOverlayOpenState = false;
+
         std::unordered_map<VkSwapchainKHR, std::shared_ptr<ImGuiOverlay>> m_overlayMap;
         std::unordered_map<VkSwapchainKHR, std::vector<VkCommandBuffer>> m_commandBuffersMap;
         std::unordered_map<VkSwapchainKHR, std::vector<VkSemaphore>> m_semaphoresMap;
