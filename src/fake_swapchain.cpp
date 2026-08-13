@@ -72,12 +72,24 @@ namespace vkBasalt
             findMemoryTypeIndex(pLogicalDevice, memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         result = pLogicalDevice->vkd.AllocateMemory(pLogicalDevice->device, &memoryAllocateInfo, nullptr, &deviceMemory);
-        ASSERT_VULKAN(result);
+        if (result != VK_SUCCESS) {
+            for (uint32_t i = 0; i < count; i++)
+                pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, fakeImages[i], nullptr);
+            fakeImages.clear();
+            ASSERT_VULKAN(result);
+        }
 
         for (uint32_t i = 0; i < count; i++)
         {
             result = pLogicalDevice->vkd.BindImageMemory(pLogicalDevice->device, fakeImages[i], deviceMemory, memoryRequirements.size * i);
-            ASSERT_VULKAN(result);
+            if (result != VK_SUCCESS) {
+                pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, deviceMemory, nullptr);
+                deviceMemory = VK_NULL_HANDLE;
+                for (uint32_t j = 0; j < count; j++)
+                    pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, fakeImages[j], nullptr);
+                fakeImages.clear();
+                ASSERT_VULKAN(result);
+            }
         }
         return fakeImages;
     }
