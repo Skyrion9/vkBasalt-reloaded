@@ -181,7 +181,6 @@ namespace vkBasalt
     
     void SimpleEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
-        Logger::debug("applying SimpleEffect to cb " + convertToString(commandBuffer));
         // Used to make the Image accessable by the shader
         VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -226,14 +225,11 @@ namespace vkBasalt
         }
 
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-        Logger::debug("after beginn renderpass");
 
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
-        Logger::debug("after binding image sampler");
 
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-        Logger::debug("after bind pipeliene");
 
         // Push constant injection
         // Dynamically sized based on the derived effect's pushConstantSize.
@@ -265,16 +261,13 @@ namespace vkBasalt
         }
 
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
-        Logger::debug("after draw");
 
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
-        Logger::debug("after end renderpass");
 
         pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,  // Next effect or present engine reads this
             0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
-        Logger::debug("after the second pipeline barrier");
     }
 
     double SimpleEffect::getParam(const std::string& key) const {
