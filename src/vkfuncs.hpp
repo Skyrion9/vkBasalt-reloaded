@@ -77,4 +77,5 @@
     FORVKFUNC(ResetFences) \
     FORVKFUNC(UnmapMemory) \
     FORVKFUNC(UpdateDescriptorSets) \
-    FORVKFUNC(WaitForFences)
+    FORVKFUNC(WaitForFences) \
+    FORVKFUNC(GetFenceStatus) \

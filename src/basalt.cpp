@@ -602,7 +602,7 @@ namespace vkBasalt
                 presentSemaphores.back() = g_overlayManager.getOverlaySemaphore(swapchain, index);
             }
 
-            // Screenshot capture (synchronous, one-time hitch on trigger)
+            // Screenshot capture (async submits GPU copy, writes file next frame)
             if (g_triggerScreenshot.load()) {
                 g_triggerScreenshot = false;
                 bool beforeAfter = pConfig->getOption<bool>("screenshotBeforeAfter", false);
@@ -611,6 +611,9 @@ namespace vkBasalt
                 int quality = pConfig->getOption<int>("screenshotQuality", 95);
                 captureScreenshot(pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path, fmt, quality);
             }
+
+            // Process any pending screenshot from the previous frame
+            processPendingScreenshot();
         }
         VkPresentInfoKHR presentInfo   = *pPresentInfo;
         presentInfo.waitSemaphoreCount = presentSemaphores.size();
