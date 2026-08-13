@@ -1,9 +1,12 @@
 #include "util.hpp"
 
 #include <iostream>
+#include <stdio.h>
+#include <string>
 #include <unistd.h>
 #include <cstring>
 #include <array>
+#include <vector>
 
 namespace vkBasalt
 {

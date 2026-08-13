@@ -1,11 +1,17 @@
 #include "game_detect.hpp"
 #include "logger.hpp"
 
+#include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <sstream>
 #include <cstring>
 #include <cstdio>
+#include <string>
+#include <sys/types.h>
+#include <system_error>
 #include <unistd.h>
 #include <algorithm>
 #include <vector>

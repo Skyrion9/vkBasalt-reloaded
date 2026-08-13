@@ -4,8 +4,14 @@
  */
 
 #include "effect_symbol_table.hpp"
+#include "effect_expression.hpp"
+#include <alloca.h>
 #include <cassert>
 #include <algorithm> // std::upper_bound, std::sort
+#include <cstddef>
+#include <functional>
+#include <initializer_list>
+#include <vector>
 
 #pragma region Import intrinsic functions
 

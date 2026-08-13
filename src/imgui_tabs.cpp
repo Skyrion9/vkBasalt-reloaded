@@ -1,15 +1,19 @@
 #include "imgui_overlay.hpp"
 #include "imgui_theme.hpp"
 #include "overlay_manager.hpp"
-#include "logical_device.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"
-#include "logger.hpp"
 #include "effect.hpp"
 #include "imgui.h"
 #include <algorithm>
-#include <cmath>
+#include <cctype>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace vkBasalt {
 

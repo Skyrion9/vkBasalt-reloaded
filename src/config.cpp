@@ -1,13 +1,20 @@
 #include "config.hpp"
 #include "logger.hpp"
 
+#include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <mutex>
 #include <sstream>
 #include <locale>
 #include <filesystem>
 #include <cstring>
 #include <cstdio>
-#include <unistd.h>
+#include <string>
+#include <system_error>
 #include <algorithm>
+#include <unordered_map>
+#include <vector>
 #include "game_detect.hpp"
 
 namespace vkBasalt

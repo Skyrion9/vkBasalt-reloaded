@@ -1,7 +1,11 @@
 #include "shader.hpp"
+#include "logical_device.hpp"
+#include "vulkan_include.hpp"
 
-#include <array>
+#include <cstdint>
 #include <cstring>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

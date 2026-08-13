@@ -1,7 +1,13 @@
 #include "image.hpp"
+#include "logical_device.hpp"
 #include "memory.hpp"
 #include "buffer.hpp"
 #include "format.hpp"
+#include "vulkan_include.hpp"
+#include <cstdint>
+#include <cstring>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

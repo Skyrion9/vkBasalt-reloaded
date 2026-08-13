@@ -1,4 +1,5 @@
 #include "logical_swapchain.hpp"
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

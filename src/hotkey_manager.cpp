@@ -4,8 +4,10 @@
 #include "config.hpp"
 #include "keyboard_input.hpp"
 #include "logger.hpp"
-#include "logical_device.hpp"
 #include "logical_swapchain.hpp"
+#include <cstdint>
+#include <string>
+#include <vulkan/vulkan_core.h>
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
 #include "keyboard_input_wayland.hpp"

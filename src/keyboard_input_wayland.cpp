@@ -1,6 +1,12 @@
 #include "keyboard_input_wayland.hpp"
 #include "logger.hpp"
-#include <wayland-client.h>
+#include <cfloat>
+#include <cstdint>
+#include <string>
+#include <wayland-client-core.h>
+#include <wayland-client-protocol.h>
+#include <wayland-util.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
 #include <sys/mman.h>
 #include <unistd.h>

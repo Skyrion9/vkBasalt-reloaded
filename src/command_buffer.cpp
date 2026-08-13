@@ -1,7 +1,15 @@
 #include "command_buffer.hpp"
 
+#include "effect.hpp"
 #include "format.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
 #include "util.hpp"
+#include "vulkan_include.hpp"
+#include <cstdint>
+#include <memory>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

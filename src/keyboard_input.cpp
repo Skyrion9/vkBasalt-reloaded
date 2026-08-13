@@ -1,6 +1,7 @@
 #include "keyboard_input.hpp"
 #include "logger.hpp"
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 

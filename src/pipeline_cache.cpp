@@ -1,8 +1,16 @@
 #include "pipeline_cache.hpp"
 #include "logger.hpp"
+#include "vkdispatch.hpp"
+#include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <cstdio>
+#include <ios>
+#include <string>
+#include <system_error>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt {
 

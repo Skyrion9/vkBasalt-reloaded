@@ -3,15 +3,28 @@
  * License: https://github.com/crosire/reshade#license
  */
 
+#include "effect_expression.hpp"
+#include "effect_module.hpp"
 #include "effect_parser.hpp"
 #include "effect_codegen.hpp"
+#include "effect_token.hpp"
 #include <cassert>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring> // memcmp
 #include <algorithm> // std::find_if, std::max
+#include <initializer_list>
+#include <memory>
+#include <spirv/unified1/spirv.hpp>
+#include <string>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 
 // Use the C++ variant of the SPIR-V headers
 #include <spirv.hpp>
+#include <utility>
+#include <vector>
 namespace spv {
 #include <GLSL.std.450.h>
 }

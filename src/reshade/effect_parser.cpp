@@ -3,12 +3,23 @@
  * License: https://github.com/crosire/reshade#license
  */
 
+#include "effect_expression.hpp"
 #include "effect_lexer.hpp"
 #include "effect_parser.hpp"
 #include "effect_codegen.hpp"
+#include "effect_module.hpp"
+#include "effect_symbol_table.hpp"
+#include "effect_token.hpp"
 #include <cassert>
 #include <algorithm>
+#include <cctype>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 struct on_scope_exit
 {

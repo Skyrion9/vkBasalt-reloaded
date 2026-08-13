@@ -1,10 +1,17 @@
 #include "effect_smaa.hpp"
 
-#include <cstring>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
+#include "config.hpp"
+#include "effect.hpp"
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
-#include "buffer.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
 #include "renderpass.hpp"
 #include "graphics_pipeline.hpp"
 #include "framebuffer.hpp"

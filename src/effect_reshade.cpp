@@ -1,21 +1,34 @@
 #include "effect_reshade.hpp"
 
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <climits>
 #include <cstdlib>
 #include <cassert>
 
+#include <memory>
 #include <set>
+#include <string>
+#include <utility>
 #include <variant>
 #include <algorithm>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
+#include "config.hpp"
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
-#include "renderpass.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
 #include "graphics_pipeline.hpp"
 #include "framebuffer.hpp"
-#include "shader.hpp"
+#include "reshade/effect_codegen.hpp"
+#include "reshade/effect_module.hpp"
+#include "reshade/effect_parser.hpp"
+#include "reshade/effect_preprocessor.hpp"
+#include "reshade_uniforms.hpp"
 #include "sampler.hpp"
 #include "image.hpp"
 #include "format.hpp"
@@ -25,6 +38,7 @@
 #include "stb_image.h"
 #include "stb_image_dds.h"
 #include "stb_image_resize.h"
+#include "vulkan_include.hpp"
 
 namespace vkBasalt
 {

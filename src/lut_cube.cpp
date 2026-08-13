@@ -2,6 +2,7 @@
 
 #include "logger.hpp"
 
+#include <cstddef>
 #include <fstream>
 #include <string>
 #include <vector>

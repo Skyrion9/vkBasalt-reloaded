@@ -1,18 +1,17 @@
 #include "effect_clarity.hpp"
 
-#include <cstring>
+#include <array>
+#include <cstdint>
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
-#include "image_view.hpp"
-#include "descriptor_set.hpp"
-#include "buffer.hpp"
-#include "renderpass.hpp"
-#include "graphics_pipeline.hpp"
-#include "framebuffer.hpp"
-#include "shader.hpp"
-#include "sampler.hpp"
+#include "config.hpp"
+#include "effect.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
 #include "util.hpp"
 #include "format.hpp"
 

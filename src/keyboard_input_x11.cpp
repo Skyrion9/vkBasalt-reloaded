@@ -1,14 +1,11 @@
 #include "keyboard_input_x11.hpp"
 #include "logger.hpp"
+#include <X11/X.h>
+#include <cstdint>
 #include <imgui.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
-#include <X11/Xresource.h>
 #include <cstdlib>
-#include <memory>
-#include <functional>
-#include <unistd.h>
-#include <cstring>
 
 namespace vkBasalt
 {

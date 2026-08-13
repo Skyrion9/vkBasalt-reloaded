@@ -1,4 +1,10 @@
 #include "memory.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
+#include "vulkan_include.hpp"
+#include <cstdint>
+#include <string>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

@@ -1,4 +1,8 @@
 #include "sampler.hpp"
+#include "logical_device.hpp"
+#include "reshade/effect_module.hpp"
+#include "vulkan_include.hpp"
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

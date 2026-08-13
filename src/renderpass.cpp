@@ -1,4 +1,7 @@
 #include "renderpass.hpp"
+#include "logical_device.hpp"
+#include "vulkan_include.hpp"
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

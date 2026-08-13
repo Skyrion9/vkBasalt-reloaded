@@ -1,4 +1,9 @@
 #include "effect_transfer.hpp"
+#include "config.hpp"
+#include "logical_device.hpp"
+#include <cstdint>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

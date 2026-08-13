@@ -1,16 +1,15 @@
 #include "effect_deband.hpp"
-#include <cstring>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <algorithm>
 #include <string>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
-#include "image_view.hpp"
-#include "descriptor_set.hpp"
-#include "buffer.hpp"
-#include "renderpass.hpp"
-#include "graphics_pipeline.hpp"
-#include "framebuffer.hpp"
-#include "shader.hpp"
-#include "sampler.hpp"
+#include "config.hpp"
+#include "effect.hpp"
+#include "logical_device.hpp"
 #include "format.hpp"
 #include "shader_sources.hpp"
 

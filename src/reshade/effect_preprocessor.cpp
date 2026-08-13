@@ -4,9 +4,21 @@
  */
 
 #include "effect_lexer.hpp"
+#include "effect_token.hpp"
 #include "effect_preprocessor.hpp"
 #include <cassert>
 #include <algorithm>
+#include <cstddef>
+#include <cstdio>
+#include <filesystem>
+#include <iterator>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #ifndef _WIN32
 	// On Linux systems the native path encoding is UTF-8 already, so no conversion necessary

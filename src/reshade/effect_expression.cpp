@@ -3,12 +3,16 @@
  * License: https://github.com/crosire/reshade#license
  */
 
-#include "effect_lexer.hpp"
-#include "effect_codegen.hpp"
+#include "effect_expression.hpp"
+#include "effect_token.hpp"
 #include <cmath> // fmod
 #include <cassert>
+#include <cstdint>
 #include <cstring> // memcpy, memset
 #include <algorithm> // std::min, std::max
+#include <limits>
+#include <string>
+#include <utility>
 
 reshadefx::type reshadefx::type::merge(const type &lhs, const type &rhs)
 {

@@ -1,11 +1,15 @@
 #include "effect_simple.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <vector>
+#include <vulkan/vulkan_core.h>
 
+#include "config.hpp"
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
-#include "buffer.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
 #include "renderpass.hpp"
 #include "graphics_pipeline.hpp"
 #include "framebuffer.hpp"

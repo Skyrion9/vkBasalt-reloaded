@@ -1,6 +1,7 @@
 #include "vkdispatch.hpp"
 
 #include "vkfuncs.hpp"
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

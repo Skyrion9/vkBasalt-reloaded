@@ -6,8 +6,13 @@
 #include "command_buffer.hpp"
 #include "format.hpp"
 #include "logger.hpp"
-#include "util.hpp"
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <sys/types.h>
 #include <unistd.h>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt {
     extern pid_t g_layer_init_pid;

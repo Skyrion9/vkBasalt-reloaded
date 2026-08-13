@@ -1,6 +1,13 @@
 #include "fake_swapchain.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
 #include "memory.hpp"
 #include "format.hpp"
+#include "vulkan_include.hpp"
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
 {

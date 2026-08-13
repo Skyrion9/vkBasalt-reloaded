@@ -1,9 +1,14 @@
+#include <cfloat>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"
 #include "logger.hpp"
-#include "command_buffer.hpp"
 #include "keyboard_input_x11.hpp"
 #include "effect.hpp" // Required for Effect class and ParamType
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
@@ -14,7 +19,6 @@
 #include "imgui_overlay.hpp"
 #include "imgui_theme.hpp"
 #include "overlay_manager.hpp"
-#include "util.hpp"
 #include <algorithm>
 #include <cmath>
 

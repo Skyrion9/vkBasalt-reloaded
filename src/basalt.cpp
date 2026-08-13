@@ -1,3 +1,12 @@
+#include "vkdispatch.hpp"
+#include <X11/X.h>
+#include <cstdint>
+#include <iterator>
+#include <sys/types.h>
+#include <vulkan/vk_layer.h>
+#include <vulkan/vk_platform.h>
+#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_wayland.h>
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include "vulkan_include.hpp"
 
@@ -13,22 +22,17 @@
 #undef False
 
 #include <mutex>
-#include <map>
 #include <vector>
 #include <unordered_map>
-#include <iostream>
 #include <string>
 #include <memory>
 #include <cstring>
 #include <algorithm>
-#include <fstream>
 #include <unistd.h>
 
 #include "util.hpp"
-#include "keyboard_input.hpp"
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
-#include <wayland-client.h>
 #include "keyboard_input_wayland.hpp"
 #endif
 
@@ -42,32 +46,13 @@
 #include "logical_swapchain.hpp"
 
 #include "image_view.hpp"
-#include "sampler.hpp"
-#include "framebuffer.hpp"
-#include "descriptor_set.hpp"
-#include "shader.hpp"
-#include "graphics_pipeline.hpp"
 #include "pipeline_cache.hpp"
 #include "command_buffer.hpp"
-#include "buffer.hpp"
 #include "config.hpp"
 #include "fake_swapchain.hpp"
-#include "renderpass.hpp"
 #include "format.hpp"
 #include "logger.hpp"
 
-#include "effect.hpp"
-#include "effect_fxaa.hpp"
-#include "effect_cas.hpp"
-#include "effect_clarity.hpp"
-#include "effect_clarityrcas.hpp"
-#include "effect_crystalclear.hpp"
-#include "effect_dls.hpp"
-#include "effect_smaa.hpp"
-#include "effect_deband.hpp"
-#include "effect_lut.hpp"
-#include "effect_reshade.hpp"
-#include "effect_transfer.hpp"
 
 #define VKBASALT_NAME "VK_LAYER_VKBASALT_post_processing"
 

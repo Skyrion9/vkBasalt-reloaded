@@ -1,13 +1,21 @@
 #include "reshade_uniforms.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <cstdlib>
 #include <cmath>
 
 #include <algorithm>
+#include <memory>
+#include <ratio>
+#include <string>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 #include "logger.hpp"
+#include "reshade/effect_module.hpp"
 
 namespace vkBasalt
 {

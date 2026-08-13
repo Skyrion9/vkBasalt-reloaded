@@ -1,16 +1,13 @@
 #include "effect_chain.hpp"
+#include "effect.hpp"
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
-#include "fake_swapchain.hpp"
 #include "config.hpp"
 #include "overlay_manager.hpp"
 #include "imgui_overlay.hpp"
 #include "logger.hpp"
 #include "util.hpp"
 #include "command_buffer.hpp"
-#include "image.hpp"
-#include "image_view.hpp"
-#include "memory.hpp"
 #include "format.hpp"
 #include "effect_cas.hpp"
 #include "effect_clarity.hpp"
@@ -25,11 +22,14 @@
 #include "effect_transfer.hpp"
 #include "pipeline_cache.hpp"
 
+#include <cstdint>
 #include <fstream>
-#include <unistd.h>
-#include <algorithm>
+#include <memory>
+#include <string>
 #include <functional>
 #include <unordered_map>
+#include <vector>
+#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt {
 

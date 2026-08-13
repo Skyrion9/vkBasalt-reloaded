@@ -4,8 +4,12 @@
  */
 
 #include "effect_lexer.hpp"
+#include "effect_token.hpp"
+#include <cstddef>
+#include <string>
 #include <unordered_map> // Used for static lookup tables
 #include <stdint.h>
+#include <utility>
 
 using namespace reshadefx;
 
