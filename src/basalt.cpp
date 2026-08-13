@@ -517,7 +517,8 @@ namespace vkBasalt
     {
         // Hold lock only for map lookups and hotkey processing. Release before GPU work.
         std::shared_ptr<LogicalDevice> pLogicalDevice;
-        std::unordered_map<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>> localSwapchainMap;
+        // Only copy the swapchains we actually present (typically 1-3), not the entire map
+        std::vector<std::pair<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>>> localSwapchains;
         {
             scoped_lock l(globalLock);
             if (processHotkeysAndReloads(pConfig, swapchainMap, g_overlayManager)) {
@@ -525,7 +526,13 @@ namespace vkBasalt
                 return pDev->vkd.QueuePresentKHR(queue, pPresentInfo);
             }
             pLogicalDevice = deviceMap[GetKey(queue)];
-            localSwapchainMap = swapchainMap; // shallow copy of shared_ptrs
+            localSwapchains.reserve(pPresentInfo->swapchainCount);
+            for (unsigned int i = 0; i < pPresentInfo->swapchainCount; i++) {
+                auto it = swapchainMap.find(pPresentInfo->pSwapchains[i]);
+                if (it != swapchainMap.end()) {
+                    localSwapchains.emplace_back(it->first, it->second);
+                }
+            }
         }
 
         if (!pLogicalDevice) return VK_ERROR_DEVICE_LOST;
@@ -545,9 +552,11 @@ namespace vkBasalt
         {
             uint32_t          index             = (*pPresentInfo).pImageIndices[i];
             VkSwapchainKHR    swapchain         = (*pPresentInfo).pSwapchains[i];
-            auto scIt = localSwapchainMap.find(swapchain);
-            if (scIt == localSwapchainMap.end()) continue;
-            LogicalSwapchain* pLogicalSwapchain = scIt->second.get();
+            LogicalSwapchain* pLogicalSwapchain = nullptr;
+            for (auto& [sc, lsc] : localSwapchains) {
+                if (sc == swapchain) { pLogicalSwapchain = lsc.get(); break; }
+            }
+            if (!pLogicalSwapchain) continue;
 
             // If the effect chain grew dynamically submit the fallback and signal OUT_OF_DATE
             if (pLogicalSwapchain->forceSwapchainRebuild) {
