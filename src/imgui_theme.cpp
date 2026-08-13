@@ -1,5 +1,6 @@
 #include "imgui_theme.hpp"
 #include "config.hpp"
+#include "logger.hpp"
 #include "imgui.h"
 #include <cstdio>
 #include <algorithm>
@@ -9,7 +10,11 @@ namespace vkBasalt {
     void hexToRgb(const std::string& hex, float* out) {
         unsigned int r = 0, g = 0, b = 0;
         if (hex.size() >= 6) {
-            sscanf(hex.c_str(), "%02x%02x%02x", &r, &g, &b);
+            int parsed = sscanf(hex.c_str(), "%02x%02x%02x", &r, &g, &b);
+            if (parsed != 3) {
+                Logger::warn("Invalid theme hex color: '" + hex + "', using black");
+                r = g = b = 0;
+            }
         }
         out[0] = r / 255.0f;
         out[1] = g / 255.0f;
