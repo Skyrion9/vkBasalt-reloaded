@@ -339,19 +339,30 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
     static void seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
         if (!data) return;
         wayland_display *wayland = (wayland_display *)data;
+        Logger::debug("seat_handle_capabilities: caps=" + std::to_string(caps));
+
         if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !wayland->keyboard) {
             wayland->keyboard = wl_seat_get_keyboard(seat);
+            // Route keyboard events to our custom queue, not the game's default queue
+            wl_proxy_set_queue((struct wl_proxy*)wayland->keyboard, wayland->queue);
             wl_keyboard_add_listener(wayland->keyboard, &keyboard_listener, data);
+            Logger::debug("Bound keyboard to custom queue");
         }
         if ((caps & WL_SEAT_CAPABILITY_POINTER) && !wayland->pointer) {
             wayland->pointer = wl_seat_get_pointer(seat);
+            // Route pointer events to our custom queue
+            wl_proxy_set_queue((struct wl_proxy*)wayland->pointer, wayland->queue);
             wl_pointer_add_listener(wayland->pointer, &pointer_listener, data);
+            Logger::debug("Bound pointer to custom queue");
 
             // Create relative pointer for FPS games that lock the cursor
             if (wayland->relative_manager && !wayland->relative_pointer) {
                 wayland->relative_pointer = zwp_relative_pointer_manager_v1_get_relative_pointer(
                     wayland->relative_manager, wayland->pointer);
+                // Route relative pointer events to our custom queue
+                wl_proxy_set_queue((struct wl_proxy*)wayland->relative_pointer, wayland->queue);
                 zwp_relative_pointer_v1_add_listener(wayland->relative_pointer, &relative_pointer_listener, data);
+                Logger::debug("Bound relative_pointer to custom queue");
             }
         }
     }
@@ -368,11 +379,14 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
             wl_proxy_set_queue((struct wl_proxy*)seat, wayland->queue);
             wayland->seat = seat;
             wl_seat_add_listener(wayland->seat, &seat_listener, data);
+            Logger::debug("Bound wl_seat to custom queue");
         }
-
         if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0) {
             wayland->relative_manager = (struct zwp_relative_pointer_manager_v1*)wl_registry_bind(
                 registry, name, &zwp_relative_pointer_manager_v1_interface, 1);
+            // Route manager events to our custom queue
+            wl_proxy_set_queue((struct wl_proxy*)wayland->relative_manager, wayland->queue);
+            Logger::debug("Bound relative_pointer_manager");
         }
 
         if (strcmp(interface, wl_output_interface.name) == 0) {
