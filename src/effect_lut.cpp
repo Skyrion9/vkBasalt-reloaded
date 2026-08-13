@@ -3,6 +3,7 @@
 #include <fstream>
 #include <algorithm>
 #include <string>
+
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -105,15 +106,15 @@ namespace vkBasalt
         specData.flipGB  = 0;
         specData.hdrMode = isHDR ? 1 : 0;
 
-        VkSpecializationMapEntry mapEntries[3] = {
+        std::array<VkSpecializationMapEntry, 3> mapEntries = {{
             {0, offsetof(LutSpecData, lutSize), sizeof(int32_t)},
             {1, offsetof(LutSpecData, flipGB),  sizeof(int32_t)},
             {2, offsetof(LutSpecData, hdrMode), sizeof(int32_t)}
-        };
+        }};
 
         VkSpecializationInfo fragmentSpecializationInfo;
-        fragmentSpecializationInfo.mapEntryCount = 3;
-        fragmentSpecializationInfo.pMapEntries   = mapEntries;
+        fragmentSpecializationInfo.mapEntryCount = mapEntries.size();
+        fragmentSpecializationInfo.pMapEntries   = mapEntries.data();
         fragmentSpecializationInfo.dataSize      = sizeof(LutSpecData);
         fragmentSpecializationInfo.pData         = &specData;
 

@@ -83,7 +83,7 @@ namespace vkBasalt
         specData.enableDithering = std::clamp((int32_t)getAndStoreInt("clarityEnableDithering", 1), 0, 1);
         specData.hdrMode         = isHDR ? 1 : 0;
 
-        VkSpecializationMapEntry mapEntries[10] = {
+        std::array<VkSpecializationMapEntry, 10> mapEntries = {{
             {0, offsetof(ClaritySpecData, radius),         sizeof(float)},
             {1, offsetof(ClaritySpecData, offset),         sizeof(float)},
             {2, offsetof(ClaritySpecData, strength),       sizeof(float)},
@@ -94,11 +94,11 @@ namespace vkBasalt
             {7, offsetof(ClaritySpecData, edgeThreshHigh), sizeof(float)},
             {8, offsetof(ClaritySpecData, enableDithering),sizeof(int32_t)},
             {9, offsetof(ClaritySpecData, hdrMode),        sizeof(int32_t)}
-        };
+        }};
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 10;
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(ClaritySpecData);
         specializationInfo.pData         = &specData;
 

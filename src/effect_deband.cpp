@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <string>
+
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -63,7 +64,7 @@ namespace vkBasalt
         m_paramValues["debandRange"]     = specData.range;
         m_paramValues["debandIterations"] = specData.iterations;
 
-        VkSpecializationMapEntry mapEntries[10] = {
+        std::array<VkSpecializationMapEntry, 10> mapEntries = {{
             {0, offsetof(DebandSpecData, screenWidth),         sizeof(float)},
             {1, offsetof(DebandSpecData, screenHeight),        sizeof(float)},
             {2, offsetof(DebandSpecData, reverseScreenWidth),  sizeof(float)},
@@ -74,11 +75,11 @@ namespace vkBasalt
             {7, offsetof(DebandSpecData, range),               sizeof(float)},
             {8, offsetof(DebandSpecData, iterations),          sizeof(int32_t)},
             {9, offsetof(DebandSpecData, hdrMode),             sizeof(int32_t)}
-        };
+        }};
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 10;
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(DebandSpecData);
         specializationInfo.pData         = &specData;
 

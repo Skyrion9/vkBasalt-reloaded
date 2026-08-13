@@ -149,13 +149,17 @@ namespace vkBasalt
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {imageSamplerDescriptorSetLayout};
         pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
 
-        std::vector<VkSpecializationMapEntry> specMapEntrys(9);
-        for (uint32_t i = 0; i < specMapEntrys.size(); i++)
-        {
-            specMapEntrys[i].constantID = i;
-            specMapEntrys[i].offset     = sizeof(float) * i; // TODO not clean to assume that sizeof(int32_t) == sizeof(float)
-            specMapEntrys[i].size       = sizeof(float);
-        }
+        std::array<VkSpecializationMapEntry, 9> specMapEntrys = {{
+            {0, offsetof(SmaaOptions, screenWidth),          sizeof(float)},
+            {1, offsetof(SmaaOptions, screenHeight),         sizeof(float)},
+            {2, offsetof(SmaaOptions, reverseScreenWidth),   sizeof(float)},
+            {3, offsetof(SmaaOptions, reverseScreenHeight),  sizeof(float)},
+            {4, offsetof(SmaaOptions, threshold),            sizeof(float)},
+            {5, offsetof(SmaaOptions, maxSearchSteps),       sizeof(int32_t)},
+            {6, offsetof(SmaaOptions, maxSearchStepsDiag),   sizeof(int32_t)},
+            {7, offsetof(SmaaOptions, cornerRounding),       sizeof(int32_t)},
+            {8, offsetof(SmaaOptions, disableDiagDetection), sizeof(int32_t)},
+        }};
         
         smaaOptions.screenWidth = (float) imageExtent.width;
         smaaOptions.screenHeight = (float) imageExtent.height;

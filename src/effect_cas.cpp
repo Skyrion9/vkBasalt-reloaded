@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <string>
+
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -43,14 +44,14 @@ namespace vkBasalt
 
         m_paramValues["casSharpness"] = specData.sharpness;
 
-        VkSpecializationMapEntry mapEntries[2] = {
+        std::array<VkSpecializationMapEntry, 2> mapEntries = {{
             {0, offsetof(CasSpecData, sharpness), sizeof(float)},
             {1, offsetof(CasSpecData, hdrMode),   sizeof(int32_t)}
-        };
+        }};
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 2;
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(CasSpecData);
         specializationInfo.pData         = &specData;
 

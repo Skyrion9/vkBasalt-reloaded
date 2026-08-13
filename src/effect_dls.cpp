@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <string>
+
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
 #include "buffer.hpp"
@@ -46,15 +47,15 @@ namespace vkBasalt
         m_paramValues["dlsSharpness"] = specData.sharpen;
         m_paramValues["dlsDenoise"]   = specData.denoise;
 
-        VkSpecializationMapEntry mapEntries[3] = {
+        std::array<VkSpecializationMapEntry, 3> mapEntries = {{
             {0, offsetof(DlsSpecData, sharpen),  sizeof(float)},
             {1, offsetof(DlsSpecData, denoise),  sizeof(float)},
             {2, offsetof(DlsSpecData, hdrMode),  sizeof(int32_t)}
-        };
+        }};
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 3;
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(DlsSpecData);
         specializationInfo.pData         = &specData;
 

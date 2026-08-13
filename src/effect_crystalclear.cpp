@@ -39,6 +39,7 @@ namespace vkBasalt
 
         std::string preset = pConfig->getOption<std::string>("crystalclearPreset", "devfav");
         Logger::debug("CrystalClear Preset: " + preset);
+        m_paramValues["crystalclearPreset"] = 0.0; // Combo type, value unused by getParam
 
         // Base Defaults (devfav)
         float def_radius = 2.5f;
@@ -220,7 +221,7 @@ namespace vkBasalt
         specData.chromaSmoothStrength      = std::clamp((float)getAndStore("crystalclearChromaSmoothStrength", def_chromaSmoothStrength), 0.0f, 1.0f);
         specData.specularDesat             = std::clamp((float)getAndStore("crystalclearSpecularDesat", def_specularDesat), 0.0f, 1.0f);
 
-        VkSpecializationMapEntry mapEntries[41] = {
+        std::array<VkSpecializationMapEntry, 41> mapEntries = {{
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
             {1,  offsetof(CrystalClearSpecData, offset),                    sizeof(float)},
             {2,  offsetof(CrystalClearSpecData, SharpStrength),             sizeof(float)},
@@ -262,11 +263,11 @@ namespace vkBasalt
             {38, offsetof(CrystalClearSpecData, enableChromaSmooth),        sizeof(int32_t)},
             {39, offsetof(CrystalClearSpecData, chromaSmoothStrength),      sizeof(float)},
             {40, offsetof(CrystalClearSpecData, specularDesat),             sizeof(float)}
-        };
+        }};
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = 41;
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(CrystalClearSpecData);
         specializationInfo.pData         = &specData;
 
