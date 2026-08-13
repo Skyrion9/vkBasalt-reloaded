@@ -1,5 +1,6 @@
 #include "keyboard_input_wayland.hpp"
 #include "logger.hpp"
+#include "relative-pointer-unstable-v1-client-protocol.h"
 #include <cfloat>
 #include <cstdint>
 #include <string>
@@ -52,10 +53,14 @@ namespace vkBasalt
 
         std::vector<uint32_t> typed_chars;
         std::vector<std::pair<xkb_keysym_t, bool>> key_events; // (keysym, is_pressed)
+        struct zwp_relative_pointer_manager_v1* relative_manager = nullptr;
+        struct zwp_relative_pointer_v1* relative_pointer = nullptr;
 
         ~wayland_display()
         {
             wl_pressed_keys.clear();
+            if (relative_pointer) zwp_relative_pointer_v1_destroy(relative_pointer);
+            if (relative_manager) zwp_relative_pointer_manager_v1_destroy(relative_manager);
             for (auto* out : outputs) {
                 if (out) wl_output_destroy(out);
             }
@@ -170,6 +175,21 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         return 1.0f;
     }
     bool  isWaylandInputActive() { return !displays.empty(); }
+
+    // Relative pointer listener provides mouse deltas during pointer lock
+    static void relative_pointer_motion(void *data, struct zwp_relative_pointer_v1 *pointer,
+                                        uint32_t time_hi, uint32_t time_lo,
+                                        wl_fixed_t dx, wl_fixed_t dy,
+                                        wl_fixed_t dx_unaccel, wl_fixed_t dy_unaccel) {
+        wayland_display *wayland = (wayland_display *)data;
+        // Apply deltas to internal position. Clamped in updateWaylandImGuiIO.
+        wayland->mouse_x += wl_fixed_to_double(dx_unaccel);
+        wayland->mouse_y += wl_fixed_to_double(dy_unaccel);
+    }
+
+    static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {
+        relative_pointer_motion
+    };
 
     static void seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps);
     static void seat_handle_name(void *data, struct wl_seat *seat, const char *name);
@@ -326,6 +346,13 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         if ((caps & WL_SEAT_CAPABILITY_POINTER) && !wayland->pointer) {
             wayland->pointer = wl_seat_get_pointer(seat);
             wl_pointer_add_listener(wayland->pointer, &pointer_listener, data);
+
+            // Create relative pointer for FPS games that lock the cursor
+            if (wayland->relative_manager && !wayland->relative_pointer) {
+                wayland->relative_pointer = zwp_relative_pointer_manager_v1_get_relative_pointer(
+                    wayland->relative_manager, wayland->pointer);
+                zwp_relative_pointer_v1_add_listener(wayland->relative_pointer, &relative_pointer_listener, data);
+            }
         }
     }
 
@@ -341,6 +368,11 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
             wl_proxy_set_queue((struct wl_proxy*)seat, wayland->queue);
             wayland->seat = seat;
             wl_seat_add_listener(wayland->seat, &seat_listener, data);
+        }
+
+        if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0) {
+            wayland->relative_manager = (struct zwp_relative_pointer_manager_v1*)wl_registry_bind(
+                registry, name, &zwp_relative_pointer_manager_v1_interface, 1);
         }
 
         if (strcmp(interface, wl_output_interface.name) == 0) {
@@ -505,17 +537,29 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         ImGuiIO& io = ImGui::GetIO();
         for (auto& display_pair : displays) {
             wayland_display& wayland = display_pair.second;
-            
+
             if (wayland.mouse_valid) {
+                // Normal absolute position (desktop, windowed mode)
                 io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
             } else {
-                io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
+                // Pointer is locked. Relative motion deltas are applied in the relative_pointer_motion callback. 
+                // Clamp to screen bounds so the cursor doesn't drift off screen during gameplay.
+                if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0) {
+                    float maxX = io.DisplaySize.x / scale;
+                    float maxY = io.DisplaySize.y / scale;
+                    if (wayland.mouse_x < 0) wayland.mouse_x = 0;
+                    if (wayland.mouse_y < 0) wayland.mouse_y = 0;
+                    if (wayland.mouse_x > maxX) wayland.mouse_x = maxX;
+                    if (wayland.mouse_y > maxY) wayland.mouse_y = maxY;
+                }
+                io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
             }
-            
-            for(int i=0; i<5; i++) io.MouseDown[i] = wayland.mouse_down[i];
+
+            // Feed buttons unconditionally they still fire during pointer lock
+            for (int i = 0; i < 5; i++) io.MouseDown[i] = wayland.mouse_down[i];
             io.MouseWheel += wayland.mouse_wheel;
             wayland.mouse_wheel = 0.0f;
-            break; 
+            break;
         }
     }
 

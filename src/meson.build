@@ -53,6 +53,30 @@ vkBasalt_src = [
 x11_dep = dependency('x11')
 wayland_client_dep = dependency('wayland-client')
 xkbcommon_dep = dependency('xkbcommon')
+vulkan_dep = dependency('vulkan')
+
+# --- Wayland Protocol Generation ---
+wayland_protocols_dep = dependency('wayland-protocols')
+wayland_scanner_dep = dependency('wayland-scanner')
+
+wayland_scanner = find_program(wayland_scanner_dep.get_variable('wayland_scanner'))
+wl_protocol_dir = wayland_protocols_dep.get_variable('pkgdatadir')
+
+relative_pointer_xml = wl_protocol_dir / 'unstable/relative-pointer/relative-pointer-unstable-v1.xml'
+
+relative_pointer_header = custom_target('relative-pointer-client-header',
+  input: relative_pointer_xml,
+  output: 'relative-pointer-unstable-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
+
+relative_pointer_code = custom_target('relative-pointer-private-code',
+  input: relative_pointer_xml,
+  output: 'relative-pointer-unstable-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
+
+# Add generated files to sources
+vkBasalt_src += [relative_pointer_header, relative_pointer_code]
+# -----------------------------------
 
 conf_paths = configuration_data()
 conf_paths.set_quoted('SYSCONFDIR', join_paths(get_option('prefix'), get_option('sysconfdir')))
@@ -70,8 +94,6 @@ keyboard_input_x11_lib = static_library('keyboard_input_x11',
     cpp_args: ['-Wno-unknown-pragmas'],
     dependencies: [imgui_dep],
 )
-
-vulkan_dep = dependency('vulkan')
 
 shared_library(meson.project_name().to_lower(), 
     vkBasalt_src, shader_include,
