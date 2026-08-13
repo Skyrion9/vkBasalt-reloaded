@@ -599,6 +599,33 @@ namespace vkBasalt {
         ImGui::TextDisabled("When enabled, screenshots include both the raw game output and the post-processed result.");
 
         ImGui::Spacing();
+
+        // Format selector
+        const char* ssFormats[] = {"png", "jpg", "bmp", "tga", "hdr"};
+        std::string ssFmt = m_pConfig->getOption<std::string>("screenshotFormat", "png");
+        int ssFormatIdx = 0;
+        for (int i = 0; i < IM_ARRAYSIZE(ssFormats); i++) {
+            if (ssFmt == ssFormats[i]) { ssFormatIdx = i; break; }
+        }
+        ImGui::PushItemWidth(120);
+        if (ImGui::Combo("Format", &ssFormatIdx, ssFormats, IM_ARRAYSIZE(ssFormats))) {
+            m_pConfig->setOption("screenshotFormat", ssFormats[ssFormatIdx]);
+            m_pConfig->savePerGame();
+        }
+        ImGui::PopItemWidth();
+
+        // JPEG quality slider (only relevant for jpg)
+        if (ssFmt == "jpg" || ssFmt == "jpeg") {
+            int ssQuality = m_pConfig->getOption<int>("screenshotQuality", 95);
+            ImGui::PushItemWidth(200);
+            if (ImGui::SliderInt("JPEG Quality", &ssQuality, 1, 100)) {
+                m_pConfig->setOption("screenshotQuality", std::to_string(ssQuality));
+                m_pConfig->savePerGame();
+            }
+            ImGui::PopItemWidth();
+        }
+
+        ImGui::Spacing();
         static char screenshotDir[512] = {};
         static bool dirLoaded = false;
         if (!dirLoaded) {
@@ -619,7 +646,7 @@ namespace vkBasalt {
             g_triggerScreenshot = true;
         }
         ImGui::SameLine();
-        ImGui::TextDisabled("(saved as PNG)");
+        ImGui::TextDisabled("(saved as %s)", ssFmt.c_str());
 
         ImGui::Spacing();
         ImGui::Separator();

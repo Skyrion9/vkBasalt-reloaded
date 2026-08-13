@@ -15,14 +15,42 @@ namespace vkBasalt {
 
 std::atomic<bool> g_triggerScreenshot{false};
 
-    static std::string generateScreenshotPath(const std::string& baseDir, const std::string& suffix) {
+    static std::string formatToExtension(const std::string& format) {
+        if (format == "jpg" || format == "jpeg") return ".jpg";
+        if (format == "bmp") return ".bmp";
+        if (format == "tga") return ".tga";
+        if (format == "hdr") return ".hdr";
+        return ".png"; // default
+    }
+
+    static std::string generateScreenshotPath(const std::string& baseDir, const std::string& suffix, const std::string& format) {
         static std::string gameId = computeGameId();
         time_t now = time(nullptr);
         struct tm* t = localtime(&now);
         char timeBuf[64];
         strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", t);
-        std::string filename = std::string(timeBuf) + suffix + "_" + gameId + ".png";
+        std::string filename = std::string(timeBuf) + suffix + "_" + gameId + formatToExtension(format);
         return (std::filesystem::path(baseDir) / filename).string();
+    }
+
+    static bool writeImage(const std::string& path, int width, int height, int channels,
+                        const std::vector<uint8_t>& pixels, const std::string& format, int quality) {
+        if (format == "jpg" || format == "jpeg") {
+            return stbi_write_jpg(path.c_str(), width, height, channels, pixels.data(), quality) != 0;
+        } else if (format == "bmp") {
+            return stbi_write_bmp(path.c_str(), width, height, channels, pixels.data()) != 0;
+        } else if (format == "tga") {
+            return stbi_write_tga(path.c_str(), width, height, channels, pixels.data()) != 0;
+        } else if (format == "hdr") {
+            // Convert uint8 [0-255] to float [0.0-1.0] for Radiance HDR format
+            std::vector<float> fpixels(pixels.size());
+            for (size_t i = 0; i < pixels.size(); i++) {
+                fpixels[i] = pixels[i] / 255.0f;
+            }
+            return stbi_write_hdr(path.c_str(), width, height, channels, fpixels.data()) != 0;
+        }
+        // Default: PNG (lossless)
+        return stbi_write_png(path.c_str(), width, height, channels, pixels.data(), width * channels) != 0;
     }
 
     static bool copyImageToBuffer(LogicalDevice* pDevice, VkImage image, VkExtent2D extent,
@@ -156,7 +184,8 @@ std::atomic<bool> g_triggerScreenshot{false};
 
     void captureScreenshot(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
                         uint32_t imageIndex, bool saveBeforeAfter,
-                        const std::string& outputPath) {
+                        const std::string& outputPath,
+                        const std::string& format, int quality) {
         if (!pDevice || !pSwapchain) return;
 
         VkExtent2D extent = pSwapchain->imageExtent;
@@ -171,9 +200,8 @@ std::atomic<bool> g_triggerScreenshot{false};
         {
             std::vector<uint8_t> pixels;
             if (copyImageToBuffer(pDevice, pSwapchain->images[imageIndex], extent, pSwapchain->format, pixels)) {
-                std::string path = generateScreenshotPath(dir, "_after");
-                if (stbi_write_png(path.c_str(), extent.width, extent.height, bytesPerPixel,
-                                pixels.data(), extent.width * bytesPerPixel)) {
+                std::string path = generateScreenshotPath(dir, "_after", format);
+                if (writeImage(path, extent.width, extent.height, bytesPerPixel, pixels, format, quality)) {
                     Logger::info("Screenshot saved: " + path);
                 } else {
                     Logger::err("Failed to write screenshot: " + path);
@@ -187,9 +215,8 @@ std::atomic<bool> g_triggerScreenshot{false};
             // fakeImages[0..imageCount-1] is slice 0 (game's render target)
             if (imageIndex < pSwapchain->fakeImages.size()) {
                 if (copyImageToBuffer(pDevice, pSwapchain->fakeImages[imageIndex], extent, pSwapchain->format, pixels)) {
-                    std::string path = generateScreenshotPath(dir, "_before");
-                    if (stbi_write_png(path.c_str(), extent.width, extent.height, bytesPerPixel,
-                                    pixels.data(), extent.width * bytesPerPixel)) {
+                    std::string path = generateScreenshotPath(dir, "_before", format);
+                    if (writeImage(path, extent.width, extent.height, bytesPerPixel, pixels, format, quality)) {
                         Logger::info("Before screenshot saved: " + path);
                     } else {
                         Logger::err("Failed to write before screenshot: " + path);
@@ -198,5 +225,4 @@ std::atomic<bool> g_triggerScreenshot{false};
             }
         }
     }
-
 } // namespace vkBasalt

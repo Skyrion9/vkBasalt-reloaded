@@ -607,7 +607,9 @@ namespace vkBasalt
                 g_triggerScreenshot = false;
                 bool beforeAfter = pConfig->getOption<bool>("screenshotBeforeAfter", false);
                 std::string path = pConfig->getOption<std::string>("screenshotPath", "");
-                captureScreenshot(pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path);
+                std::string fmt = pConfig->getOption<std::string>("screenshotFormat", "png");
+                int quality = pConfig->getOption<int>("screenshotQuality", 95);
+                captureScreenshot(pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path, fmt, quality);
             }
         }
         VkPresentInfoKHR presentInfo   = *pPresentInfo;
