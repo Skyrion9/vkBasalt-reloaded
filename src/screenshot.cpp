@@ -58,22 +58,33 @@ namespace vkBasalt {
         return (std::filesystem::path(baseDir) / filename).string();
     }
 
-    static bool writeImage(const std::string& path, int width, int height, int channels,
+    static bool writeImage(const std::string& path, int width, int height, int srcChannels,
                         const std::vector<uint8_t>& pixels, const std::string& format, int quality) {
-        if (format == "jpg" || format == "jpeg") {
-            return stbi_write_jpg(path.c_str(), width, height, channels, pixels.data(), quality) != 0;
-        } else if (format == "bmp") {
-            return stbi_write_bmp(path.c_str(), width, height, channels, pixels.data()) != 0;
-        } else if (format == "tga") {
-            return stbi_write_tga(path.c_str(), width, height, channels, pixels.data()) != 0;
-        } else if (format == "hdr") {
-            std::vector<float> fpixels(pixels.size());
-            for (size_t i = 0; i < pixels.size(); i++) {
-                fpixels[i] = pixels[i] / 255.0f;
-            }
-            return stbi_write_hdr(path.c_str(), width, height, channels, fpixels.data()) != 0;
+        // Strip alpha channel to prevent transparency issues in screenshots.
+        // Swapchain images are typically RGBA, but we want to save pure RGB.
+        size_t pixelCount = pixels.size() / srcChannels;
+        std::vector<uint8_t> rgbPixels(pixelCount * 3);
+        for (size_t i = 0; i < pixelCount; i++) {
+            rgbPixels[i * 3 + 0] = pixels[i * srcChannels + 0];
+            rgbPixels[i * 3 + 1] = pixels[i * srcChannels + 1];
+            rgbPixels[i * 3 + 2] = pixels[i * srcChannels + 2];
         }
-        return stbi_write_png(path.c_str(), width, height, channels, pixels.data(), width * channels) != 0;
+        int dstChannels = 3;
+
+        if (format == "jpg" || format == "jpeg") {
+            return stbi_write_jpg(path.c_str(), width, height, dstChannels, rgbPixels.data(), quality) != 0;
+        } else if (format == "bmp") {
+            return stbi_write_bmp(path.c_str(), width, height, dstChannels, rgbPixels.data()) != 0;
+        } else if (format == "tga") {
+            return stbi_write_tga(path.c_str(), width, height, dstChannels, rgbPixels.data()) != 0;
+        } else if (format == "hdr") {
+            std::vector<float> fpixels(rgbPixels.size());
+            for (size_t i = 0; i < rgbPixels.size(); i++) {
+                fpixels[i] = rgbPixels[i] / 255.0f;
+            }
+            return stbi_write_hdr(path.c_str(), width, height, dstChannels, fpixels.data()) != 0;
+        }
+        return stbi_write_png(path.c_str(), width, height, dstChannels, rgbPixels.data(), width * dstChannels) != 0;
     }
 
     static uint32_t findHostVisibleMemoryType(LogicalDevice* pDevice, uint32_t typeBits) {
