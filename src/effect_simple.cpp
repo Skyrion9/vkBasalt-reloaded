@@ -236,27 +236,22 @@ namespace vkBasalt
         // Shaders that declare a push_constant block (like Clarity) will read this.
         // Shaders that don't (like CAS/FXAA) will safely ignore it, provided pushConstantSize matches the layout.
         if (pushConstantSize > 0) {
-            std::vector<float> pushData(pushConstantSize / sizeof(float), 0.0f);
+            float pushData[32] = {}; // Max 128 bytes, zero-initialized on stack
             float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
             float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
-            // All effect push constant layouts start with texelSize at offset 0
-            if (pushData.size() >= 2) {
-                pushData[0] = texelSizeX;
-                pushData[1] = texelSizeY;
-            }
-            // Clarity/ClarityRCAS add pixelSize at offset 4 (2 floats padding between)
-            if (pushData.size() >= 6) {
+            pushData[0] = texelSizeX;
+            pushData[1] = texelSizeY;
+            if (pushConstantSize >= 6 * sizeof(float)) {
                 pushData[4] = texelSizeX;
                 pushData[5] = texelSizeY;
             }
-
             pLogicalDevice->vkd.CmdPushConstants(
-                commandBuffer, 
-                pipelineLayout,              
-                VK_SHADER_STAGE_FRAGMENT_BIT, 
-                0,                           
-                pushConstantSize,           
-                pushData.data()                    
+                commandBuffer,
+                pipelineLayout,
+                VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                pushConstantSize,
+                pushData
             );
         }
 
