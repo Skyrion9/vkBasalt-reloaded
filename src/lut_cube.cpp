@@ -49,8 +49,18 @@ namespace vkBasalt
         {
             line = line.substr(line.find("LUT_3D_SIZE") + 11);
             line = skipWhiteSpace(line);
-            size = std::stoi(line);
-
+            try {
+                size = std::stoi(line);
+            } catch (...) {
+                Logger::err("Malformed LUT_3D_SIZE value in .cube file");
+                size = 0;
+                return;
+            }
+            if (size <= 0 || size > 256) {
+                Logger::err("Invalid LUT_3D_SIZE: " + std::to_string(size));
+                size = 0;
+                return;
+            }
             colorCube = std::vector<unsigned char>(size * size * size * 4, 255);
             return;
         }
