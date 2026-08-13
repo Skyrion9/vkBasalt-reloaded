@@ -166,9 +166,8 @@ namespace vkBasalt
             return;
         scoped_lock l(globalLock);
         Logger::trace("vkDestroyInstance");
-    #ifdef VK_USE_PLATFORM_WAYLAND_KHR
-        shutdownWaylandInput();
-    #endif
+        // Don't shutdownWaylandInput() here. Games with launchers (Naraka/NEAC) destroy the launcher instance and create a new one for
+        // the main game. Destroying Wayland input here kills hotkeys for the main game instance.
         InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
         dispatchTable.DestroyInstance(instance, pAllocator);
         instanceDispatchMap.erase(GetKey(instance));
