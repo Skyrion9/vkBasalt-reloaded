@@ -1,6 +1,7 @@
 #include "effect_fxaa.hpp"
 
 #include <cstring>
+#include <algorithm>
 
 #include "image_view.hpp"
 #include "descriptor_set.hpp"
@@ -28,9 +29,13 @@ namespace vkBasalt
         // Prevent the pipeline layout from allocating a push constant range, tells SimpleEffect::applyEffect to skip the CmdPushConstants API call.
         this->pushConstantSize = 0;
 
-        float fxaaQualitySubpix           = pConfig->getOption<float>("fxaaQualitySubpix", 0.75f);
-        float fxaaQualityEdgeThreshold    = pConfig->getOption<float>("fxaaQualityEdgeThreshold", 0.125f);
-        float fxaaQualityEdgeThresholdMin = pConfig->getOption<float>("fxaaQualityEdgeThresholdMin", 0.0312f);
+        float fxaaQualitySubpix           = std::clamp(pConfig->getOption<float>("fxaaQualitySubpix", 0.75f), 0.0f, 1.0f);
+        float fxaaQualityEdgeThreshold    = std::clamp(pConfig->getOption<float>("fxaaQualityEdgeThreshold", 0.125f), 0.0f, 1.0f);
+        float fxaaQualityEdgeThresholdMin = std::clamp(pConfig->getOption<float>("fxaaQualityEdgeThresholdMin", 0.0312f), 0.0f, 1.0f);
+
+        m_paramValues["fxaaQualitySubpix"]           = fxaaQualitySubpix;
+        m_paramValues["fxaaQualityEdgeThreshold"]    = fxaaQualityEdgeThreshold;
+        m_paramValues["fxaaQualityEdgeThresholdMin"] = fxaaQualityEdgeThresholdMin;
 
         std::vector<VkSpecializationMapEntry> specMapEntrys(5);
 
@@ -58,4 +63,27 @@ namespace vkBasalt
     FxaaEffect::~FxaaEffect()
     {
     }
+
+    const std::vector<EffectParamDesc>& FxaaEffect::getParamDescs() const {
+        static const std::vector<EffectParamDesc> params = {
+            {"fxaaQualitySubpix",           "Subpixel Smoothing",  ParamType::Float, 0.75,   0.0,  1.0,  0.01, {}, "Anti-Aliasing"},
+            {"fxaaQualityEdgeThreshold",    "Edge Threshold",      ParamType::Float, 0.125,  0.0,  1.0, 0.001, {}, "Anti-Aliasing"},
+            {"fxaaQualityEdgeThresholdMin", "Edge Threshold Min",  ParamType::Float, 0.0312, 0.0,  1.0, 0.001, {}, "Anti-Aliasing"},
+        };
+        return params;
+    }
+
+    double FxaaEffect::getParam(const std::string& key) const {
+        auto it = m_paramValues.find(key);
+        return (it != m_paramValues.end()) ? it->second : 0.0;
+    }
+
+    bool FxaaEffect::setParam(const std::string& key, double value) {
+        auto it = m_paramValues.find(key);
+        if (it == m_paramValues.end()) return false;
+        if (it->second == value) return false;
+        it->second = value;
+        return true;
+    }
+
 } // namespace vkBasalt

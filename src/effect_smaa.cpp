@@ -125,6 +125,14 @@ namespace vkBasalt
             smaaOptions.disableDiagDetection = pConfig->getOption<int32_t>("smaaDisableDiagDetection", 0);
         }
 
+        m_paramValues["smaaPreset"]              = 0.0; // Combo type, value unused
+        m_paramValues["smaaEdgeDetection"]       = 0.0; // Combo type, value unused
+        m_paramValues["smaaThreshold"]           = smaaOptions.threshold;
+        m_paramValues["smaaMaxSearchSteps"]      = smaaOptions.maxSearchSteps;
+        m_paramValues["smaaMaxSearchStepsDiag"]  = smaaOptions.maxSearchStepsDiag;
+        m_paramValues["smaaCornerRounding"]      = smaaOptions.cornerRounding;
+        m_paramValues["smaaDisableDiagDetection"]= smaaOptions.disableDiagDetection;
+
         createShaderModule(pLogicalDevice, smaa_edge_vert, &edgeVertexModule);
         bool useColor = pConfig->getOption<std::string>("smaaEdgeDetection", "luma") == "color";
         auto shaderCode = useColor ? smaa_edge_color_frag : smaa_edge_luma_frag;
@@ -298,6 +306,32 @@ namespace vkBasalt
             commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             0, 0, nullptr, 0, nullptr, 1, &barrier4);
             Logger::debug("after SMAA barrier 4");
+    }
+
+    const std::vector<EffectParamDesc>& SmaaEffect::getParamDescs() const {
+        static const std::vector<EffectParamDesc> params = {
+            {"smaaPreset",              "Preset",             ParamType::Combo, 0.0, 0.0, 0.0, 0.0, {"", "low", "medium", "high", "ultra"}, "Preset"},
+            {"smaaEdgeDetection",       "Edge Detection",     ParamType::Combo, 0.0, 0.0, 0.0, 0.0, {"luma", "color"},                        "Edge Detection"},
+            {"smaaThreshold",           "Threshold",          ParamType::Float, 0.05, 0.01, 0.5, 0.01, {},                                   "Edge Detection"},
+            {"smaaMaxSearchSteps",      "Max Search Steps",   ParamType::Int,   32.0, 0.0, 112.0, 1.0, {},                                   "Search"},
+            {"smaaMaxSearchStepsDiag",  "Max Diag Steps",     ParamType::Int,   16.0, 0.0, 20.0,  1.0, {},                                   "Search"},
+            {"smaaCornerRounding",      "Corner Rounding",    ParamType::Int,   25.0, 0.0, 100.0, 1.0, {},                                   "Anti-Aliasing"},
+            {"smaaDisableDiagDetection","Disable Diag Detection", ParamType::Bool, 0.0, 0.0, 1.0, 1.0, {},                                   "Search"},
+        };
+        return params;
+    }
+
+    double SmaaEffect::getParam(const std::string& key) const {
+        auto it = m_paramValues.find(key);
+        return (it != m_paramValues.end()) ? it->second : 0.0;
+    }
+
+    bool SmaaEffect::setParam(const std::string& key, double value) {
+        auto it = m_paramValues.find(key);
+        if (it == m_paramValues.end()) return false;
+        if (it->second == value) return false;
+        it->second = value;
+        return true;
     }
 
     SmaaEffect::~SmaaEffect()

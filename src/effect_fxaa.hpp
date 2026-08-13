@@ -25,6 +25,11 @@ namespace vkBasalt
                    std::vector<VkImage> outputImages,
                    Config*              pConfig);
         ~FxaaEffect();
+
+        std::string getName() const override { return "fxaa"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
+        double getParam(const std::string& key) const override;
+        bool setParam(const std::string& key, double value) override;
     };
 } // namespace vkBasalt
 

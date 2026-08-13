@@ -6,6 +6,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <memory>
+#include <map>
 
 #include "vulkan_include.hpp"
 
@@ -27,6 +28,11 @@ namespace vkBasalt
                    Config*              pConfig);
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         ~SmaaEffect();
+
+        std::string getName() const override { return "smaa"; }
+        const std::vector<EffectParamDesc>& getParamDescs() const override;
+        double getParam(const std::string& key) const override;
+        bool setParam(const std::string& key, double value) override;
 
     private:
         LogicalDevice*               pLogicalDevice;
@@ -68,7 +74,10 @@ namespace vkBasalt
         VkSampler                    sampler;
 
         Config* pConfig;
+
+        std::map<std::string, double> m_paramValues;
     };
+
 } // namespace vkBasalt
 
 #endif // EFFECT_SMAA_HPP_INCLUDED
