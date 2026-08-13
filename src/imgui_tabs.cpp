@@ -340,7 +340,8 @@ namespace vkBasalt {
                             float step = (p->step > 0) ? (float)p->step : 0.01f;
                             bool changed = false;
                             ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                            if (ImGui::InputFloat(p->label.c_str(), &val, 0.0f, 0.0f, "%.3f")) changed = true;
+                            if (ImGui::DragFloat(p->label.c_str(), &val, step, (float)p->minVal, (float)p->maxVal, "%.3f"))
+                                changed = true;
                             if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
                                 if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
                                 if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
@@ -363,7 +364,8 @@ namespace vkBasalt {
                             int step = (p->step > 0) ? (int)p->step : 1;
                             bool changed = false;
                             ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                            if (ImGui::InputInt(p->label.c_str(), &val, 0, 0)) changed = true;
+                            if (ImGui::DragInt(p->label.c_str(), &val, step, (int)p->minVal, (int)p->maxVal))
+                                changed = true;
                             if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
                                 if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
                                 if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
