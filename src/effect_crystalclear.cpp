@@ -287,7 +287,6 @@ namespace vkBasalt
     }
 
     void CrystalClearEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) {
-        Logger::debug("applying CrystalClearEffect to cb " + convertToString(commandBuffer));
 
         VkImageMemoryBarrier memoryBarrier;
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
