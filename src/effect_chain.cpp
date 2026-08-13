@@ -29,6 +29,7 @@
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
 #include <vulkan/vulkan_core.h>
 
 namespace vkBasalt {
@@ -76,6 +77,19 @@ namespace vkBasalt {
         }}
     };
 
+    static uint32_t getLastDstSlice(uint32_t effectCount) {
+        if (effectCount == 0) return 0;
+        if (effectCount == 1) return 1;
+        uint32_t lastI = effectCount - 1;
+        return (lastI % 2 == 1) ? 2 : 1;
+    }
+
+    static uint32_t getRequiredSlices(uint32_t effectCount, bool supportsMutable) {
+        if (effectCount == 0) return 1; // fallback transfer reads slice 0
+        if (effectCount == 1) return supportsMutable ? 1 : 2;
+        return 3; // ping-pong: slices 0, 1, 2
+    }
+
     void buildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
                           VkSwapchainKHR swapchain, Config* pConfig,
                           OverlayManager& overlayManager)
@@ -85,32 +99,39 @@ namespace vkBasalt {
         VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->format);
         VkFormat srgbFormat  = convertToSRGB(pLogicalSwapchain->format);
 
-        // Per effect image slicing. Each effect reads from one slice of fake images and writes to the next.
-        // The last effect writes to the real swapchain images.
         for (uint32_t i = 0; i < effectStrings.size(); i++)
         {
             Logger::debug("current effectString " + effectStrings[i]);
 
-            std::vector<VkImage> firstImages(pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * i,
-                                             pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 1));
-            Logger::debug(std::to_string(firstImages.size()) + " images in firstImages");
+            // Ping-pong slice 0 is the game's render target (read only). Effects alternate between slices 1 and 2 after the first read.
+            uint32_t srcSlice, dstSlice;
+            if (i == 0) {
+                srcSlice = 0;
+                dstSlice = 1;
+            } else {
+                srcSlice = (i % 2 == 1) ? 1 : 2;
+                dstSlice = (i % 2 == 1) ? 2 : 1;
+            }
+
+            std::vector<VkImage> firstImages(
+                pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
+                pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
+            Logger::debug(std::to_string(firstImages.size()) + " images in firstImages (slice " + std::to_string(srcSlice) + ")");
 
             std::vector<VkImage> secondImages;
-            if (i == effectStrings.size() - 1)
+            if (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat)
             {
-                // Last effect output goes to real swapchain images (mutable) or the final fake slice (non-mutable)
-                secondImages = pLogicalDevice->supportsMutableFormat
-                                 ? pLogicalSwapchain->images
-                                 : std::vector<VkImage>(pLogicalSwapchain->fakeImages.end() - pLogicalSwapchain->imageCount,
-                                                         pLogicalSwapchain->fakeImages.end());
+                // Last effect writes directly to real swapchain images
+                secondImages = pLogicalSwapchain->images;
                 Logger::debug("using swapchain images as second images");
             }
             else
             {
-                // Intermediate effect output goes to the next fake image slice
-                secondImages = std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 1),
-                                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (i + 2));
-                Logger::debug("not using swapchain images as second images");
+                // Intermediate or non-mutable last effect writes to dstSlice
+                secondImages = std::vector<VkImage>(
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * dstSlice,
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (dstSlice + 1));
+                Logger::debug("using fake slice " + std::to_string(dstSlice) + " as second images");
             }
             Logger::debug(std::to_string(secondImages.size()) + " images in secondImages");
 
@@ -152,16 +173,19 @@ namespace vkBasalt {
         // Non-mutable format add a final transfer from the last fake slice to real swapchain images
         if (!pLogicalDevice->supportsMutableFormat)
         {
+            uint32_t transferSrcSlice = getLastDstSlice(effectStrings.size());
             pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new TransferEffect(
                 pLogicalDevice,
                 pLogicalSwapchain->format,
                 pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.end() - pLogicalSwapchain->imageCount, pLogicalSwapchain->fakeImages.end()),
+                std::vector<VkImage>(
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * transferSrcSlice,
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (transferSrcSlice + 1)),
                 pLogicalSwapchain->images,
                 pConfig)));
         }
 
-        // Fallback if no valid effects were created, use plain transfer
+        // Fallback if no valid effects were created, use plain transfer from slice 0
         if (pLogicalSwapchain->effects.empty())
         {
             Logger::warn("No valid effects could be created; falling back to plain transfer.");
@@ -169,7 +193,8 @@ namespace vkBasalt {
                 pLogicalDevice,
                 pLogicalSwapchain->format,
                 pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
+                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
                 pLogicalSwapchain->images,
                 pConfig)));
         }
@@ -209,7 +234,8 @@ namespace vkBasalt {
             pLogicalDevice,
             pLogicalSwapchain->format,
             pLogicalSwapchain->imageExtent,
-            std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+            std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
+                                 pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
             pLogicalSwapchain->images,
             pConfig));
 
@@ -249,7 +275,8 @@ namespace vkBasalt {
             pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         }
 
-        uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
+        uint32_t requiredSlices = getRequiredSlices(effectStrings.size(), pLogicalDevice->supportsMutableFormat);
+        uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 
         // Chain GREW beyond allocated pool, game holds old VkImage handles, so we must force the game to recreate its swapchain.
         if (requiredFakeImageCount > pLogicalSwapchain->fakeImages.size()) {
@@ -277,10 +304,13 @@ namespace vkBasalt {
 
             pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
                 pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(), pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
+                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
                 pLogicalSwapchain->images, pConfig));
 
-            writeCommandBuffers(pLogicalDevice, {pLogicalSwapchain->defaultTransfer}, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED, pLogicalSwapchain->commandBuffersNoEffect);
+            writeCommandBuffers(pLogicalDevice, {pLogicalSwapchain->defaultTransfer},
+                                VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
+                                pLogicalSwapchain->commandBuffersNoEffect);
             return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
         }
 

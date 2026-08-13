@@ -491,9 +491,12 @@ namespace vkBasalt
         pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, pLogicalSwapchain->images.data());
 
         std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-
-        // create 1 more set of images when we can't use the swapchain it self
-        uint32_t fakeImageCount = pLogicalSwapchain->imageCount * (effectStrings.size() + !pLogicalDevice->supportsMutableFormat);
+        // Ping-pong cap at 3 slices (game input + 2 working buffers) regardless of chain length
+        uint32_t requiredSlices;
+        if (effectStrings.size() == 0) requiredSlices = 1;
+        else if (effectStrings.size() == 1) requiredSlices = pLogicalDevice->supportsMutableFormat ? 1 : 2;
+        else requiredSlices = 3;
+        uint32_t fakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 
         pLogicalSwapchain->fakeImages =
             createFakeSwapchainImages(pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, fakeImageCount, pLogicalSwapchain->fakeImageMemory);
