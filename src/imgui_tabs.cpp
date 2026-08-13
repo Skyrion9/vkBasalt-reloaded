@@ -636,7 +636,7 @@ namespace vkBasalt {
             dirLoaded = true;
         }
         ImGui::PushItemWidth(300);
-        if (ImGui::InputTextWithHint("##ssdir", "Screenshot directory (empty = $HOME)", screenshotDir, sizeof(screenshotDir),
+        if (ImGui::InputTextWithHint("##ssdir", "Screenshot directory (empty = ~/Pictures/vkBasalt-reloaded)", screenshotDir, sizeof(screenshotDir),
                                     ImGuiInputTextFlags_EnterReturnsTrue)) {
             m_pConfig->setOption("screenshotPath", std::string(screenshotDir));
             m_pConfig->savePerGame();

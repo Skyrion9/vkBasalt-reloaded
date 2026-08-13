@@ -112,9 +112,15 @@ namespace vkBasalt {
         uint32_t bytesPerPixel = 4;
         VkDeviceSize bufferSize = (VkDeviceSize)extent.width * extent.height * bytesPerPixel;
 
-        std::string dir = outputPath.empty()
-            ? std::filesystem::path(getenv("HOME") ? getenv("HOME") : ".").string()
-            : outputPath;
+        std::string dir = outputPath;
+        if (dir.empty()) {
+            const char* home = getenv("HOME");
+            if (home) {
+                dir = std::string(home) + "/Pictures/vkBasalt-reloaded";
+            } else {
+                dir = ".";
+            }
+        }
         std::filesystem::create_directories(dir);
 
         // Create staging buffers
