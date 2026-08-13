@@ -79,8 +79,9 @@ void main()
     vec3 window = (b + d) + (f + h);
     
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. No divide-by-zero possible.
-    vec3 outColor = clamp((e * P - window) / (P - 4.0), 0.0, 1.0);
+    vec3 outColor = (e * P - window) / (P - 4.0);
+
     // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
-    vec3 finalColor = (hdrMode == 1) ? max(outColor, 0.0) : outColor;
+    vec3 finalColor = (hdrMode == 1) ? max(outColor, 0.0) : clamp(outColor, 0.0, 1.0);
     fragColor = vec4(finalColor, inputColor.a);
 }
