@@ -607,10 +607,9 @@ namespace vkBasalt {
         ImGui::SameLine();
         if (ImGui::Button("Save Current as Preset")) {
             if (presetName[0] != '\0') {
-                // Resolve selected effect by name, not by index into the active chain
-                std::vector<std::string> effectNames = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-                if (m_pSwapchain && m_selectedEffectIndex < effectNames.size()) {
-                    std::string selectedName = effectNames[m_selectedEffectIndex];
+                // Resolve selected effect by name from the unified allEffects list
+                if (m_pSwapchain && m_selectedEffectIndex < m_cachedAllEffects.size()) {
+                    std::string selectedName = m_cachedAllEffects[m_selectedEffectIndex];
                     for (auto& eff : m_pSwapchain->effects) {
                         if (eff->getName() == selectedName) {
                             const auto& params = eff->getParamDescs();
