@@ -61,7 +61,7 @@ namespace vkBasalt
         input_initialized = true;
     }
 
-    uint32_t convertToKeySym(std::string key)
+    uint32_t convertToKeySym(const std::string& key)
     {
         init_input_backend();
         
