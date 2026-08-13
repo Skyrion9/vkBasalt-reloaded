@@ -49,7 +49,7 @@ namespace vkBasalt
 
         void writeColor(int x, int y, int z, unsigned char r, unsigned char g, unsigned char b);
 
-        void parseLine(std::string line);
+        void parseLine(const std::string& line);
 
         // splits a tripel of floats
         void splitTripel(std::string tripel, float& x, float& y, float& z);
@@ -57,7 +57,7 @@ namespace vkBasalt
         void clampTripel(float x, float y, float z, unsigned char& outX, unsigned char& outY, unsigned char& outZ);
 
         // returns the text without leading whitespace
-        std::string skipWhiteSpace(std::string text);
+        std::string skipWhiteSpace(const std::string& text);
     };
 
 } // namespace vkBasalt

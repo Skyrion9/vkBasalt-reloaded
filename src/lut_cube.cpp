@@ -40,8 +40,10 @@ namespace vkBasalt
         }
     }
 
-    void LutCube::parseLine(std::string line)
+    void LutCube::parseLine(const std::string& inputLine)
     {
+        std::string line = inputLine;
+        if (line.length() == 0) return;
         if (line.length() == 0) return;
         if (line[0] == '#') return;
 
@@ -105,13 +107,14 @@ namespace vkBasalt
         }
     }
 
-    std::string LutCube::skipWhiteSpace(std::string text)
+    std::string LutCube::skipWhiteSpace(const std::string& text)
     {
-        while (text.size() > 0 && (text[0] == ' ' || text[0] == '\t'))
+        size_t start = 0;
+        while (start < text.size() && (text[start] == ' ' || text[start] == '\t'))
         {
-            text = text.substr(1);
+            start++;
         }
-        return text;
+        return text.substr(start);
     }
 
     // Fixed: Use std::stof's native 'pos' argument to completely eliminate std::string::npos crashes
