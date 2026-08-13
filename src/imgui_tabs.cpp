@@ -577,7 +577,9 @@ namespace vkBasalt {
             } else {
                 for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; k++) {
                     ImGuiKey ik = (ImGuiKey)k;
+                    // Skip mouse buttons, Escape, Enter, Space to prevent immediate rebind.
                     if (ik == ImGuiKey_Escape || ik == ImGuiKey_Enter || ik == ImGuiKey_Space) continue;
+                    if (ik >= ImGuiKey_MouseLeft && ik <= ImGuiKey_MouseWheelY) continue;
                     if (ImGui::IsKeyPressed(ik)) {
                         applyKeybind(m_bindingField, ik);
                         m_bindingField = -1;
