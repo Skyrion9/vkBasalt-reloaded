@@ -35,7 +35,12 @@ namespace vkBasalt
         {
             imageViewCreateInfo.image = images[i];
             VkResult result           = pLogicalDevice->vkd.CreateImageView(pLogicalDevice->device, &imageViewCreateInfo, nullptr, &(imageViews[i]));
-            ASSERT_VULKAN(result);
+            if (result != VK_SUCCESS) {
+                for (uint32_t j = 0; j < i; j++)
+                    pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageViews[j], nullptr);
+                imageViews.clear();
+                ASSERT_VULKAN(result);
+            }
         }
 
         return imageViews;
