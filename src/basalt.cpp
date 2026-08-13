@@ -36,6 +36,7 @@
 #include "keyboard_input_wayland.hpp"
 #endif
 
+#include "keyboard_input.hpp"
 #include "keyboard_input_x11.hpp"
 #include "hotkey_manager.hpp"
 #include "imgui_overlay.hpp"
@@ -364,6 +365,7 @@ namespace vkBasalt
         // Grab display pointer
         if (pCreateInfo && pCreateInfo->display)
         {
+            setInputBackend(true); // Confirm Wayland backend
             initWaylandInput((void*)pCreateInfo->display, (void*)pCreateInfo->surface);
         }
 
@@ -391,6 +393,7 @@ namespace vkBasalt
         // Grab display pointer and window handle for X11 input
         if (pCreateInfo && pCreateInfo->dpy)
         {
+            setInputBackend(false); // Confirm X11/XWayland backend
             initX11Input((void*)pCreateInfo->dpy, (void*)(uintptr_t)pCreateInfo->window);
         }
         InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];

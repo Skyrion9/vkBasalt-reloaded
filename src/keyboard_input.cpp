@@ -23,51 +23,62 @@
 
 namespace vkBasalt
 {
-    static bool is_wayland = false;
+    static bool is_wayland        = false;
     static bool input_initialized = false;
 
     static void init_input_backend()
     {
-        if (input_initialized) return;
-        
+        if (input_initialized)
+            return;
         const char* wayland_var = getenv("WAYLAND_DISPLAY");
-        const char* x11_var = getenv("DISPLAY");
-         
-        // Xwayland ıs also an X11 backend (XQueryKeymap).
-        if (wayland_var && strcmp(wayland_var, "") != 0 && x11_var && strcmp(x11_var, "") != 0)
-        {
-#if VKBASALT_X11
-            Logger::debug("Detected XWayland. Using X11 input backend.");
-            is_wayland = false;
-#endif
-        }
-        // Wayland game, The Vulkan hook (vkCreateWaylandSurfaceKHR in basalt.cpp) will initialize the backend.
-        else if (wayland_var && strcmp(wayland_var, "") != 0)
+        const char* x11_var     = getenv("DISPLAY");
+
+        // Fallback logic if no surface was created before the first key check
+        if (wayland_var && strcmp(wayland_var, "") != 0)
         {
 #if VKBASALT_WAYLAND
-            Logger::debug("Detected native Wayland. Waiting for Vulkan surface hook to provide wl_display.");
+            Logger::debug("Wayland session detected via env. Waiting for surface hook.");
             is_wayland = true;
-            // initWaylandInput() is called from basalt.cpp when the surface is created.
 #endif
         }
-        // Pure X11
         else if (x11_var && strcmp(x11_var, "") != 0)
         {
 #if VKBASALT_X11
-            Logger::debug("Detected X11. Using X11 input backend.");
+            Logger::debug("Pure X11 session detected via env. Using X11 input backend.");
             is_wayland = false;
 #endif
         }
-        
         input_initialized = true;
+    }
+
+    // Called from surface creation hooks to confirm/override the backend
+    void setInputBackend(bool wayland)
+    {
+        // X11 surfaces strongly imply XWayland or native X11. XWayland games (like Naraka) often create both Wayland (for popups/launchers)
+        // and X11 (for the main game window) surfaces. If an X11 surface is created, always prefer X11 to ensure main window input works.
+        if (!wayland)
+        {
+            is_wayland = false;
+        }
+        else
+        {
+            // Only default to Wayland if X11 hasn't already claimed the backend
+            if (!input_initialized || is_wayland)
+            {
+                is_wayland = true;
+            }
+        }
+        input_initialized = true;
+        Logger::debug(std::string("Input backend confirmed: ") + (is_wayland ? "Wayland" : "X11"));
     }
 
     uint32_t convertToKeySym(const std::string& key)
     {
         init_input_backend();
-        
+
 #if VKBASALT_WAYLAND
-        if (is_wayland) return convertToKeySymWayland(key);
+        if (is_wayland)
+            return convertToKeySymWayland(key);
 #endif
 
 #if VKBASALT_X11
@@ -79,9 +90,10 @@ namespace vkBasalt
     bool isKeyPressed(uint32_t ks)
     {
         init_input_backend();
-        
+
 #if VKBASALT_WAYLAND
-        if (is_wayland) return isKeyPressedWayland(ks);
+        if (is_wayland)
+            return isKeyPressedWayland(ks);
 #endif
 
 #if VKBASALT_X11
