@@ -178,7 +178,6 @@ namespace vkBasalt
                 writeDescriptorSets[j].pImageInfo = &imageInfos[j];
                 writeDescriptorSets[j].dstSet     = descriptorSets[i];
             }
-            Logger::debug("before writing descriptor Sets");
             pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
         }
         return descriptorSets;
