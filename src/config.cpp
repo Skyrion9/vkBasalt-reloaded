@@ -337,8 +337,17 @@ namespace vkBasalt
         std::string path = presetDir() + "/" + name + ".conf";
         std::ofstream out(path);
         if (!out.good()) return false;
-        out << "# vkBasalt-reloaded preset: " << name << "\n\n";
+        out << "# vkBasalt-reloaded preset: " << name << "\n";
         std::lock_guard<std::mutex> lock(m_mutex);
+
+        // Ensure the effect chain is always included, even if it was never modified from the global default (and thus missing from m_game).
+        if (m_game.find("effects") == m_game.end()) {
+            auto globalIt = m_global.find("effects");
+            if (globalIt != m_global.end()) {
+                out << "effects=" << globalIt->second << "\n";
+            }
+        }
+
         for (auto& kv : m_game) {
             out << kv.first << "=" << kv.second << "\n";
         }
