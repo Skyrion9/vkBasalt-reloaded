@@ -154,6 +154,7 @@ namespace vkBasalt
             float extremeProtection; float shimmerReduction; float vibrance; int32_t enableDeband;
             float debandStrength; float toneCurve; int32_t enableChromaSmooth; float chromaSmoothStrength;
             float specularDesat; float localContrastStrength; int32_t enableDespeckle; float despeckleThreshold;
+            int32_t enableFringeFix; float fringeStrength;
         };
 
         CrystalClearSpecData specData;
@@ -223,6 +224,8 @@ namespace vkBasalt
         specData.localContrastStrength     = std::clamp((float)getAndStore("crystalclearLocalContrastStrength", 0.0f), 0.0f, 2.0f);
         specData.enableDespeckle           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableDespeckle", 0), int32_t(0), int32_t(1));
         specData.despeckleThreshold        = std::clamp((float)getAndStore("crystalclearDespeckleThreshold", 0.15f), 0.0f, 1.0f);
+        specData.enableFringeFix           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableFringeFix", 0), int32_t(0), int32_t(1));
+        specData.fringeStrength            = std::clamp((float)getAndStore("crystalclearFringeStrength", 0.5f), 0.0f, 1.0f);
 
         VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -268,7 +271,9 @@ namespace vkBasalt
             {40, offsetof(CrystalClearSpecData, specularDesat),             sizeof(float)},
             {41, offsetof(CrystalClearSpecData, localContrastStrength),     sizeof(float)},
             {42, offsetof(CrystalClearSpecData, enableDespeckle),           sizeof(int32_t)},
-            {43, offsetof(CrystalClearSpecData, despeckleThreshold),        sizeof(float)}
+            {43, offsetof(CrystalClearSpecData, despeckleThreshold),        sizeof(float)},
+            {44, offsetof(CrystalClearSpecData, enableFringeFix),           sizeof(int32_t)},
+            {45, offsetof(CrystalClearSpecData, fringeStrength),            sizeof(float)}
         };
 
         VkSpecializationInfo specializationInfo;
@@ -395,6 +400,8 @@ namespace vkBasalt
             {"crystalclearLocalContrastStrength", "Local Contrast",         ParamType::Float, 0.0,   0.0,   2.0,  0.05},
             {"crystalclearEnableDespeckle",       "Enable Despeckle",       ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
             {"crystalclearDespeckleThreshold",    "Despeckle Threshold",    ParamType::Float, 0.15,  0.0,   1.0,  0.01},
+            {"crystalclearEnableFringeFix",       "Fringe Fix (CA)",        ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearFringeStrength",        "Fringe Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05},
         };
         return params;
     }

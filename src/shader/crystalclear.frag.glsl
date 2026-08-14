@@ -110,6 +110,8 @@ layout(constant_id = 40) const float specularDesat = 0.0; // 0.0 = off, 0.4 = su
 layout(constant_id = 41) const float localContrastStrength = 0.0; // Clarity local contrast knob
 layout(constant_id = 42) const int enableDespeckle = 0;
 layout(constant_id = 43) const float despeckleThreshold = 0.15;
+layout(constant_id = 44) const int enableFringeFix = 0;
+layout(constant_id = 45) const float fringeStrength = 0.5;
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -581,6 +583,18 @@ void main() {
                 float new_min_c = max_spec - new_chroma;
                 finalColor = pure_chroma + new_min_c;
             }
+        }
+
+        // phase 11.5: Fringing suppression detects color-only edges (chromatic aberration, compression artifacts) 
+        // where RGB gradient >> luma gradient, desaturates them toward neutral.
+        if (enableFringeFix == 1 && enableRGBEdgeDetection == 1) {
+            float rgbEdgeMag  = max(edgeH, edgeV);
+            float lumaEdgeMag = max(pureLumaEdgeH, pureLumaEdgeV);
+            float fringe      = max(rgbEdgeMag - lumaEdgeMag, 0.0);
+            float fringeMask  = smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, fringe)
+                            * fringeStrength * bandPassMask;
+            float lumaHere = getNeutralLuma(finalColor);
+            finalColor = mix(finalColor, vec3(lumaHere), fringeMask);
         }
 
         // phase 12: shimmer reduction (stabilizes isolated pixels)
