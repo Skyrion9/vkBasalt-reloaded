@@ -239,8 +239,7 @@ void main() {
     float crossRange = crossRangeMax - crossRangeMin;
 
     float fxaaThreshMin = fxaaEdgeThresholdMin * hdrNorm;
-    float rangeMaxScaled = crossRangeMax * fxaaEdgeThreshold;
-    float rangeMaxClamped = max(fxaaThreshMin, rangeMaxScaled);
+    float rangeMaxClamped = max(fxaaThreshMin, crossRangeMax * fxaaEdgeThreshold);
     bool earlyExit = crossRange < rangeMaxClamped;
 
     float lumaEdgeD1 = abs(lA + lI - 2.0 * lE);
@@ -289,106 +288,102 @@ void main() {
     float microTextureMask = smoothstep(0.25, 0.55, effectivePurity);
 
     bool isEdge = !earlyExit && (maxCombinedEdge > (fxaaEdgeThreshold * 0.5 * hdrNorm));
-    bool isHorizontal = edgeH > edgeV;
 
     // phase 5: FXAA Preset 39 and some extras.
     vec3 aaColor = e;
-    float invEdgeConf = 1.0;
 
-    if (isEdge) {
-        invEdgeConf = 1.0 - smoothstep(rangeMaxScaled, rangeMaxScaled * 2.0, maxCombinedEdge);
+    if (isEdge && enableAA == 1) {
+        bool isHorizontal = edgeH > edgeV;
 
-        if (enableAA == 1) {
-            float subpixNSWE = lB + lH + lD + lF;
-            float subpixNWSWNESE = lA + lC + lG + lI;
-            float subpixA = subpixNSWE * 2.0 + subpixNWSWNESE;
-            float subpixB = subpixA * 0.08333333 - lE;
-            float subpixRcpRange = 1.0 / max(crossRange, 0.0001);
-            float subpixC = clamp(abs(subpixB) * subpixRcpRange, 0.0, 1.0);
-            float subpixD = (-2.0 * subpixC) + 3.0;
-            float subpixE = subpixC * subpixC;
-            float subpixF = subpixD * subpixE;
-            float subpixG = subpixF * subpixF;
-            float subpixH = subpixG * fxaaSubpixAmount;
+        float subpixNSWE = lB + lH + lD + lF;
+        float subpixNWSWNESE = lA + lC + lG + lI;
+        float subpixA = subpixNSWE * 2.0 + subpixNWSWNESE;
+        float subpixB = subpixA * 0.08333333 - lE;
+        float subpixRcpRange = 1.0 / max(crossRange, 0.0001);
+        float subpixC = clamp(abs(subpixB) * subpixRcpRange, 0.0, 1.0);
+        float subpixD = (-2.0 * subpixC) + 3.0;
+        float subpixE = subpixC * subpixC;
+        float subpixF = subpixD * subpixE;
+        float subpixG = subpixF * subpixF;
+        float subpixH = subpixG * fxaaSubpixAmount;
 
-            float lengthSign = 1.0;
-            float lumaN_fxaa = isHorizontal ? lB : lD;
-            float lumaS_fxaa = isHorizontal ? lH : lF;
-            float gradientN = lumaN_fxaa - lE;
-            float gradientS = lumaS_fxaa - lE;
-            bool pairN = abs(gradientN) >= abs(gradientS);
+        float lengthSign = 1.0;
+        float lumaN_fxaa = isHorizontal ? lB : lD;
+        float lumaS_fxaa = isHorizontal ? lH : lF;
+        float gradientN = lumaN_fxaa - lE;
+        float gradientS = lumaS_fxaa - lE;
+        bool pairN = abs(gradientN) >= abs(gradientS);
 
-            if (pairN) lengthSign = -1.0;
+        if (pairN) lengthSign = -1.0;
 
-            float lumaNN = (pairN ? lumaN_fxaa : lumaS_fxaa) + lE;
-            float gradient = max(abs(gradientN), abs(gradientS));
-            float gradientScaled = gradient * 0.25;
-            float lumaMM = lE - lumaNN * 0.5;
-            bool lumaMLTZero = lumaMM < 0.0;
+        float lumaNN = (pairN ? lumaN_fxaa : lumaS_fxaa) + lE;
+        float gradient = max(abs(gradientN), abs(gradientS));
+        float gradientScaled = gradient * 0.25;
+        float lumaMM = lE - lumaNN * 0.5;
+        bool lumaMLTZero = lumaMM < 0.0;
 
-            vec2 posM = textureCoord;
-            vec2 posB = posM;
-            vec2 offNP = isHorizontal ? vec2(pc.pixelSize.x, 0.0) : vec2(0.0, pc.pixelSize.y);
+        vec2 posM = textureCoord;
+        vec2 posB = posM;
+        vec2 offNP = isHorizontal ? vec2(pc.pixelSize.x, 0.0) : vec2(0.0, pc.pixelSize.y);
 
-            if (isHorizontal) posB.y += lengthSign * 0.5 * pc.pixelSize.y;
-            else posB.x += lengthSign * 0.5 * pc.pixelSize.x;
+        if (isHorizontal) posB.y += lengthSign * 0.5 * pc.pixelSize.y;
+        else posB.x += lengthSign * 0.5 * pc.pixelSize.x;
 
-            vec2 posN = posB - offNP * 1.0;
-            vec2 posP = posB + offNP * 1.0;
+        vec2 posN = posB - offNP * 1.0;
+        vec2 posP = posB + offNP * 1.0;
 
-            float lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - lumaNN * 0.5;
-            float lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - lumaNN * 0.5;
+        float lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - lumaNN * 0.5;
+        float lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - lumaNN * 0.5;
 
-            bool doneN = abs(lumaEndN) >= gradientScaled;
-            bool doneP = abs(lumaEndP) >= gradientScaled;
+        bool doneN = abs(lumaEndN) >= gradientScaled;
+        bool doneP = abs(lumaEndP) >= gradientScaled;
 
-            float steps[11] = float[](1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0);
+        float steps[11] = float[](1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0);
 
-            for(int j = 0; j < 11; j++) {
-                if (doneN && doneP) break;
-                float stepSize = steps[j];
-                if (!doneN) {
-                    posN -= offNP * stepSize;
-                    lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - lumaNN * 0.5;
-                    doneN = abs(lumaEndN) >= gradientScaled;
-                }
-                if (!doneP) {
-                    posP += offNP * stepSize;
-                    lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - lumaNN * 0.5;
-                    doneP = abs(lumaEndP) >= gradientScaled;
-                }
+        for(int j = 0; j < 11; j++) {
+            if (doneN && doneP) break;
+            float stepSize = steps[j];
+            if (!doneN) {
+                posN -= offNP * stepSize;
+                lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - lumaNN * 0.5;
+                doneN = abs(lumaEndN) >= gradientScaled;
             }
-
-            float dstN = isHorizontal ? abs(posM.x - posN.x) : abs(posM.y - posN.y);
-            float dstP = isHorizontal ? abs(posP.x - posM.x) : abs(posP.y - posM.y);
-
-            bool goodSpanN = (lumaEndN < 0.0) != lumaMLTZero;
-            bool goodSpanP = (lumaEndP < 0.0) != lumaMLTZero;
-            bool directionN = dstN < dstP;
-            bool goodSpan = directionN ? goodSpanN : goodSpanP;
-
-            float spanLength = dstN + dstP;
-            float spanLengthRcp = 1.0 / max(spanLength, 0.0001);
-            float dst = min(dstN, dstP);
-
-            float pixelOffset = (dst * (-spanLengthRcp)) + 0.5;
-            float pixelOffsetGood = goodSpan ? pixelOffset : 0.0;
-            float pixelOffsetSubpix = max(pixelOffsetGood, subpixH);
-
-            float thinLineMask = smoothstep(0.7, 0.95, subpixE);
-            float finalShift = mix(pixelOffsetSubpix, 0.0, thinLineMask);
-
-            float diagVectorWeight = smoothstep(0.85, 0.98, lumaDiagRatio);
-            float sharpShift = clamp(finalShift * 1.25, -0.5, 0.5);
-            finalShift = mix(finalShift, sharpShift, diagVectorWeight);
-
-            finalShift = clamp(finalShift * lengthSign, -0.5, 0.5);
-
-            vec2 perpOffset = isHorizontal ? vec2(0.0, pc.pixelSize.y) : vec2(pc.pixelSize.x, 0.0);
-            vec2 finalUV = posM + finalShift * perpOffset;
-
-            aaColor = textureLod(img, finalUV, 0.0).rgb;
+            if (!doneP) {
+                posP += offNP * stepSize;
+                lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - lumaNN * 0.5;
+                doneP = abs(lumaEndP) >= gradientScaled;
+            }
         }
+
+        float dstN = isHorizontal ? abs(posM.x - posN.x) : abs(posM.y - posN.y);
+        float dstP = isHorizontal ? abs(posP.x - posM.x) : abs(posP.y - posM.y);
+
+        bool goodSpanN = (lumaEndN < 0.0) != lumaMLTZero;
+        bool goodSpanP = (lumaEndP < 0.0) != lumaMLTZero;
+        bool directionN = dstN < dstP;
+        bool goodSpan = directionN ? goodSpanN : goodSpanP;
+
+        float spanLength = dstN + dstP;
+        float spanLengthRcp = 1.0 / max(spanLength, 0.0001);
+        float dst = min(dstN, dstP);
+
+        float pixelOffset = (dst * (-spanLengthRcp)) + 0.5;
+        float pixelOffsetGood = goodSpan ? pixelOffset : 0.0;
+        float pixelOffsetSubpix = max(pixelOffsetGood, subpixH);
+
+        float thinLineMask = smoothstep(0.7, 0.95, subpixE);
+        float finalShift = mix(pixelOffsetSubpix, 0.0, thinLineMask);
+
+        float diagVectorWeight = smoothstep(0.85, 0.98, lumaDiagRatio);
+        float sharpShift = clamp(finalShift * 1.25, -0.5, 0.5);
+        finalShift = mix(finalShift, sharpShift, diagVectorWeight);
+
+        finalShift = clamp(finalShift * lengthSign, -0.5, 0.5);
+
+        vec2 perpOffset = isHorizontal ? vec2(0.0, pc.pixelSize.y) : vec2(pc.pixelSize.x, 0.0);
+        vec2 finalUV = posM + finalShift * perpOffset;
+
+        aaColor = textureLod(img, finalUV, 0.0).rgb;
     }
 
     // phase 6: clarity bilateral deltas and weights with 3x3 anchor
@@ -570,8 +565,11 @@ void main() {
         float isolation = abs(lumaAA - avgLuma);
 
         float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
+        // If FXAA actively blended this pixel, reduce shimmer correction avoid fighting FXAA's anti-aliasing. aaColor==e when FXAA is off.
+        float fxaaActivity = clamp(length(aaColor - e) * 8.0 / hdrNorm, 0.0, 1.0);
         float shimmerMask = smoothstep(0.08 * hdrNorm, 0.2 * hdrNorm, isolation)
-                          * microTextureMask * invEdgeConf * shimmerChoke * shimmerReduction;
+                        * microTextureMask * edgeMask * (1.0 - fxaaActivity * 0.5)
+                        * shimmerChoke * shimmerReduction;
 
         if (shimmerMask > 0.0) {
             float clampedLuma = mix(finalLuma, avgLuma, shimmerMask * 0.5);
