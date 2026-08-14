@@ -1,6 +1,5 @@
 #include "effect_smaa.hpp"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -156,7 +155,7 @@ namespace vkBasalt
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {imageSamplerDescriptorSetLayout};
         pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
 
-        std::array<VkSpecializationMapEntry, 9> specMapEntrys = {{
+        VkSpecializationMapEntry specMapEntrys[] = {
             {0, offsetof(SmaaOptions, screenWidth),          sizeof(float)},
             {1, offsetof(SmaaOptions, screenHeight),         sizeof(float)},
             {2, offsetof(SmaaOptions, reverseScreenWidth),   sizeof(float)},
@@ -166,7 +165,7 @@ namespace vkBasalt
             {6, offsetof(SmaaOptions, maxSearchStepsDiag),   sizeof(int32_t)},
             {7, offsetof(SmaaOptions, cornerRounding),       sizeof(int32_t)},
             {8, offsetof(SmaaOptions, disableDiagDetection), sizeof(int32_t)},
-        }};
+        };
         
         smaaOptions.screenWidth = (float) imageExtent.width;
         smaaOptions.screenHeight = (float) imageExtent.height;
@@ -174,8 +173,8 @@ namespace vkBasalt
         smaaOptions.reverseScreenHeight = 1.0f / imageExtent.height;
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = specMapEntrys.size();
-        specializationInfo.pMapEntries   = specMapEntrys.data();
+        specializationInfo.mapEntryCount = sizeof(specMapEntrys) / sizeof(specMapEntrys[0]);
+        specializationInfo.pMapEntries   = specMapEntrys;
         specializationInfo.dataSize      = sizeof(smaaOptions);
         specializationInfo.pData         = &smaaOptions;
 

@@ -1,5 +1,4 @@
 #include "effect_cas.hpp"
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <algorithm>
@@ -43,14 +42,14 @@ namespace vkBasalt
 
         m_paramValues["casSharpness"] = specData.sharpness;
 
-        std::array<VkSpecializationMapEntry, 2> mapEntries = {{
+        VkSpecializationMapEntry mapEntries[] = {
             {0, offsetof(CasSpecData, sharpness), sizeof(float)},
             {1, offsetof(CasSpecData, hdrMode),   sizeof(int32_t)}
-        }};
+        };
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = mapEntries.size();
-        specializationInfo.pMapEntries   = mapEntries.data();
+        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
+        specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(CasSpecData);
         specializationInfo.pData         = &specData;
 

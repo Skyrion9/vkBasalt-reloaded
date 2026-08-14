@@ -1,6 +1,5 @@
 #include "effect_clarityrcas.hpp"
 
-#include <array>
 #include <cstdint>
 #include <cmath>
 #include <cstddef> 
@@ -93,7 +92,7 @@ namespace vkBasalt
         specData.coarseGrainWeight    = std::clamp((float)getAndStore("clarityRCoarseGrainWeight", 0.8f), 0.0f, 1.0f);
         specData.hdrMode              = isHDR ? 1 : 0;
 
-        std::array<VkSpecializationMapEntry, 17> mapEntries = {{
+        VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(ClarityRcasSpecData, radius),                sizeof(float)},
             {1,  offsetof(ClarityRcasSpecData, offset),                sizeof(float)},
             {2,  offsetof(ClarityRcasSpecData, clarityStrength),       sizeof(float)},
@@ -111,11 +110,11 @@ namespace vkBasalt
             {14, offsetof(ClarityRcasSpecData, fineGrainWeight),       sizeof(float)},
             {15, offsetof(ClarityRcasSpecData, coarseGrainWeight),     sizeof(float)},
             {16, offsetof(ClarityRcasSpecData, hdrMode),               sizeof(int32_t)}
-        }};
+        };
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = mapEntries.size();
-        specializationInfo.pMapEntries   = mapEntries.data();
+        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
+        specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(ClarityRcasSpecData);
         specializationInfo.pData         = &specData;
 

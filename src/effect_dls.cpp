@@ -1,5 +1,4 @@
 #include "effect_dls.hpp"
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <algorithm>
@@ -46,15 +45,15 @@ namespace vkBasalt
         m_paramValues["dlsSharpness"] = specData.sharpen;
         m_paramValues["dlsDenoise"]   = specData.denoise;
 
-        std::array<VkSpecializationMapEntry, 3> mapEntries = {{
+        VkSpecializationMapEntry mapEntries[] = {
             {0, offsetof(DlsSpecData, sharpen),  sizeof(float)},
             {1, offsetof(DlsSpecData, denoise),  sizeof(float)},
             {2, offsetof(DlsSpecData, hdrMode),  sizeof(int32_t)}
-        }};
+        };
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = mapEntries.size();
-        specializationInfo.pMapEntries   = mapEntries.data();
+        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
+        specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(DlsSpecData);
         specializationInfo.pData         = &specData;
 
