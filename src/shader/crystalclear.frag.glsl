@@ -112,6 +112,7 @@ layout(constant_id = 42) const int enableDespeckle = 0;
 layout(constant_id = 43) const float despeckleThreshold = 0.15;
 layout(constant_id = 44) const int enableFringeFix = 0;
 layout(constant_id = 45) const float fringeStrength = 0.5;
+layout(constant_id = 46) const float saturation = 0.0; // -1.0 (grayscale) to 1.0 (double), 0.0 = off
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -566,7 +567,20 @@ void main() {
                 finalColor = pure_chroma + new_min_c;
             }
         }
-
+        // phase 10.5: Linear saturation
+        if (saturation != 0.0) {
+            float max_c = max(finalColor.r, max(finalColor.g, finalColor.b));
+            float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
+            float chroma = max_c - min_c;
+            if (chroma > 0.0001) {
+                float sat_factor = 1.0 + saturation;
+                float new_chroma = clamp(chroma * sat_factor, 0.0, max_c);
+                vec3 pure_chroma = finalColor - min_c;
+                pure_chroma *= (new_chroma / chroma);
+                float new_min_c = max_c - new_chroma;
+                finalColor = pure_chroma + new_min_c;
+            }
+        }
         // phase 11: Specular Highlight Desaturation white specular reflections lose saturation and approach white irl. Prevents colorful highlights.
         if (specularDesat != 0.0) {
             float max_spec = max(finalColor.r, max(finalColor.g, finalColor.b));
