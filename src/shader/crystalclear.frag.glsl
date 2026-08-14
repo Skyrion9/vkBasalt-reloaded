@@ -131,6 +131,8 @@ layout(constant_id = 61) const float stHighR = 0.5;
 layout(constant_id = 62) const float stHighG = 0.3;
 layout(constant_id = 63) const float stHighB = 0.0;
 layout(constant_id = 64) const float splitToneStrength = 0.0;
+layout(constant_id = 65) const float temperature = 0.0; // -1.0 (cool/blue) to 1.0 (warm/amber), 0 = neutral
+layout(constant_id = 66) const float tint = 0.0;        // -1.0 (magenta) to 1.0 (green), 0 = neutral
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -623,6 +625,15 @@ void main() {
             highlightTint -= getNeutralLuma(highlightTint);
             vec3 tint = shadowTint * shadowWeight + highlightTint * highlightWeight;
             finalColor += tint * splitToneStrength * hdrNorm;
+        }
+
+        // phase 10.8: Temperature / Tint (white balance). Warm (+) adds red and removes blue,
+        // cool (-) does the reverse. Tint shifts along the green-magenta axis. Luminance-preserving
+        // normalization prevents overall brightness shift from the tint component.
+        if (temperature != 0.0 || tint != 0.0) {
+            vec3 wb = vec3(1.0 + temperature, 1.0 + tint, 1.0 - temperature);
+            wb /= getNeutralLuma(wb); // normalize: (3 + tint) / 3, prevents brightness drift
+            finalColor *= wb;
         }
 
         // phase 11: Specular Highlight Desaturation white specular reflections lose saturation and approach white irl. Prevents colorful highlights.

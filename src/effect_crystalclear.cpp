@@ -162,7 +162,7 @@ namespace vkBasalt
             int32_t enableSplitTone;
             float stShadowR; float stShadowG; float stShadowB;
             float stHighR; float stHighG; float stHighB;
-            float splitToneStrength;
+            float splitToneStrength; float temperature; float tint;
         };
 
         CrystalClearSpecData specData;
@@ -253,6 +253,8 @@ namespace vkBasalt
         specData.stHighG                   = std::clamp((float)getAndStore("crystalclearSTHighG", 0.3f), 0.0f, 1.0f);
         specData.stHighB                   = std::clamp((float)getAndStore("crystalclearSTHighB", 0.0f), 0.0f, 1.0f);
         specData.splitToneStrength         = std::clamp((float)getAndStore("crystalclearSplitToneStrength", 0.0f), 0.0f, 1.0f);
+        specData.temperature               = std::clamp((float)getAndStore("crystalclearTemperature", 0.0f), -1.0f, 1.0f);
+        specData.tint                      = std::clamp((float)getAndStore("crystalclearTint", 0.0f), -1.0f, 1.0f);
 
         VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -319,7 +321,9 @@ namespace vkBasalt
             {61, offsetof(CrystalClearSpecData, stHighR),                   sizeof(float)},
             {62, offsetof(CrystalClearSpecData, stHighG),                   sizeof(float)},
             {63, offsetof(CrystalClearSpecData, stHighB),                   sizeof(float)},
-            {64, offsetof(CrystalClearSpecData, splitToneStrength),         sizeof(float)}
+            {64, offsetof(CrystalClearSpecData, splitToneStrength),         sizeof(float)},
+            {65, offsetof(CrystalClearSpecData, temperature),               sizeof(float)},
+            {66, offsetof(CrystalClearSpecData, tint),                      sizeof(float)}
         };
 
         VkSpecializationInfo specializationInfo;
@@ -467,6 +471,8 @@ namespace vkBasalt
             {"crystalclearSTHighG",               "ST Highlight G",         ParamType::Float, 0.3,   0.0,   1.0,  0.01},
             {"crystalclearSTHighB",               "ST Highlight B",         ParamType::Float, 0.0,   0.0,   1.0,  0.01},
             {"crystalclearSplitToneStrength",     "Split Tone Strength",    ParamType::Float, 0.0,   0.0,   1.0,  0.01},
+            {"crystalclearTemperature",           "Temperature",            ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
+            {"crystalclearTint",                  "Tint",                   ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
         };
         return params;
     }
