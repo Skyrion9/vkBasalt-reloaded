@@ -155,6 +155,10 @@ namespace vkBasalt
             float debandStrength; float toneCurve; int32_t enableChromaSmooth; float chromaSmoothStrength;
             float specularDesat; float localContrastStrength; int32_t enableDespeckle; float despeckleThreshold;
             int32_t enableFringeFix; float fringeStrength; float saturation;
+            int32_t enableCDL;
+            float cdlSlopeR; float cdlSlopeG; float cdlSlopeB;
+            float cdlOffsetR; float cdlOffsetG; float cdlOffsetB;
+            float cdlPowerR; float cdlPowerG; float cdlPowerB;
         };
 
         CrystalClearSpecData specData;
@@ -227,6 +231,16 @@ namespace vkBasalt
         specData.enableFringeFix           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableFringeFix", 0), int32_t(0), int32_t(1));
         specData.fringeStrength            = std::clamp((float)getAndStore("crystalclearFringeStrength", 0.5f), 0.0f, 1.0f);
         specData.saturation                = std::clamp((float)getAndStore("crystalclearSaturation", 0.0f), -1.0f, 1.0f);
+        specData.enableCDL                 = std::clamp((int32_t)getAndStoreInt("crystalclearEnableCDL", 0), int32_t(0), int32_t(1));
+        specData.cdlSlopeR                 = std::clamp((float)getAndStore("crystalclearCDLSlopeR", 1.0f), 0.0f, 4.0f);
+        specData.cdlSlopeG                 = std::clamp((float)getAndStore("crystalclearCDLSlopeG", 1.0f), 0.0f, 4.0f);
+        specData.cdlSlopeB                 = std::clamp((float)getAndStore("crystalclearCDLSlopeB", 1.0f), 0.0f, 4.0f);
+        specData.cdlOffsetR                = std::clamp((float)getAndStore("crystalclearCDLOffsetR", 0.0f), -1.0f, 1.0f);
+        specData.cdlOffsetG                = std::clamp((float)getAndStore("crystalclearCDLOffsetG", 0.0f), -1.0f, 1.0f);
+        specData.cdlOffsetB                = std::clamp((float)getAndStore("crystalclearCDLOffsetB", 0.0f), -1.0f, 1.0f);
+        specData.cdlPowerR                 = std::clamp((float)getAndStore("crystalclearCDLPowerR", 1.0f), 0.1f, 4.0f);
+        specData.cdlPowerG                 = std::clamp((float)getAndStore("crystalclearCDLPowerG", 1.0f), 0.1f, 4.0f);
+        specData.cdlPowerB                 = std::clamp((float)getAndStore("crystalclearCDLPowerB", 1.0f), 0.1f, 4.0f);
 
         VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -275,7 +289,17 @@ namespace vkBasalt
             {43, offsetof(CrystalClearSpecData, despeckleThreshold),        sizeof(float)},
             {44, offsetof(CrystalClearSpecData, enableFringeFix),           sizeof(int32_t)},
             {45, offsetof(CrystalClearSpecData, fringeStrength),            sizeof(float)},
-            {46, offsetof(CrystalClearSpecData, saturation),                sizeof(float)}
+            {46, offsetof(CrystalClearSpecData, saturation),                sizeof(float)},
+            {47, offsetof(CrystalClearSpecData, enableCDL),                 sizeof(int32_t)},
+            {48, offsetof(CrystalClearSpecData, cdlSlopeR),                 sizeof(float)},
+            {49, offsetof(CrystalClearSpecData, cdlSlopeG),                 sizeof(float)},
+            {50, offsetof(CrystalClearSpecData, cdlSlopeB),                 sizeof(float)},
+            {51, offsetof(CrystalClearSpecData, cdlOffsetR),                sizeof(float)},
+            {52, offsetof(CrystalClearSpecData, cdlOffsetG),                sizeof(float)},
+            {53, offsetof(CrystalClearSpecData, cdlOffsetB),                sizeof(float)},
+            {54, offsetof(CrystalClearSpecData, cdlPowerR),                 sizeof(float)},
+            {55, offsetof(CrystalClearSpecData, cdlPowerG),                 sizeof(float)},
+            {56, offsetof(CrystalClearSpecData, cdlPowerB),                 sizeof(float)}
         };
 
         VkSpecializationInfo specializationInfo;
@@ -405,6 +429,16 @@ namespace vkBasalt
             {"crystalclearEnableFringeFix",       "Fringe Fix (CA)",        ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
             {"crystalclearFringeStrength",        "Fringe Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05},
             {"crystalclearSaturation",            "Saturation",             ParamType::Float, 0.0,  -1.0,   1.0,  0.05},
+            {"crystalclearEnableCDL",             "CDL Enable",             ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearCDLSlopeR",             "CDL Slope R",            ParamType::Float, 1.0,   0.0,   4.0,  0.01},
+            {"crystalclearCDLSlopeG",             "CDL Slope G",            ParamType::Float, 1.0,   0.0,   4.0,  0.01},
+            {"crystalclearCDLSlopeB",             "CDL Slope B",            ParamType::Float, 1.0,   0.0,   4.0,  0.01},
+            {"crystalclearCDLOffsetR",            "CDL Offset R",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
+            {"crystalclearCDLOffsetG",            "CDL Offset G",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
+            {"crystalclearCDLOffsetB",            "CDL Offset B",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
+            {"crystalclearCDLPowerR",             "CDL Power R",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
+            {"crystalclearCDLPowerG",             "CDL Power G",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
+            {"crystalclearCDLPowerB",             "CDL Power B",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
         };
         return params;
     }

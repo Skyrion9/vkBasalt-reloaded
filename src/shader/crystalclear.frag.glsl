@@ -113,6 +113,16 @@ layout(constant_id = 43) const float despeckleThreshold = 0.15;
 layout(constant_id = 44) const int enableFringeFix = 0;
 layout(constant_id = 45) const float fringeStrength = 0.5;
 layout(constant_id = 46) const float saturation = 0.0; // -1.0 (grayscale) to 1.0 (double), 0.0 = off
+layout(constant_id = 47) const int enableCDL = 0;
+layout(constant_id = 48) const float cdlSlopeR = 1.0;
+layout(constant_id = 49) const float cdlSlopeG = 1.0;
+layout(constant_id = 50) const float cdlSlopeB = 1.0;
+layout(constant_id = 51) const float cdlOffsetR = 0.0;
+layout(constant_id = 52) const float cdlOffsetG = 0.0;
+layout(constant_id = 53) const float cdlOffsetB = 0.0;
+layout(constant_id = 54) const float cdlPowerR = 1.0;
+layout(constant_id = 55) const float cdlPowerG = 1.0;
+layout(constant_id = 56) const float cdlPowerB = 1.0;
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -581,6 +591,18 @@ void main() {
                 finalColor = pure_chroma + new_min_c;
             }
         }
+
+        if (enableCDL == 1) {
+            vec3 cdlSlope  = vec3(cdlSlopeR, cdlSlopeG, cdlSlopeB);
+            vec3 cdlOffset = vec3(cdlOffsetR, cdlOffsetG, cdlOffsetB);
+            vec3 cdlPower  = vec3(cdlPowerR, cdlPowerG, cdlPowerB);
+            vec3 cdl = finalColor / hdrNorm;
+            cdl = cdl * cdlSlope + cdlOffset;
+            cdl = max(cdl, 0.0);
+            cdl = pow(cdl, cdlPower);
+            finalColor = cdl * hdrNorm;
+        }
+
         // phase 11: Specular Highlight Desaturation white specular reflections lose saturation and approach white irl. Prevents colorful highlights.
         if (specularDesat != 0.0) {
             float max_spec = max(finalColor.r, max(finalColor.g, finalColor.b));
