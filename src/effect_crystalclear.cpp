@@ -159,6 +159,10 @@ namespace vkBasalt
             float cdlSlopeR; float cdlSlopeG; float cdlSlopeB;
             float cdlOffsetR; float cdlOffsetG; float cdlOffsetB;
             float cdlPowerR; float cdlPowerG; float cdlPowerB;
+            int32_t enableSplitTone;
+            float stShadowR; float stShadowG; float stShadowB;
+            float stHighR; float stHighG; float stHighB;
+            float splitToneStrength;
         };
 
         CrystalClearSpecData specData;
@@ -241,6 +245,14 @@ namespace vkBasalt
         specData.cdlPowerR                 = std::clamp((float)getAndStore("crystalclearCDLPowerR", 1.0f), 0.1f, 4.0f);
         specData.cdlPowerG                 = std::clamp((float)getAndStore("crystalclearCDLPowerG", 1.0f), 0.1f, 4.0f);
         specData.cdlPowerB                 = std::clamp((float)getAndStore("crystalclearCDLPowerB", 1.0f), 0.1f, 4.0f);
+        specData.enableSplitTone           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableSplitTone", 0), int32_t(0), int32_t(1));
+        specData.stShadowR                 = std::clamp((float)getAndStore("crystalclearSTShadowR", 0.0f), 0.0f, 1.0f);
+        specData.stShadowG                 = std::clamp((float)getAndStore("crystalclearSTShadowG", 0.5f), 0.0f, 1.0f);
+        specData.stShadowB                 = std::clamp((float)getAndStore("crystalclearSTShadowB", 0.5f), 0.0f, 1.0f);
+        specData.stHighR                   = std::clamp((float)getAndStore("crystalclearSTHighR", 0.5f), 0.0f, 1.0f);
+        specData.stHighG                   = std::clamp((float)getAndStore("crystalclearSTHighG", 0.3f), 0.0f, 1.0f);
+        specData.stHighB                   = std::clamp((float)getAndStore("crystalclearSTHighB", 0.0f), 0.0f, 1.0f);
+        specData.splitToneStrength         = std::clamp((float)getAndStore("crystalclearSplitToneStrength", 0.0f), 0.0f, 1.0f);
 
         VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -299,7 +311,15 @@ namespace vkBasalt
             {53, offsetof(CrystalClearSpecData, cdlOffsetB),                sizeof(float)},
             {54, offsetof(CrystalClearSpecData, cdlPowerR),                 sizeof(float)},
             {55, offsetof(CrystalClearSpecData, cdlPowerG),                 sizeof(float)},
-            {56, offsetof(CrystalClearSpecData, cdlPowerB),                 sizeof(float)}
+            {56, offsetof(CrystalClearSpecData, cdlPowerB),                 sizeof(float)},
+            {57, offsetof(CrystalClearSpecData, enableSplitTone),           sizeof(int32_t)},
+            {58, offsetof(CrystalClearSpecData, stShadowR),                 sizeof(float)},
+            {59, offsetof(CrystalClearSpecData, stShadowG),                 sizeof(float)},
+            {60, offsetof(CrystalClearSpecData, stShadowB),                 sizeof(float)},
+            {61, offsetof(CrystalClearSpecData, stHighR),                   sizeof(float)},
+            {62, offsetof(CrystalClearSpecData, stHighG),                   sizeof(float)},
+            {63, offsetof(CrystalClearSpecData, stHighB),                   sizeof(float)},
+            {64, offsetof(CrystalClearSpecData, splitToneStrength),         sizeof(float)}
         };
 
         VkSpecializationInfo specializationInfo;
@@ -439,6 +459,14 @@ namespace vkBasalt
             {"crystalclearCDLPowerR",             "CDL Power R",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
             {"crystalclearCDLPowerG",             "CDL Power G",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
             {"crystalclearCDLPowerB",             "CDL Power B",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
+            {"crystalclearEnableSplitTone",       "Split Tone Enable",      ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
+            {"crystalclearSTShadowR",             "ST Shadow R",            ParamType::Float, 0.0,   0.0,   1.0,  0.01},
+            {"crystalclearSTShadowG",             "ST Shadow G",            ParamType::Float, 0.5,   0.0,   1.0,  0.01},
+            {"crystalclearSTShadowB",             "ST Shadow B",            ParamType::Float, 0.5,   0.0,   1.0,  0.01},
+            {"crystalclearSTHighR",               "ST Highlight R",         ParamType::Float, 0.5,   0.0,   1.0,  0.01},
+            {"crystalclearSTHighG",               "ST Highlight G",         ParamType::Float, 0.3,   0.0,   1.0,  0.01},
+            {"crystalclearSTHighB",               "ST Highlight B",         ParamType::Float, 0.0,   0.0,   1.0,  0.01},
+            {"crystalclearSplitToneStrength",     "Split Tone Strength",    ParamType::Float, 0.0,   0.0,   1.0,  0.01},
         };
         return params;
     }

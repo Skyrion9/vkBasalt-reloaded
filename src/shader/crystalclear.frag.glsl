@@ -123,6 +123,14 @@ layout(constant_id = 53) const float cdlOffsetB = 0.0;
 layout(constant_id = 54) const float cdlPowerR = 1.0;
 layout(constant_id = 55) const float cdlPowerG = 1.0;
 layout(constant_id = 56) const float cdlPowerB = 1.0;
+layout(constant_id = 57) const int enableSplitTone = 0;
+layout(constant_id = 58) const float stShadowR = 0.0;
+layout(constant_id = 59) const float stShadowG = 0.5;
+layout(constant_id = 60) const float stShadowB = 0.5;
+layout(constant_id = 61) const float stHighR = 0.5;
+layout(constant_id = 62) const float stHighG = 0.3;
+layout(constant_id = 63) const float stHighB = 0.0;
+layout(constant_id = 64) const float splitToneStrength = 0.0;
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -601,6 +609,20 @@ void main() {
             cdl = max(cdl, 0.0);
             cdl = pow(cdl, cdlPower);
             finalColor = cdl * hdrNorm;
+        }
+
+        // phase 10.6: Split toning cinematic shadow/highlight tint. Shift hue without changing brightness. 
+        // Shadows pull toward shadowTint, highlights toward highlightTint.
+        if (enableSplitTone == 1) {
+            float stLuma = getNeutralLuma(finalColor) / hdrNorm;
+            float shadowWeight    = 1.0 - smoothstep(0.0, 0.5, stLuma);
+            float highlightWeight = smoothstep(0.5, 1.0, stLuma);
+            vec3 shadowTint = vec3(stShadowR, stShadowG, stShadowB);
+            shadowTint -= getNeutralLuma(shadowTint);   // zero-sum: pure chroma shift
+            vec3 highlightTint = vec3(stHighR, stHighG, stHighB);
+            highlightTint -= getNeutralLuma(highlightTint);
+            vec3 tint = shadowTint * shadowWeight + highlightTint * highlightWeight;
+            finalColor += tint * splitToneStrength * hdrNorm;
         }
 
         // phase 11: Specular Highlight Desaturation white specular reflections lose saturation and approach white irl. Prevents colorful highlights.
