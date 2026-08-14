@@ -107,6 +107,7 @@ layout(constant_id = 37) const float toneCurve = 0.0; // filmic highlight rollof
 layout(constant_id = 38) const int enableChromaSmooth = 0;
 layout(constant_id = 39) const float chromaSmoothStrength = 0.5;
 layout(constant_id = 40) const float specularDesat = 0.0; // 0.0 = off, 0.4 = subtle, 1.0 = max
+layout(constant_id = 41) const float localContrastStrength = 0.0; // Clarity local contrast knob
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -414,6 +415,13 @@ void main() {
         bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
         bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, dynamicThreshHigh)
     ) * 0.0625;
+
+    if (localContrastStrength > 0.0) {
+        float wideAvg = (h1_raw + h2_raw + h3_raw + h4_raw + v1_raw + v2_raw + v3_raw + v4_raw) * 0.125;
+        float lcRatio = lumaAA / max(wideAvg, 0.0001 * hdrNorm);
+        float lcBoost = pow(clamp(lcRatio, 0.25, 4.0), localContrastStrength) - 1.0;
+        diff += lcBoost * 0.15 * hdrNorm;
+    }
 
     // phase 7: clarity gates and s-curve with saturation and edge guards
     diff *= mix(1.0, bandPassMask, guardStrength);
