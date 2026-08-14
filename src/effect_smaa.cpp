@@ -210,7 +210,6 @@ namespace vkBasalt
 
     void SmaaEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
-        Logger::debug("applying smaa effect to cb " + convertToString(commandBuffer));
         
         // Barrier 1 inputImage -> SHADER_READ_ONLY
         VkImageMemoryBarrier barrier1 = {};
@@ -228,7 +227,6 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &barrier1);
-        Logger::debug("after the first pipeline barrier SMAA");
 
         VkRenderPassBeginInfo renderPassBeginInfo = {}; 
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -316,7 +314,6 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
             0, 0, nullptr, 0, nullptr, 1, &barrier4);
-            Logger::debug("after SMAA barrier 4");
     }
 
     const std::vector<EffectParamDesc>& SmaaEffect::getParamDescs() const {
