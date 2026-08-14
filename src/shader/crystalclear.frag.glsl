@@ -210,6 +210,8 @@ void main() {
     }
     float peak = 8.0 - 3.0 * casSharpness;
     vec3 invAmp = inversesqrt(max(ampRGB, 0.0001));
+    // Clamp invAmp so P cannot explode when the local contrast ratio (ampRGB) approaches zero on HDR highlights.
+    invAmp = min(invAmp, vec3(4.0));
     vec3 P = invAmp * peak;
     vec3 tightWindow = (b + d) + (f + h);
     vec3 casDeltaRGB = (4.0 * e - tightWindow) / (P - 4.0);
