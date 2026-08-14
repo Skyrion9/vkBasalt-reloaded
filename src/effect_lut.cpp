@@ -55,44 +55,51 @@ namespace vkBasalt
             fileValid = testFile.good();
         }
 
+        // 2x2x2 LUT pass through fallback when no file is configured or when loading/parsing fails.
+        static stbi_uc identityLut[2*2*2*4] = {
+            0,0,0,255,       255,0,0,255,
+            0,255,0,255,     255,255,0,255,
+            0,0,255,255,     255,0,255,255,
+            0,255,255,255,   255,255,255,255
+        };
+        auto useIdentityLut = [&]() {
+            pixels     = identityLut;
+            height     = 2;
+            usingPNG   = 0;
+            freePixels = false;
+        };
+
         if (!fileValid) {
             if (lutFile.empty()) {
                 Logger::warn("LUT effect enabled but no lutFile configured. Using identity LUT (pass-through).");
             } else {
                 Logger::warn("LUT file not found: " + lutFile + ". Using identity LUT (pass-through).");
             }
-            static stbi_uc identityLut[2*2*2*4] = {
-                0,0,0,255,       255,0,0,255,
-                0,255,0,255,     255,255,0,255,
-                0,0,255,255,     255,0,255,255,
-                0,255,255,255,   255,255,255,255
-            };
-            height = 2;
-            pixels = identityLut;
-            usingPNG = 0;
+            useIdentityLut();
         } else {
             usingPNG = (int32_t)(lutFile.find(".cube") == std::string::npos && lutFile.find(".CUBE") == std::string::npos);
             if (!usingPNG) {
                 lutCube = LutCube(lutFile);
                 if (lutCube.size == 0) {
-                    Logger::err("Failed to parse LUT cube: " + lutFile);
-                    return;
+                    Logger::err("Failed to parse LUT cube: " + lutFile + ". Falling back to identity LUT.");
+                    useIdentityLut();
+                } else {
+                    pixels = lutCube.colorCube.data();
+                    height = lutCube.size;
                 }
-                pixels  = lutCube.colorCube.data();
-                height  = lutCube.size;
             } else {
                 int channels, width;
                 pixels = stbi_load(lutFile.c_str(), &width, &height, &channels, STBI_rgb_alpha);
                 if (!pixels) {
-                    Logger::err("Failed to load LUT PNG: " + lutFile);
-                    return;
-                }
-                if (width != height * height) {
-                    Logger::err("Invalid LUT PNG dimensions (width must equal height * height)");
+                    Logger::err("Failed to load LUT PNG: " + lutFile + ". Falling back to identity LUT.");
+                    useIdentityLut();
+                } else if (width != height * height) {
+                    Logger::err("Invalid LUT PNG dimensions (width must equal height * height). Falling back to identity LUT.");
                     stbi_image_free(pixels);
-                    return;
+                    useIdentityLut();
+                } else {
+                    freePixels = true;
                 }
-                freePixels = true;
             }
         }
 
