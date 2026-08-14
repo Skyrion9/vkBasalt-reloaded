@@ -108,6 +108,8 @@ layout(constant_id = 38) const int enableChromaSmooth = 0;
 layout(constant_id = 39) const float chromaSmoothStrength = 0.5;
 layout(constant_id = 40) const float specularDesat = 0.0; // 0.0 = off, 0.4 = subtle, 1.0 = max
 layout(constant_id = 41) const float localContrastStrength = 0.0; // Clarity local contrast knob
+layout(constant_id = 42) const int enableDespeckle = 0;
+layout(constant_id = 43) const float despeckleThreshold = 0.15;
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -180,6 +182,21 @@ void main() {
     float lA = getLuma(a); float lB = getLuma(b); float lC = getLuma(c);
     float lD = getLuma(d); float lF = getLuma(f);
     float lG = getLuma(g); float lH = getLuma(h); float lI = getLuma(i);
+
+    vec3 eRaw = e;
+
+    // phase 1.5 despeckle pulls isolated outlier pixels toward their cross average before any sharpening can amplify them. neighborAgree ensures we only touch
+    // pixels whose neighbors agree with each other on impulse noise instead of real detail.
+    if (enableDespeckle == 1) {
+        float crossAvg       = (lB + lH + lD + lF) * 0.25;
+        float isolation      = abs(lE - crossAvg);
+        float neighborSpread = max(max(lB, lH), max(lD, lF)) - min(min(lB, lH), min(lD, lF));
+        float neighborAgree  = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, neighborSpread);
+        float outlierMask    = smoothstep(despeckleThreshold * hdrNorm, despeckleThreshold * 2.5 * hdrNorm, isolation) * neighborAgree;
+        float targetLuma     = mix(lE, crossAvg, outlierMask);
+        e  = e * (targetLuma / max(lE, 0.0001));
+        lE = targetLuma;
+    }
 
     // phase 2: clarity wide fetches for latency hiding
     float h1_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb);
@@ -484,7 +501,7 @@ void main() {
         finalColor = aaColor;
 
         if (enableAA == 1 && enableDebugAA == 1) {
-            float intensity = clamp(length(aaColor - e) * 8.0 / hdrNorm, 0.0, 1.0);
+            float intensity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
             finalColor = mix(finalColor, vec3(1.0, 0.2, 0.2) * hdrNorm, intensity);
         }
     } else {
@@ -573,8 +590,8 @@ void main() {
         float isolation = abs(lumaAA - avgLuma);
 
         float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
-        // If FXAA actively blended this pixel, reduce shimmer correction avoid fighting FXAA's anti-aliasing. aaColor==e when FXAA is off.
-        float fxaaActivity = clamp(length(aaColor - e) * 8.0 / hdrNorm, 0.0, 1.0);
+        // If FXAA actively blended this pixel, reduce shimmer correction avoid fighting FXAA's anti-aliasing. aaColor==eRaw when FXAA is off.
+        float fxaaActivity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
         float shimmerMask = smoothstep(0.08 * hdrNorm, 0.2 * hdrNorm, isolation)
                         * microTextureMask * edgeMask * (1.0 - fxaaActivity * 0.5)
                         * shimmerChoke * shimmerReduction;
@@ -684,7 +701,7 @@ void main() {
 
         // phase18: debug overlays
         if (enableAA == 1 && enableDebugAA == 1) {
-            float intensity = clamp(length(aaColor - e) * 8.0 / hdrNorm, 0.0, 1.0);
+            float intensity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
             finalColor = mix(finalColor, vec3(1.0, 0.2, 0.2) * hdrNorm, intensity);
         }
 
