@@ -664,8 +664,11 @@ void main() {
         if (enableDeband == 1) {
             float flatMask = 1.0 - smoothstep(0.004 * hdrNorm, 0.025 * hdrNorm, localContrast);
             float debandMask = flatMask * edgeMask;
+            // Direction aware debanding, when one edge axis dominates, boost amplitude we know where bands run. In ambiguity back off.
+            float edgeTotal  = edgeH + edgeV;
+            float dirClarity = max(edgeH, edgeV) / max(edgeTotal, 0.0001);
             // Amplitude sized near a quantization step to effectively break bands
-            finalColor += vec3(noise) * debandMask * debandStrength * 0.004 * hdrNorm;
+            finalColor += vec3(noise) * debandMask * debandStrength * 0.004 * hdrNorm * mix(0.7, 1.3, dirClarity);
         }
 
         // phase 16: perceptual film grain
