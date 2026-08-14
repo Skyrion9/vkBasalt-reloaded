@@ -628,20 +628,66 @@ namespace vkBasalt {
         }
 
         ImGui::Spacing();
-        static char screenshotDir[512] = {};
-        static bool dirLoaded = false;
-        if (!dirLoaded) {
-            std::string dir = m_pConfig->getOption<std::string>("screenshotPath", "");
-            strncpy(screenshotDir, dir.c_str(), sizeof(screenshotDir) - 1);
-            dirLoaded = true;
+        // Screenshot directory browser
+        std::string currentDir = m_pConfig->getOption<std::string>("screenshotPath", "");
+        ImGui::Text("Screenshot directory:");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", currentDir.empty() ? "(default: ~/Pictures/vkBasalt-reloaded)" : currentDir.c_str());
+
+        static bool showDirBrowser = false;
+        static std::string browserDir;
+        if (ImGui::Button(showDirBrowser ? "Close Browser" : "Browse...")) {
+            showDirBrowser = !showDirBrowser;
+            if (showDirBrowser) {
+                browserDir = currentDir;
+                if (browserDir.empty()) {
+                    const char* home = getenv("HOME");
+                    browserDir = home ? std::string(home) : ".";
+                }
+            }
         }
-        ImGui::PushItemWidth(300);
-        if (ImGui::InputTextWithHint("##ssdir", "Screenshot directory (empty = ~/Pictures/vkBasalt-reloaded)", screenshotDir, sizeof(screenshotDir),
-                                    ImGuiInputTextFlags_EnterReturnsTrue)) {
-            m_pConfig->setOption("screenshotPath", std::string(screenshotDir));
+        ImGui::SameLine();
+        if (!currentDir.empty() && ImGui::Button("Reset to Default")) {
+            m_pConfig->setOption("screenshotPath", "");
             m_pConfig->savePerGame();
         }
-        ImGui::PopItemWidth();
+
+        if (showDirBrowser) {
+            ImGui::BeginChild("##dir_browser", ImVec2(0, 200), true);
+            ImGui::Text("Browsing: %s", browserDir.c_str());
+            ImGui::Separator();
+            std::error_code ec;
+            if (std::filesystem::exists(browserDir, ec)) {
+                std::vector<std::string> dirs;
+                for (auto& entry : std::filesystem::directory_iterator(browserDir, ec)) {
+                    std::string name = entry.path().filename().string();
+                    if (entry.is_directory() && !name.empty() && name[0] != '.') {
+                        dirs.push_back(name);
+                    }
+                }
+                std::sort(dirs.begin(), dirs.end());
+                for (auto& name : dirs) {
+                    if (ImGui::Selectable(("[DIR] " + name).c_str())) {
+                        browserDir = (std::filesystem::path(browserDir) / name).string();
+                    }
+                }
+                if (dirs.empty()) ImGui::TextDisabled("(no subdirectories)");
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.1f, 1.0f), "Directory does not exist.");
+            }
+            ImGui::Separator();
+            if (ImGui::Button("Use This Directory")) {
+                m_pConfig->setOption("screenshotPath", browserDir);
+                m_pConfig->savePerGame();
+                showDirBrowser = false;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(".. (parent)")) {
+                std::filesystem::path parent = std::filesystem::path(browserDir).parent_path();
+                if (!parent.empty()) browserDir = parent.string();
+            }
+            ImGui::EndChild();
+        }
 
         ImGui::Spacing();
         if (ImGui::Button("Take Screenshot")) {
