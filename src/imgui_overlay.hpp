@@ -58,6 +58,7 @@ namespace vkBasalt {
         float m_lastChangeTime = 0.0f;
         bool m_chainCacheDirty = true;
         bool m_showCloseWarning = false;
+        int  m_screenshotReopenCounter = 0;
         bool m_snapPending = false;
         bool m_wasWindowMoving = false;
         bool m_wasMouseDown = false;

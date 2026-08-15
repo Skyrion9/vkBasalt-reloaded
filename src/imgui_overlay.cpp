@@ -328,6 +328,13 @@ namespace vkBasalt {
     }
 
     void ImGuiOverlay::processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height) {
+        if (m_screenshotReopenCounter > 0) {
+            m_screenshotReopenCounter--;
+            if (m_screenshotReopenCounter == 0) {
+                m_isOpen = true;
+            }
+        }
+
         if (!m_isOpen || !m_isInitialized) {
             Logger::debug("processFrame SKIPPED: isOpen=" + std::to_string(m_isOpen) + ", isInitialized=" + std::to_string(m_isInitialized));
             return;

@@ -691,8 +691,11 @@ namespace vkBasalt {
 
         ImGui::Spacing();
         if (ImGui::Button("Take Screenshot")) {
+            m_isOpen = false;
             g_triggerScreenshot = true;
+            m_screenshotReopenCounter = 3;
         }
+
         ImGui::SameLine();
         ImGui::TextDisabled("(saved as %s)", ssFmt.c_str());
 
