@@ -31,10 +31,13 @@ namespace vkBasalt {
         static bool pressed       = false;
         static bool reloadPressed = false;
         static bool overlayPressed = false;
-        static bool presentEffect = pConfig->getOption<bool>("enableOnLaunch", true);
         static bool skipNextPresent = false;
-
-        g_effectsEnabled = presentEffect;
+        // Read enableOnLaunch from config only once upon init, so runtime toggles don't conflict with it.
+        static bool initialized = false;
+        if (!initialized) {
+            g_effectsEnabled = pConfig->getOption<bool>("enableOnLaunch", true);
+            initialized = true;
+        }
 
         // Helpers
         auto reloadConfig = [&]() {
@@ -42,8 +45,8 @@ namespace vkBasalt {
             keySymbol        = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
             reloadKeySymbol  = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
             overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
-            presentEffect    = pConfig->getOption<bool>("enableOnLaunch", true);
-            g_effectsEnabled = presentEffect;
+            // On config reload, respect enableOnLaunch from the new config
+            g_effectsEnabled = pConfig->getOption<bool>("enableOnLaunch", true);
             
             // Sync caches to prevent the refresh block below from desync
             cachedToggleKey  = pConfig->getOption<std::string>("toggleKey", "Insert");
@@ -72,10 +75,9 @@ namespace vkBasalt {
 
         if (!anyBinding && isKeyPressed(keySymbol)) {
             if (!pressed) {
-                presentEffect = !presentEffect;
-                g_effectsEnabled = presentEffect;
+                g_effectsEnabled = !g_effectsEnabled.load();
                 pressed = true;
-                Logger::debug(presentEffect ? "vkBasalt effects enabled" : "vkBasalt effects disabled");
+                Logger::debug(g_effectsEnabled.load() ? "vkBasalt effects enabled" : "vkBasalt effects disabled");
             }
         } else {
             pressed = false;
