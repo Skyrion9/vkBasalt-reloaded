@@ -435,9 +435,11 @@ namespace vkBasalt {
                         case ParamType::Float: {
                             float val = (float)selectedEffect->getParam(p->key);
                             float step = (p->step > 0) ? (float)p->step : 0.01f;
+                            float range = (float)(p->maxVal - p->minVal);
+                            float dragSpeed = range / 200.0f;
                             bool changed = false;
                             ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                            if (ImGui::DragFloat(p->label.c_str(), &val, step, (float)p->minVal, (float)p->maxVal, "%.3f"))
+                            if (ImGui::DragFloat(p->label.c_str(), &val, dragSpeed, (float)p->minVal, (float)p->maxVal, "%.3f"))
                                 changed = true;
                             if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
                                 if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
@@ -460,9 +462,11 @@ namespace vkBasalt {
                         case ParamType::Int: {
                             int val = (int)selectedEffect->getParam(p->key);
                             int step = (p->step > 0) ? (int)p->step : 1;
+                            float range = (float)(p->maxVal - p->minVal);
+                            float dragSpeed = std::max(0.05f, range / 200.0f);
                             bool changed = false;
                             ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                            if (ImGui::DragInt(p->label.c_str(), &val, step, (int)p->minVal, (int)p->maxVal))
+                            if (ImGui::DragInt(p->label.c_str(), &val, dragSpeed, (int)p->minVal, (int)p->maxVal))
                                 changed = true;
                             if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
                                 if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
