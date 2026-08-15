@@ -305,6 +305,35 @@ namespace vkBasalt {
         for (auto& eff : m_pSwapchain->effects)
             if (eff->getName() == selectedName) { selectedEffect = eff.get(); break; }
 
+        // Reset button right aligned in the row
+        if (selectedEffect) {
+            float resetWidth = ImGui::CalcTextSize("Reset to Default").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - resetWidth);
+            if (ImGui::Button("Reset to Default")) {
+                const auto& resetParams = selectedEffect->getParamDescs();
+                for (const auto& p : resetParams) {
+                    if (p.type == ParamType::Combo) {
+                        if (!p.comboOptions.empty()) {
+                            m_pConfig->setOption(p.key, p.comboOptions[0]);
+                        }
+                    } else if (p.type == ParamType::FilePath) {
+                        m_pConfig->setOption(p.key, "");
+                    } else if (p.type == ParamType::Bool || p.type == ParamType::Int) {
+                        selectedEffect->setParam(p.key, p.defaultVal);
+                        m_pConfig->setOption(p.key, std::to_string((int)p.defaultVal));
+                    } else {
+                        selectedEffect->setParam(p.key, p.defaultVal);
+                        std::string vs = std::to_string(p.defaultVal);
+                        std::replace(vs.begin(), vs.end(), ',', '.');
+                        m_pConfig->setOption(p.key, vs);
+                    }
+                }
+                m_hasUnsavedChanges = true;
+                g_triggerPreviewReload = true;
+            }
+        }
+        ImGui::Separator();
+
         if (!selectedEffect) {
             ImGui::TextWrapped("Tick the checkbox to add this effect to the chain and edit its parameters.");
             ImGui::EndChild();
@@ -364,6 +393,7 @@ namespace vkBasalt {
             }
 
             bool focusedFirst = false;
+
             for (auto& cat : categories) {
                 if (cat.items.empty()) continue;
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -374,6 +404,33 @@ namespace vkBasalt {
                 for (const auto* p : cat.items) {
                     ImGui::PushID(p->key.c_str());
                     if (m_justOpened && !focusedFirst) { ImGui::SetKeyboardFocusHere(); focusedFirst = true; }
+
+                    // Right click context menu to reset individual params to default.
+                    auto paramContextMenu = [&]() {
+                        if (ImGui::BeginPopupContextItem()) {
+                            if (ImGui::MenuItem("Reset to Default")) {
+                                if (p->type == ParamType::Combo) {
+                                    if (!p->comboOptions.empty()) {
+                                        m_pConfig->setOption(p->key, p->comboOptions[0]);
+                                    }
+                                } else if (p->type == ParamType::Bool || p->type == ParamType::Int) {
+                                    selectedEffect->setParam(p->key, p->defaultVal);
+                                    m_pConfig->setOption(p->key, std::to_string((int)p->defaultVal));
+                                } else if (p->type == ParamType::FilePath) {
+                                    m_pConfig->setOption(p->key, "");
+                                } else {
+                                    selectedEffect->setParam(p->key, p->defaultVal);
+                                    std::string vs = std::to_string(p->defaultVal);
+                                    std::replace(vs.begin(), vs.end(), ',', '.');
+                                    m_pConfig->setOption(p->key, vs);
+                                }
+                                m_hasUnsavedChanges = true;
+                                g_triggerPreviewReload = true;
+                            }
+                            ImGui::EndPopup();
+                        }
+                    };
+
                     switch (p->type) {
                         case ParamType::Float: {
                             float val = (float)selectedEffect->getParam(p->key);
@@ -397,6 +454,7 @@ namespace vkBasalt {
                                 m_previewDirty = true;
                                 m_lastChangeTime = ImGui::GetTime();
                             }
+                            paramContextMenu();
                             break;
                         }
                         case ParamType::Int: {
@@ -419,6 +477,7 @@ namespace vkBasalt {
                                 m_previewDirty = true;
                                 m_lastChangeTime = ImGui::GetTime();
                             }
+                            paramContextMenu();
                             break;
                         }
                         case ParamType::Bool: {
@@ -427,9 +486,9 @@ namespace vkBasalt {
                                 selectedEffect->setParam(p->key, val ? 1.0 : 0.0);
                                 m_pConfig->setOption(p->key, val ? "1" : "0");
                                 m_hasUnsavedChanges = true;
-                                m_previewDirty = true;
-                                m_lastChangeTime = ImGui::GetTime();
+                                g_triggerPreviewReload = true;
                             }
+                            paramContextMenu();
                             break;
                         }
                         case ParamType::Combo: {
@@ -451,6 +510,7 @@ namespace vkBasalt {
                                 }
                                 ImGui::EndCombo();
                             }
+                            paramContextMenu();
                             break;
                         }
                         case ParamType::FilePath: {
