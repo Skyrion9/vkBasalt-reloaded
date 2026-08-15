@@ -110,6 +110,7 @@ namespace vkBasalt {
 
     void ImGuiOverlay::drawShadersTab() {
         if (!m_pSwapchain) { ImGui::Text("No swapchain."); return; }
+        ImGui::BeginChild("##shader_list", ImVec2(260, 0), true);
 
         // Rebuild cache only when a reload trigger fired
         if (m_chainCacheDirty || g_triggerPreviewReload || g_triggerSoftReload || g_triggerRevertReload) {
@@ -133,7 +134,38 @@ namespace vkBasalt {
 
         if (m_selectedEffectIndex >= allEffects.size()) m_selectedEffectIndex = 0;
 
-        ImGui::BeginChild("##effect_list", ImVec2(260, 0), true);
+        // Default to the first active chain effect
+        if (!isInChain(allEffects[m_selectedEffectIndex]) && !chainList.empty()) {
+            for (size_t i = 0; i < allEffects.size(); i++) {
+                if (allEffects[i] == chainList[0]) {
+                    m_selectedEffectIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // Master effects toggle indicator/button
+        bool effectsEnabled = g_effectsEnabled.load();
+        if (effectsEnabled) {
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.15f, 0.50f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.60f, 0.20f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.10f, 0.40f, 0.10f, 1.0f));
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.50f, 0.15f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.60f, 0.20f, 0.20f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.40f, 0.10f, 0.10f, 1.0f));
+        }
+        
+        if (ImGui::Button(effectsEnabled ? "[ON] vkBasalt Effects" : "[OFF] vkBasalt Effects")) {
+            g_effectsEnabled = !effectsEnabled;
+        }
+        ImGui::PopStyleColor(3);
+        
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Click to toggle all effects on/off (or press the toggle keybind)");
+        }
+
+        ImGui::Separator();
         ImGui::Text("Effect Chain");
         ImGui::TextDisabled("Checked = active, order top to bottom");
         ImGui::Separator();
@@ -257,9 +289,16 @@ namespace vkBasalt {
         bool inChain = isInChain(selectedName);
 
         ImGui::Text("Effect: %s", selectedName.c_str());
-        if (inChain) { ImGui::SameLine(); ImGui::TextColored(ImVec4(0.3f,0.9f,0.4f,1), "[ACTIVE]"); }
-        else         { ImGui::SameLine(); ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "[INACTIVE]"); }
-        ImGui::Separator();
+        if (!g_effectsEnabled) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "[BYPASSED]");
+        } else if (inChain) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "[ACTIVE]");
+        } else {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "[INACTIVE]");
+        }
 
         // Find the live effect object
         Effect* selectedEffect = nullptr;
