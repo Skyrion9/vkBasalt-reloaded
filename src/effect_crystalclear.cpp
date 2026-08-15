@@ -72,8 +72,17 @@ namespace vkBasalt
         float def_filmGrainMinimum = 0.0f;
         float def_fineGrainWeight = 0.4f;
         float def_coarseGrainWeight = 0.8f;
+        float def_saturation = 0.0f;
+        int32_t def_enableSplitTone = 0; float def_splitToneStrength = 0.0f;
+        float def_stShadowR = 0.0f; float def_stShadowG = 0.5f; float def_stShadowB = 0.5f;
+        float def_stHighR = 0.5f; float def_stHighG = 0.3f; float def_stHighB = 0.0f;
+        float def_temperature = 0.0f; float def_tint = 0.0f;
+        float def_gammaAdjust = 0.0f; float def_blackLift = 0.0f; float def_whiteClip = 0.0f;
+        int32_t def_enableCDL = 0;
+        float def_cdlSlopeR = 1.0f; float def_cdlSlopeG = 1.0f; float def_cdlSlopeB = 1.0f;
+        float def_cdlPowerR = 1.0f; float def_cdlPowerG = 1.0f; float def_cdlPowerB = 1.0f;
 
-        // Override defaults based on preset via lookup table
+        // Override defaults based on preset via lookup table. -1 means "not set" for [0,+inf) params, -999 for signed params.
         struct PresetOverride {
             float    SharpStrength = -1; float casStrength = -1; float casSharpness = -1;
             float    guardStrength = -1; float extremeProtection = -1; float shimmerReduction = -1;
@@ -84,15 +93,60 @@ namespace vkBasalt
             float    debandStrength = -1; float toneCurve = -1; float vibrance = -999;
             int32_t  enableChromaSmooth = -1; float chromaSmoothStrength = -1; float specularDesat = -1;
             int32_t  blendIfDark = -1; int32_t blendIfLight = -1;
+            float    saturation = -999; int32_t enableSplitTone = -1; float splitToneStrength = -1;
+            float    stShadowR = -1; float stShadowG = -1; float stShadowB = -1;
+            float    stHighR = -1; float stHighG = -1; float stHighB = -1;
+            float    temperature = -999; float tint = -999;
+            float    gammaAdjust = -999; float blackLift = -1; float whiteClip = -1;
+            int32_t  enableCDL = -1; float cdlSlopeR = -1; float cdlSlopeG = -1; float cdlSlopeB = -1;
+            float    cdlPowerR = -1; float cdlPowerG = -1; float cdlPowerB = -1;
         };
-
         static const std::unordered_map<std::string, PresetOverride> presetTable = {
-            {"esports",       {2.0f, 2.5f, -1,   0.6f, 0.5f, 0.6f, -1,  -1,   -1,   -1,  -1, -1,    -1,   0.8f, -1,   -1,  0,  -1, -1,  -1,   0.2f,  -1, -1,   -1,  15, 240}},
-            {"artifactless",  {1.2f, 1.5f, -1,   0.9f, 0.8f, 0.8f, 0.6f, 0.05f, 0.35f, 0.6f, -1, -1,    -1,   -1,   -1,   -1,  0,  1,  0.4f, -1,   -1,     1,  0.4f, 0.2f, -1, -1}},
-            {"maxsharp",      {3.5f, 4.0f, 1.0f, 0.2f, 0.1f, 0.2f, 1.2f, 0.02f, 0.20f, 0.1f, -1, -1,    -1,   0.8f, -1,   -1,  -1, -1, -1,  -1,   -1,     -1, -1,   -1,   -1, -1}},
-            {"vibrantsharp",  {2.5f, 2.5f, -1,   0.5f, 0.4f, 0.5f, -1,  -1,   -1,   -1,  -1, -1,    -1,   0.6f, -1,   -1,  -1, 1,  0.6f, 0.2f, 0.6f,  -1, -1,   0.1f, -1, -1}},
-            {"devfxaa",       {2.0f, 2.5f, -1,   0.6f, -1,  -1,  -1,  -1,   -1,   -1,   1,  0.04f, 0.8f, 0.8f, -1,   -1,  -1, -1, -1,  -1,   -1,     -1, -1,   -1,   -1, -1}},
-            {"cinematic",     {1.8f, 1.5f, -1,   0.7f, 0.6f, 0.5f, 0.7f, -1,   -1,   -1,  -1, -1,    -1,   1.2f, 0.1f, 0.9f, -1, 1,  0.5f, 0.5f, -0.1f,  1,  0.6f, 0.4f, 20, 230}},
+            {"esports", {.SharpStrength=2.0f, .casStrength=2.5f, .guardStrength=0.6f,
+                        .extremeProtection=0.5f, .shimmerReduction=0.6f, .filmGrainStrength=0.8f,
+                        .enableFilmGrain=0, .toneCurve=0.2f, .vibrance=0.0f, .blendIfDark=15, .blendIfLight=240}},
+            {"artifactless", {.SharpStrength=1.2f, .casStrength=1.5f, .guardStrength=0.9f,
+                            .extremeProtection=0.8f, .shimmerReduction=0.8f, .bandPassWidth=0.6f,
+                            .edgeThreshLow=0.05f, .edgeThreshHigh=0.35f, .clarityTextureProtection=0.6f,
+                            .enableFilmGrain=0, .enableDeband=1, .debandStrength=0.4f,
+                            .enableChromaSmooth=1, .chromaSmoothStrength=0.4f, .specularDesat=0.2f}},
+            {"maxsharp", {.SharpStrength=3.5f, .casStrength=4.0f, .casSharpness=1.0f,
+                        .guardStrength=0.2f, .extremeProtection=0.1f, .shimmerReduction=0.2f,
+                        .bandPassWidth=1.2f, .edgeThreshLow=0.02f, .edgeThreshHigh=0.20f,
+                        .clarityTextureProtection=0.1f, .filmGrainStrength=0.8f}},
+            {"vibrantsharp", {.SharpStrength=2.5f, .casStrength=2.5f, .guardStrength=0.5f,
+                            .extremeProtection=0.4f, .shimmerReduction=0.5f, .filmGrainStrength=0.6f,
+                            .enableDeband=1, .debandStrength=0.6f, .toneCurve=0.2f, .vibrance=0.6f,
+                            .specularDesat=0.1f}},
+            {"devfxaa", {.SharpStrength=2.0f, .casStrength=2.5f, .guardStrength=0.6f,
+                        .enableAA=1, .fxaaEdgeThreshold=0.04f, .fxaaSubpixAmount=0.8f,
+                        .filmGrainStrength=0.8f}},
+            {"cinematic", {.SharpStrength=1.8f, .casStrength=1.5f, .guardStrength=0.7f,
+                        .extremeProtection=0.6f, .shimmerReduction=0.5f, .bandPassWidth=0.7f,
+                        .filmGrainStrength=1.2f, .filmGrainMinimum=0.1f, .coarseGrainWeight=0.9f,
+                        .enableDeband=1, .debandStrength=0.5f, .toneCurve=0.5f, .vibrance=-0.1f,
+                        .enableChromaSmooth=1, .chromaSmoothStrength=0.6f, .specularDesat=0.4f,
+                        .blendIfDark=20, .blendIfLight=230,
+                        .enableSplitTone=1, .splitToneStrength=0.3f,
+                        .stShadowR=0.0f, .stShadowG=0.4f, .stShadowB=0.5f,
+                        .stHighR=0.5f, .stHighG=0.3f, .stHighB=0.0f,
+                        .temperature=0.1f}},
+            {"film", {.SharpStrength=1.5f, .casStrength=1.5f, .guardStrength=0.7f,
+                    .extremeProtection=0.7f, .shimmerReduction=0.6f,
+                    .filmGrainStrength=1.5f, .filmGrainMinimum=0.2f, .coarseGrainWeight=0.9f,
+                    .enableDeband=1, .debandStrength=0.5f, .toneCurve=0.4f,
+                    .saturation=-0.2f, .enableSplitTone=1, .splitToneStrength=0.25f,
+                    .stShadowR=0.0f, .stShadowG=0.3f, .stShadowB=0.4f,
+                    .stHighR=0.4f, .stHighG=0.25f, .stHighB=0.0f,
+                    .temperature=0.05f, .gammaAdjust=-0.1f, .blackLift=0.15f, .whiteClip=0.1f}},
+            {"vivid", {.SharpStrength=2.5f, .casStrength=3.0f, .guardStrength=0.4f,
+                    .filmGrainStrength=0.6f, .vibrance=0.3f, .saturation=0.4f,
+                    .temperature=0.05f, .enableCDL=1,
+                    .cdlSlopeR=1.1f, .cdlSlopeG=1.05f, .cdlSlopeB=1.0f}},
+            {"noir", {.SharpStrength=3.0f, .casStrength=3.5f, .guardStrength=0.3f,
+                    .extremeProtection=0.2f, .shimmerReduction=0.3f,
+                    .filmGrainStrength=1.0f, .toneCurve=0.3f,
+                    .saturation=-1.0f, .gammaAdjust=0.2f, .blackLift=0.05f}},
         };
 
         auto presetIt = presetTable.find(preset);
@@ -124,6 +178,27 @@ namespace vkBasalt
             if (p.specularDesat >= 0)          def_specularDesat = p.specularDesat;
             if (p.blendIfDark >= 0)            def_blendIfDark = p.blendIfDark;
             if (p.blendIfLight >= 0)           def_blendIfLight = p.blendIfLight;
+            if (p.saturation > -999)           def_saturation = p.saturation;
+            if (p.enableSplitTone >= 0)        def_enableSplitTone = p.enableSplitTone;
+            if (p.splitToneStrength >= 0)      def_splitToneStrength = p.splitToneStrength;
+            if (p.stShadowR >= 0)              def_stShadowR = p.stShadowR;
+            if (p.stShadowG >= 0)              def_stShadowG = p.stShadowG;
+            if (p.stShadowB >= 0)              def_stShadowB = p.stShadowB;
+            if (p.stHighR >= 0)                def_stHighR = p.stHighR;
+            if (p.stHighG >= 0)                def_stHighG = p.stHighG;
+            if (p.stHighB >= 0)                def_stHighB = p.stHighB;
+            if (p.temperature > -999)          def_temperature = p.temperature;
+            if (p.tint > -999)                 def_tint = p.tint;
+            if (p.gammaAdjust > -999)          def_gammaAdjust = p.gammaAdjust;
+            if (p.blackLift >= 0)              def_blackLift = p.blackLift;
+            if (p.whiteClip >= 0)              def_whiteClip = p.whiteClip;
+            if (p.enableCDL >= 0)              def_enableCDL = p.enableCDL;
+            if (p.cdlSlopeR >= 0)              def_cdlSlopeR = p.cdlSlopeR;
+            if (p.cdlSlopeG >= 0)              def_cdlSlopeG = p.cdlSlopeG;
+            if (p.cdlSlopeB >= 0)              def_cdlSlopeB = p.cdlSlopeB;
+            if (p.cdlPowerR >= 0)              def_cdlPowerR = p.cdlPowerR;
+            if (p.cdlPowerG >= 0)              def_cdlPowerG = p.cdlPowerG;
+            if (p.cdlPowerB >= 0)              def_cdlPowerB = p.cdlPowerB;
         }
 
         this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", def_radius), 0.5f, 8.0f);
@@ -163,6 +238,7 @@ namespace vkBasalt
             float stShadowR; float stShadowG; float stShadowB;
             float stHighR; float stHighG; float stHighB;
             float splitToneStrength; float temperature; float tint;
+            float gammaAdjust; float blackLift; float whiteClip;
         };
 
         CrystalClearSpecData specData;
@@ -234,27 +310,30 @@ namespace vkBasalt
         specData.despeckleThreshold        = std::clamp((float)getAndStore("crystalclearDespeckleThreshold", 0.15f), 0.0f, 1.0f);
         specData.enableFringeFix           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableFringeFix", 0), int32_t(0), int32_t(1));
         specData.fringeStrength            = std::clamp((float)getAndStore("crystalclearFringeStrength", 0.5f), 0.0f, 1.0f);
-        specData.saturation                = std::clamp((float)getAndStore("crystalclearSaturation", 0.0f), -1.0f, 1.0f);
-        specData.enableCDL                 = std::clamp((int32_t)getAndStoreInt("crystalclearEnableCDL", 0), int32_t(0), int32_t(1));
-        specData.cdlSlopeR                 = std::clamp((float)getAndStore("crystalclearCDLSlopeR", 1.0f), 0.0f, 4.0f);
-        specData.cdlSlopeG                 = std::clamp((float)getAndStore("crystalclearCDLSlopeG", 1.0f), 0.0f, 4.0f);
-        specData.cdlSlopeB                 = std::clamp((float)getAndStore("crystalclearCDLSlopeB", 1.0f), 0.0f, 4.0f);
+        specData.saturation                = std::clamp((float)getAndStore("crystalclearSaturation", def_saturation), -1.0f, 1.0f);
+        specData.enableCDL                 = std::clamp((int32_t)getAndStoreInt("crystalclearEnableCDL", def_enableCDL), int32_t(0), int32_t(1));
+        specData.cdlSlopeR                 = std::clamp((float)getAndStore("crystalclearCDLSlopeR", def_cdlSlopeR), 0.0f, 4.0f);
+        specData.cdlSlopeG                 = std::clamp((float)getAndStore("crystalclearCDLSlopeG", def_cdlSlopeG), 0.0f, 4.0f);
+        specData.cdlSlopeB                 = std::clamp((float)getAndStore("crystalclearCDLSlopeB", def_cdlSlopeB), 0.0f, 4.0f);
         specData.cdlOffsetR                = std::clamp((float)getAndStore("crystalclearCDLOffsetR", 0.0f), -1.0f, 1.0f);
         specData.cdlOffsetG                = std::clamp((float)getAndStore("crystalclearCDLOffsetG", 0.0f), -1.0f, 1.0f);
         specData.cdlOffsetB                = std::clamp((float)getAndStore("crystalclearCDLOffsetB", 0.0f), -1.0f, 1.0f);
-        specData.cdlPowerR                 = std::clamp((float)getAndStore("crystalclearCDLPowerR", 1.0f), 0.1f, 4.0f);
-        specData.cdlPowerG                 = std::clamp((float)getAndStore("crystalclearCDLPowerG", 1.0f), 0.1f, 4.0f);
-        specData.cdlPowerB                 = std::clamp((float)getAndStore("crystalclearCDLPowerB", 1.0f), 0.1f, 4.0f);
-        specData.enableSplitTone           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableSplitTone", 0), int32_t(0), int32_t(1));
-        specData.stShadowR                 = std::clamp((float)getAndStore("crystalclearSTShadowR", 0.0f), 0.0f, 1.0f);
-        specData.stShadowG                 = std::clamp((float)getAndStore("crystalclearSTShadowG", 0.5f), 0.0f, 1.0f);
-        specData.stShadowB                 = std::clamp((float)getAndStore("crystalclearSTShadowB", 0.5f), 0.0f, 1.0f);
-        specData.stHighR                   = std::clamp((float)getAndStore("crystalclearSTHighR", 0.5f), 0.0f, 1.0f);
-        specData.stHighG                   = std::clamp((float)getAndStore("crystalclearSTHighG", 0.3f), 0.0f, 1.0f);
-        specData.stHighB                   = std::clamp((float)getAndStore("crystalclearSTHighB", 0.0f), 0.0f, 1.0f);
-        specData.splitToneStrength         = std::clamp((float)getAndStore("crystalclearSplitToneStrength", 0.0f), 0.0f, 1.0f);
-        specData.temperature               = std::clamp((float)getAndStore("crystalclearTemperature", 0.0f), -1.0f, 1.0f);
-        specData.tint                      = std::clamp((float)getAndStore("crystalclearTint", 0.0f), -1.0f, 1.0f);
+        specData.cdlPowerR                 = std::clamp((float)getAndStore("crystalclearCDLPowerR", def_cdlPowerR), 0.1f, 4.0f);
+        specData.cdlPowerG                 = std::clamp((float)getAndStore("crystalclearCDLPowerG", def_cdlPowerG), 0.1f, 4.0f);
+        specData.cdlPowerB                 = std::clamp((float)getAndStore("crystalclearCDLPowerB", def_cdlPowerB), 0.1f, 4.0f);
+        specData.enableSplitTone           = std::clamp((int32_t)getAndStoreInt("crystalclearEnableSplitTone", def_enableSplitTone), int32_t(0), int32_t(1));
+        specData.stShadowR                 = std::clamp((float)getAndStore("crystalclearSTShadowR", def_stShadowR), 0.0f, 1.0f);
+        specData.stShadowG                 = std::clamp((float)getAndStore("crystalclearSTShadowG", def_stShadowG), 0.0f, 1.0f);
+        specData.stShadowB                 = std::clamp((float)getAndStore("crystalclearSTShadowB", def_stShadowB), 0.0f, 1.0f);
+        specData.stHighR                   = std::clamp((float)getAndStore("crystalclearSTHighR", def_stHighR), 0.0f, 1.0f);
+        specData.stHighG                   = std::clamp((float)getAndStore("crystalclearSTHighG", def_stHighG), 0.0f, 1.0f);
+        specData.stHighB                   = std::clamp((float)getAndStore("crystalclearSTHighB", def_stHighB), 0.0f, 1.0f);
+        specData.splitToneStrength         = std::clamp((float)getAndStore("crystalclearSplitToneStrength", def_splitToneStrength), 0.0f, 1.0f);
+        specData.temperature               = std::clamp((float)getAndStore("crystalclearTemperature", def_temperature), -1.0f, 1.0f);
+        specData.tint                      = std::clamp((float)getAndStore("crystalclearTint", def_tint), -1.0f, 1.0f);
+        specData.gammaAdjust               = std::clamp((float)getAndStore("crystalclearGammaAdjust", def_gammaAdjust), -0.9f, 0.9f);
+        specData.blackLift                 = std::clamp((float)getAndStore("crystalclearBlackLift", def_blackLift), 0.0f, 0.5f);
+        specData.whiteClip                 = std::clamp((float)getAndStore("crystalclearWhiteClip", def_whiteClip), 0.0f, 0.5f);
 
         VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -323,7 +402,10 @@ namespace vkBasalt
             {63, offsetof(CrystalClearSpecData, stHighB),                   sizeof(float)},
             {64, offsetof(CrystalClearSpecData, splitToneStrength),         sizeof(float)},
             {65, offsetof(CrystalClearSpecData, temperature),               sizeof(float)},
-            {66, offsetof(CrystalClearSpecData, tint),                      sizeof(float)}
+            {66, offsetof(CrystalClearSpecData, tint),                      sizeof(float)},
+            {67, offsetof(CrystalClearSpecData, gammaAdjust),               sizeof(float)},
+            {68, offsetof(CrystalClearSpecData, blackLift),                 sizeof(float)},
+            {69, offsetof(CrystalClearSpecData, whiteClip),                 sizeof(float)}
         };
 
         VkSpecializationInfo specializationInfo;
@@ -405,74 +487,77 @@ namespace vkBasalt
     // Declarative parameter interface
     const std::vector<EffectParamDesc>& CrystalClearEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"crystalclearPreset", "Preset", ParamType::Combo, 0.0, 0.0, 0.0, 0.0, 
-                {"devfav", "esports", "artifactless", "maxsharp", "vibrantsharp", "devfxaa", "cinematic"}},
-            {"crystalclearBilateralRadius",       "Bilateral Radius",       ParamType::Float, 2.5,   0.5,   8.0,   0.1},
-            {"crystalclearBilateralOffset",       "Bilateral Offset",       ParamType::Float, 1.5,   0.5,   3.0,   0.1},
-            {"crystalclearSharpStrength",         "Sharp Strength",         ParamType::Float, 2.5,   0.0,   5.0,   0.1},
-            {"crystalclearBlendMode",             "Blend Mode",             ParamType::Int,   5.0,   0.0,   6.0,   1.0},
-            {"crystalclearBlendIfDark",           "Blend If Dark",          ParamType::Int,   8.0,   0.0, 255.0,   1.0},
-            {"crystalclearBlendIfLight",          "Blend If Light",         ParamType::Int, 248.0,   0.0, 255.0,   1.0},
-            {"crystalclearCasSharpness",          "CAS Sharpness",          ParamType::Float, 1.0,   0.0,   1.0,  0.01},
-            {"crystalclearCasStrength",           "CAS Strength",           ParamType::Float, 3.0,   0.0,   5.0,   0.1},
-            {"crystalclearEdgeThreshLow",         "Edge Thresh Low",        ParamType::Float, 0.03,  0.0,   1.0,  0.01},
-            {"crystalclearEdgeThreshHigh",        "Edge Thresh High",       ParamType::Float, 0.28,  0.0,   1.0,  0.01},
-            {"crystalclearEnableDithering",       "Enable Dithering",       ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
-            {"crystalclearEnableAA",              "Enable AA",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearEnableRGBEdgeDetection","RGB Edge Detection",     ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
-            {"crystalclearFxaaEdgeThreshold",     "FXAA Edge Thresh",       ParamType::Float, 0.05,  0.001, 1.0,  0.01},
-            {"crystalclearFxaaSubpixAmount",      "FXAA Subpix",            ParamType::Float, 1.0,   0.0,   1.0,  0.01},
-            {"crystalclearFxaaSearchScale",       "FXAA Search Scale",      ParamType::Float, 1.0,   0.1,   3.0,   0.1},
-            {"crystalclearFxaaHardEdgeThreshold", "FXAA Hard Edge",         ParamType::Float, 0.08,  0.0,   1.0,  0.01},
-            {"crystalclearClarityTextureProtection","Clarity Protection",   ParamType::Float, 0.35,  0.0,   1.0,  0.01},
-            {"crystalclearFxaaEdgeThresholdMin",  "FXAA Edge Min",          ParamType::Float, 0.0312,0.0,   1.0, 0.001},
-            {"crystalclearFxaaOnlyMode",          "FXAA Only",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearEnableDebugAA",         "Debug AA",               ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearEnableDebugCAS",        "Debug CAS",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearEnableDebugClarity",    "Debug Clarity",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearEnableFilmGrain",       "Enable Film Grain",      ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
-            {"crystalclearFilmGrainStrength",     "Grain Strength",         ParamType::Float, 1.0,   0.0,   2.0,   0.1},
-            {"crystalclearFilmGrainMinimum",      "Grain Minimum",          ParamType::Float, 0.0,   0.0,   2.0,   0.1},
-            {"crystalclearEnableDebugGrain",      "Debug Grain",            ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearFineGrainWeight",       "Fine Grain",             ParamType::Float, 0.4,   0.0,   1.0,  0.01},
-            {"crystalclearCoarseGrainWeight",     "Coarse Grain",           ParamType::Float, 0.8,   0.0,   1.0,  0.01},
-            {"crystalclearGuardStrength",         "Guard Strength",         ParamType::Float, 0.4,   0.0,   1.0,  0.01},
-            {"crystalclearBandPassWidth",         "Band Pass Width",        ParamType::Float, 0.85,  0.3,   1.5,  0.05},
-            {"crystalclearExtremeProtection",     "Extreme Protection",     ParamType::Float, 0.3,   0.0,   1.0,  0.01},
-            {"crystalclearShimmerReduction",      "Shimmer Reduction",      ParamType::Float, 0.4,   0.0,   1.0,  0.01},
-            {"crystalclearVibrance",              "Vibrance",               ParamType::Float, 0.0,  -1.0,   1.0,  0.05},
-            {"crystalclearEnableDeband",          "Enable Deband",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearDebandStrength",        "Deband Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05},
-            {"crystalclearToneCurve",             "Tone Curve",             ParamType::Float, 0.0,   0.0,   1.0,  0.01},
-            {"crystalclearEnableChromaSmooth",    "Chroma Smooth",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearChromaSmoothStrength",  "Chroma Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.01},
-            {"crystalclearSpecularDesat",         "Specular Desat",         ParamType::Float, 0.0,   0.0,   1.0,  0.01},
-            {"crystalclearLocalContrastStrength", "Local Contrast",         ParamType::Float, 0.0,   0.0,   2.0,  0.05},
-            {"crystalclearEnableDespeckle",       "Enable Despeckle",       ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearDespeckleThreshold",    "Despeckle Threshold",    ParamType::Float, 0.15,  0.0,   1.0,  0.01},
-            {"crystalclearEnableFringeFix",       "Fringe Fix (CA)",        ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearFringeStrength",        "Fringe Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05},
-            {"crystalclearSaturation",            "Saturation",             ParamType::Float, 0.0,  -1.0,   1.0,  0.05},
-            {"crystalclearEnableCDL",             "CDL Enable",             ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearCDLSlopeR",             "CDL Slope R",            ParamType::Float, 1.0,   0.0,   4.0,  0.01},
-            {"crystalclearCDLSlopeG",             "CDL Slope G",            ParamType::Float, 1.0,   0.0,   4.0,  0.01},
-            {"crystalclearCDLSlopeB",             "CDL Slope B",            ParamType::Float, 1.0,   0.0,   4.0,  0.01},
-            {"crystalclearCDLOffsetR",            "CDL Offset R",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
-            {"crystalclearCDLOffsetG",            "CDL Offset G",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
-            {"crystalclearCDLOffsetB",            "CDL Offset B",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
-            {"crystalclearCDLPowerR",             "CDL Power R",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
-            {"crystalclearCDLPowerG",             "CDL Power G",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
-            {"crystalclearCDLPowerB",             "CDL Power B",            ParamType::Float, 1.0,   0.1,   4.0,  0.01},
-            {"crystalclearEnableSplitTone",       "Split Tone Enable",      ParamType::Bool,  0.0,   0.0,   1.0,   1.0},
-            {"crystalclearSTShadowR",             "ST Shadow R",            ParamType::Float, 0.0,   0.0,   1.0,  0.01},
-            {"crystalclearSTShadowG",             "ST Shadow G",            ParamType::Float, 0.5,   0.0,   1.0,  0.01},
-            {"crystalclearSTShadowB",             "ST Shadow B",            ParamType::Float, 0.5,   0.0,   1.0,  0.01},
-            {"crystalclearSTHighR",               "ST Highlight R",         ParamType::Float, 0.5,   0.0,   1.0,  0.01},
-            {"crystalclearSTHighG",               "ST Highlight G",         ParamType::Float, 0.3,   0.0,   1.0,  0.01},
-            {"crystalclearSTHighB",               "ST Highlight B",         ParamType::Float, 0.0,   0.0,   1.0,  0.01},
-            {"crystalclearSplitToneStrength",     "Split Tone Strength",    ParamType::Float, 0.0,   0.0,   1.0,  0.01},
-            {"crystalclearTemperature",           "Temperature",            ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
-            {"crystalclearTint",                  "Tint",                   ParamType::Float, 0.0,  -1.0,   1.0,  0.01},
+            {"crystalclearPreset", "Preset", ParamType::Combo, 0.0, 0.0, 0.0, 0.0,
+            {"devfav", "esports", "artifactless", "maxsharp", "vibrantsharp", "devfxaa", "cinematic", "film", "vivid", "noir"}, "Preset"},
+            {"crystalclearBilateralRadius",       "Bilateral Radius",       ParamType::Float, 2.5,   0.5,   8.0,   0.1, {}, "Sharpening"},
+            {"crystalclearBilateralOffset",       "Bilateral Offset",       ParamType::Float, 1.5,   0.5,   3.0,   0.1, {}, "Sharpening"},
+            {"crystalclearSharpStrength",         "Sharp Strength",         ParamType::Float, 2.5,   0.0,   5.0,   0.1, {}, "Sharpening"},
+            {"crystalclearBlendMode",             "Blend Mode",             ParamType::Int,   5.0,   0.0,   6.0,   1.0, {}, "Sharpening"},
+            {"crystalclearBlendIfDark",           "Blend If Dark",          ParamType::Int,   8.0,   0.0, 255.0,   1.0, {}, "Sharpening"},
+            {"crystalclearBlendIfLight",          "Blend If Light",         ParamType::Int, 248.0,   0.0, 255.0,   1.0, {}, "Sharpening"},
+            {"crystalclearCasSharpness",          "CAS Sharpness",          ParamType::Float, 1.0,   0.0,   1.0,  0.01, {}, "Sharpening"},
+            {"crystalclearCasStrength",           "CAS Strength",           ParamType::Float, 3.0,   0.0,   5.0,   0.1, {}, "Sharpening"},
+            {"crystalclearEdgeThreshLow",         "Edge Thresh Low",        ParamType::Float, 0.03,  0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearEdgeThreshHigh",        "Edge Thresh High",       ParamType::Float, 0.28,  0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearEnableDithering",       "Enable Dithering",       ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Grain & Dither"},
+            {"crystalclearEnableAA",              "Enable AA",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Anti-Aliasing"},
+            {"crystalclearEnableRGBEdgeDetection","RGB Edge Detection",     ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Protection"},
+            {"crystalclearFxaaEdgeThreshold",     "FXAA Edge Thresh",       ParamType::Float, 0.05,  0.001, 1.0,  0.01, {}, "Anti-Aliasing"},
+            {"crystalclearFxaaSubpixAmount",      "FXAA Subpix",            ParamType::Float, 1.0,   0.0,   1.0,  0.01, {}, "Anti-Aliasing"},
+            {"crystalclearFxaaSearchScale",       "FXAA Search Scale",      ParamType::Float, 1.0,   0.1,   3.0,   0.1, {}, "Anti-Aliasing"},
+            {"crystalclearFxaaHardEdgeThreshold", "FXAA Hard Edge",         ParamType::Float, 0.08,  0.0,   1.0,  0.01, {}, "Anti-Aliasing"},
+            {"crystalclearClarityTextureProtection","Clarity Protection",   ParamType::Float, 0.35,  0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearFxaaEdgeThresholdMin",  "FXAA Edge Min",          ParamType::Float, 0.0312,0.0,   1.0, 0.001, {}, "Anti-Aliasing"},
+            {"crystalclearFxaaOnlyMode",          "FXAA Only",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Anti-Aliasing"},
+            {"crystalclearEnableDebugAA",         "Debug AA",               ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
+            {"crystalclearEnableDebugCAS",        "Debug CAS",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
+            {"crystalclearEnableDebugClarity",    "Debug Clarity",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
+            {"crystalclearEnableFilmGrain",       "Enable Film Grain",      ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Grain & Dither"},
+            {"crystalclearFilmGrainStrength",     "Grain Strength",         ParamType::Float, 1.0,   0.0,   2.0,   0.1, {}, "Grain & Dither"},
+            {"crystalclearFilmGrainMinimum",      "Grain Minimum",          ParamType::Float, 0.0,   0.0,   2.0,   0.1, {}, "Grain & Dither"},
+            {"crystalclearEnableDebugGrain",      "Debug Grain",            ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
+            {"crystalclearFineGrainWeight",       "Fine Grain",             ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Grain & Dither"},
+            {"crystalclearCoarseGrainWeight",     "Coarse Grain",           ParamType::Float, 0.8,   0.0,   1.0,  0.01, {}, "Grain & Dither"},
+            {"crystalclearGuardStrength",         "Guard Strength",         ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearBandPassWidth",         "Band Pass Width",        ParamType::Float, 0.85,  0.3,   1.5,  0.05, {}, "Protection"},
+            {"crystalclearExtremeProtection",     "Extreme Protection",     ParamType::Float, 0.3,   0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearShimmerReduction",      "Shimmer Reduction",      ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearVibrance",              "Vibrance",               ParamType::Float, 0.0,  -1.0,   1.0,  0.05, {}, "Color & Tone"},
+            {"crystalclearEnableDeband",          "Enable Deband",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color & Tone"},
+            {"crystalclearDebandStrength",        "Deband Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Color & Tone"},
+            {"crystalclearToneCurve",             "Tone Curve",             ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color & Tone"},
+            {"crystalclearEnableChromaSmooth",    "Chroma Smooth",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
+            {"crystalclearChromaSmoothStrength",  "Chroma Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearSpecularDesat",         "Specular Desat",         ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color & Tone"},
+            {"crystalclearLocalContrastStrength", "Local Contrast",         ParamType::Float, 0.0,   0.0,   2.0,  0.05, {}, "Sharpening"},
+            {"crystalclearEnableDespeckle",       "Enable Despeckle",       ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
+            {"crystalclearDespeckleThreshold",    "Despeckle Threshold",    ParamType::Float, 0.15,  0.0,   1.0,  0.01, {}, "Protection"},
+            {"crystalclearEnableFringeFix",       "Fringe Fix (CA)",        ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
+            {"crystalclearFringeStrength",        "Fringe Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Protection"},
+            {"crystalclearSaturation",            "Saturation",             ParamType::Float, 0.0,  -1.0,   1.0,  0.05, {}, "Color Grade"},
+            {"crystalclearEnableCDL",             "CDL Enable",             ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color Grade"},
+            {"crystalclearCDLSlopeR",             "CDL Slope R",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLSlopeG",             "CDL Slope G",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLSlopeB",             "CDL Slope B",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLOffsetR",            "CDL Offset R",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLOffsetG",            "CDL Offset G",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLOffsetB",            "CDL Offset B",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLPowerR",             "CDL Power R",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLPowerG",             "CDL Power G",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grade"},
+            {"crystalclearCDLPowerB",             "CDL Power B",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grade"},
+            {"crystalclearEnableSplitTone",       "Split Tone Enable",      ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color Grade"},
+            {"crystalclearSTShadowR",             "ST Shadow R",            ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearSTShadowG",             "ST Shadow G",            ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearSTShadowB",             "ST Shadow B",            ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearSTHighR",               "ST Highlight R",         ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearSTHighG",               "ST Highlight G",         ParamType::Float, 0.3,   0.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearSTHighB",               "ST Highlight B",         ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearSplitToneStrength",     "Split Tone Strength",    ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearTemperature",           "Temperature",            ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearTint",                  "Tint",                   ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
+            {"crystalclearGammaAdjust",           "Gamma",                  ParamType::Float, 0.0,  -0.9,   0.9,  0.01, {}, "Color Grade"},
+            {"crystalclearBlackLift",             "Black Point Lift",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grade"},
+            {"crystalclearWhiteClip",             "White Point Clip",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grade"},
         };
         return params;
     }
