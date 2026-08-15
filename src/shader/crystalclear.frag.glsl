@@ -133,6 +133,9 @@ layout(constant_id = 63) const float stHighB = 0.0;
 layout(constant_id = 64) const float splitToneStrength = 0.0;
 layout(constant_id = 65) const float temperature = 0.0; // -1.0 (cool/blue) to 1.0 (warm/amber), 0 = neutral
 layout(constant_id = 66) const float tint = 0.0;        // -1.0 (magenta) to 1.0 (green), 0 = neutral
+layout(constant_id = 67) const float gammaAdjust = 0.0;  // -0.9 to 0.9, 0 = off
+layout(constant_id = 68) const float blackLift = 0.0;    // 0.0 to 0.5, raises black floor (faded film)
+layout(constant_id = 69) const float whiteClip = 0.0;    // 0.0 to 0.5, lowers white ceiling
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -634,6 +637,21 @@ void main() {
             vec3 wb = vec3(1.0 + temperature, 1.0 + tint, 1.0 - temperature);
             wb /= getNeutralLuma(wb); // normalize: (3 + tint) / 3, prevents brightness drift
             finalColor *= wb;
+        }
+
+        // phase 10.9: Gamma / B/W tone response shaping. HDR aware.
+        if (gammaAdjust != 0.0 || blackLift != 0.0 || whiteClip != 0.0) {
+            vec3 graded = finalColor / hdrNorm;
+            if (blackLift > 0.0) {
+                graded = graded * (1.0 - blackLift) + blackLift;
+            }
+            if (whiteClip > 0.0) {
+                graded = min(graded, vec3(1.0 - whiteClip));
+            }
+            if (gammaAdjust != 0.0) {
+                graded = pow(max(graded, vec3(0.0)), vec3(1.0 / (1.0 + gammaAdjust)));
+            }
+            finalColor = graded * hdrNorm;
         }
 
         // phase 11: Specular Highlight Desaturation white specular reflections lose saturation and approach white irl. Prevents colorful highlights.
