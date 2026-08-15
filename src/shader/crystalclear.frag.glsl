@@ -211,10 +211,10 @@ void main() {
 
     vec3 eRaw = e;
 
+    float crossAvg = (lB + lH + lD + lF) * 0.25;
     // phase 1.5 despeckle pulls isolated outlier pixels toward their cross average before any sharpening can amplify them. neighborAgree ensures we only touch
     // pixels whose neighbors agree with each other on impulse noise instead of real detail.
     if (enableDespeckle == 1) {
-        float crossAvg       = (lB + lH + lD + lF) * 0.25;
         float isolation      = abs(lE - crossAvg);
         float neighborSpread = max(max(lB, lH), max(lD, lF)) - min(min(lB, lH), min(lD, lF));
         float neighborAgree  = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, neighborSpread);
@@ -305,9 +305,11 @@ void main() {
     float edgeH = abs(edgeHorz3) + edgeHorz4;
     float edgeV = abs(edgeVert3) + edgeVert4;
 
+    vec3 edgeH_rgb = vec3(0.0);
+    vec3 edgeV_rgb = vec3(0.0);
     if (enableRGBEdgeDetection == 1) {
-        vec3 edgeH_rgb = abs(b + h - 2.0 * e);
-        vec3 edgeV_rgb = abs(d + f - 2.0 * e);
+        edgeH_rgb = abs(b + h - 2.0 * e);
+        edgeV_rgb = abs(d + f - 2.0 * e);
         edgeH = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
         edgeV = max(edgeV_rgb.r, max(edgeV_rgb.g, edgeV_rgb.b));
 
@@ -463,7 +465,8 @@ void main() {
         float wideAvg = (h1_raw + h2_raw + h3_raw + h4_raw + v1_raw + v2_raw + v3_raw + v4_raw) * 0.125;
         float lcRatio = lumaAA / max(wideAvg, 0.0001 * hdrNorm);
         float lcBoost = pow(clamp(lcRatio, 0.25, 4.0), localContrastStrength) - 1.0;
-        diff += lcBoost * 0.15 * hdrNorm;
+        // edge masking to reduce halos
+        diff += lcBoost * 0.08 * hdrNorm * edgeMask;
     }
 
     // phase 7: clarity gates and s-curve with saturation and edge guards
@@ -566,37 +569,20 @@ void main() {
             finalColor = mix(finalColor, cross_avg + vec3(center_luma - cross_luma), smoothAmount);
         }
 
-        // phase 10: Vibrance (Post-sharpening, Pre-grain)
-        if (vibrance != 0.0) {
-            float max_c = max(finalColor.r, max(finalColor.g, finalColor.b));
-            float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
-            float chroma = max_c - min_c;
-            
-            if (chroma > 0.0001) {
-                // HDR-aware vibrance amount: less saturated colors get more boost
-                float sat_rel = chroma / max(max_c, 0.0001);
-                float amount = vibrance * (1.0 - clamp(sat_rel, 0.0, 1.0));
-                float sat_factor = 1.0 + amount;
-                
-                // Calculate new chroma, clamped to max_c to preserve HSV Value (brightness)
-                float new_chroma = clamp(chroma * sat_factor, 0.0, max_c);
-                
-                // Scale the pure chrominance vector (preserves exact linear RGB hue ratios)
-                vec3 pure_chroma = finalColor - min_c;
-                pure_chroma *= (new_chroma / chroma);
-                
-                // Reconstruct color with new min_c to maintain original max_c
-                float new_min_c = max_c - new_chroma;
-                finalColor = pure_chroma + new_min_c;
-            }
-        }
-        // phase 10.5: Linear saturation
-        if (saturation != 0.0) {
+        // phase 10: Vibrance + Saturation (merged chroma pass)
+        if (vibrance != 0.0 || saturation != 0.0) {
             float max_c = max(finalColor.r, max(finalColor.g, finalColor.b));
             float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
             float chroma = max_c - min_c;
             if (chroma > 0.0001) {
-                float sat_factor = 1.0 + saturation;
+                float sat_factor = 1.0;
+                if (vibrance != 0.0) {
+                    float sat_rel = chroma / max(max_c, 0.0001);
+                    sat_factor += vibrance * (1.0 - clamp(sat_rel, 0.0, 1.0));
+                }
+                if (saturation != 0.0) {
+                    sat_factor += saturation;
+                }
                 float new_chroma = clamp(chroma * sat_factor, 0.0, max_c);
                 vec3 pure_chroma = finalColor - min_c;
                 pure_chroma *= (new_chroma / chroma);
@@ -672,14 +658,22 @@ void main() {
             }
         }
 
-        // phase 11.5: Fringing suppression detects color-only edges (chromatic aberration, compression artifacts) 
-        // where RGB gradient >> luma gradient, desaturates them toward neutral.
-        if (enableFringeFix == 1 && enableRGBEdgeDetection == 1) {
-            float rgbEdgeMag  = max(edgeH, edgeV);
-            float lumaEdgeMag = max(pureLumaEdgeH, pureLumaEdgeV);
-            float fringe      = max(rgbEdgeMag - lumaEdgeMag, 0.0);
-            float fringeMask  = smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, fringe)
-                            * fringeStrength * bandPassMask;
+        // phase 11.5: Fringing suppression detects chromatic aberration by measuring per channel edge disagreement (spread).
+        // edgeMask (skip strong edges like text/UI), satGate (skip saturated pixels), bandPassMask (skip macro structure). 
+        // CA fringing is mostly visible in flat, low saturation transition zones away from strong edges.
+        if (enableFringeFix == 1) {
+            float hMax = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
+            float hMin = min(edgeH_rgb.r, min(edgeH_rgb.g, edgeH_rgb.b));
+            float vMax = max(edgeV_rgb.r, max(edgeV_rgb.g, edgeV_rgb.b));
+            float vMin = min(edgeV_rgb.r, min(edgeV_rgb.g, edgeV_rgb.b));
+            float fringe = max(hMax - hMin, vMax - vMin);
+            // Gate 1: skip saturated pixels (intentional color, not CA)
+            float satHere = maxCenterRGB - minCenterRGB;
+            float satGate = 1.0 - smoothstep(0.15 * hdrNorm, 0.4 * hdrNorm, satHere);
+            // Gate 2: skip strong edges (text, UI, game art boundaries)
+            // Gate 3: bandPassMask skips macro-structure
+            float fringeMask = smoothstep(0.1 * hdrNorm, 0.3 * hdrNorm, fringe)
+                            * fringeStrength * bandPassMask * satGate * edgeMask;
             float lumaHere = getNeutralLuma(finalColor);
             finalColor = mix(finalColor, vec3(lumaHere), fringeMask);
         }
@@ -687,8 +681,7 @@ void main() {
         // phase 12: shimmer reduction (stabilizes isolated pixels)
         float finalLuma = getLuma(finalColor);
 
-        float avgLuma = (lB + lH + lD + lF) * 0.25;
-        float isolation = abs(lumaAA - avgLuma);
+        float isolation = abs(lumaAA - crossAvg);
 
         float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
         // If FXAA actively blended this pixel, reduce shimmer correction avoid fighting FXAA's anti-aliasing. aaColor==eRaw when FXAA is off.
@@ -698,7 +691,7 @@ void main() {
                         * shimmerChoke * shimmerReduction;
 
         if (shimmerMask > 0.0) {
-            float clampedLuma = mix(finalLuma, avgLuma, shimmerMask * 0.5);
+            float clampedLuma = mix(finalLuma, crossAvg, shimmerMask * 0.5);
             float shimmerScale = clampedLuma / max(finalLuma, 0.0001);
             finalColor *= shimmerScale;
             finalLuma *= shimmerScale;
