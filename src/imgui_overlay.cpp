@@ -493,12 +493,14 @@ namespace vkBasalt {
             if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 3) ? 0 : m_activeTab + 1;
         }
 
-        // Footer height
-        float legendHeight = ImGui::GetFrameHeightWithSpacing()       // button row
-                       + (ImGui::GetTextLineHeightWithSpacing() * 2)  // 2 legend text lines
-                       + style.ItemSpacing.y * 4                      // spacing between all footer elements
-                       + 6;                                           // separator + bottom padding
-        ImGui::BeginChild("##content_area", ImVec2(0, -legendHeight), false);
+        // Footer height = separator + single button row + 2 legend lines.
+        float footerHeight = 1.0f                                      // separator line
+            + style.ItemSpacing.y * 2                                  // spacing around separator
+            + ImGui::GetFrameHeightWithSpacing()                       // button row
+            + (ImGui::GetTextLineHeightWithSpacing() * 2)              // 2 legend lines
+            + style.ItemSpacing.y;                                     // bottom padding
+
+        ImGui::BeginChild("##content_area", ImVec2(0, -footerHeight), false);
 
         if (ImGui::BeginTabBar("##main_tabs", ImGuiTabBarFlags_None)) {
             ImVec4 tabTextColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -531,6 +533,7 @@ namespace vkBasalt {
 
         // Footer
         ImGui::Separator();
+
         if (m_activeTab == 0) { // Shaders tab
             if (ImGui::Button("Save & Apply")) {
                 // Resolve selected effect by name, not by index into the active chain
@@ -578,7 +581,9 @@ namespace vkBasalt {
             }
         }
 
-        // Close with unsaved-changes warning
+        // Close button right aligned on the same row
+        float closeWidth = ImGui::CalcTextSize("Close").x + style.FramePadding.x * 2.0f;
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - closeWidth);
         if (ImGui::Button("Close")) {
             if (m_hasUnsavedChanges && !m_showCloseWarning) {
                 m_showCloseWarning = true;
