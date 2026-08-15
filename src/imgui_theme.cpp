@@ -44,6 +44,9 @@ namespace vkBasalt {
         ImVec4 border(bg[0] * 4.2f, bg[1] * 5.6f, bg[2] * 3.4f, 1.0f);
         ImVec4 accentDark(accent[0] * 0.57f, accent[1] * 0.67f, accent[2] * 0.63f, 1.0f);
         ImVec4 accentBright(accent[0] * 1.6f, accent[1] * 1.23f, accent[2] * 1.43f, 1.0f);
+        ImVec4 headerDark(0.10f, 0.45f, 0.45f, 1.0f);
+        ImVec4 headerBase(0.15f, 0.55f, 0.55f, 1.0f);
+        ImVec4 headerBright(0.20f, 0.70f, 0.70f, 1.0f);
 
         style.Colors[ImGuiCol_WindowBg]             = bgDark;
         style.Colors[ImGuiCol_ChildBg]              = ImVec4(bg[0] * 1.2f, bg[1] * 1.4f, bg[2] * 1.1f, bgAlpha);
@@ -66,9 +69,9 @@ namespace vkBasalt {
         style.Colors[ImGuiCol_Button]               = accentDark;
         style.Colors[ImGuiCol_ButtonHovered]        = ImVec4(accent[0], accent[1], accent[2], 1.0f);
         style.Colors[ImGuiCol_ButtonActive]         = accentBright;
-        style.Colors[ImGuiCol_Header]               = ImVec4(accent[0] * 0.5f, accent[1] * 0.56f, accent[2] * 0.57f, 1.0f);
-        style.Colors[ImGuiCol_HeaderHovered]        = ImVec4(accent[0], accent[1], accent[2], 1.0f);
-        style.Colors[ImGuiCol_HeaderActive]         = accentBright;
+        style.Colors[ImGuiCol_Header]               = headerDark;
+        style.Colors[ImGuiCol_HeaderHovered]        = headerBase;
+        style.Colors[ImGuiCol_HeaderActive]         = headerBright;
         style.Colors[ImGuiCol_ScrollbarGrab]        = accentDark;
         style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(accent[0], accent[1], accent[2], 1.0f);
         style.Colors[ImGuiCol_ScrollbarGrabActive]  = accentBright;
