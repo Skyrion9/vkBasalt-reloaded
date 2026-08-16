@@ -541,10 +541,26 @@ namespace vkBasalt
         ensureWaylandRegistryBound();
 #endif
 
-        std::vector<VkSemaphore> presentSemaphores;
-        presentSemaphores.reserve(pPresentInfo->swapchainCount);
+        // Stack allocated for the common case (up to 3 swapchains) with safe headroom at 8. Heap fallback for safety.
+        VkSemaphore presentSemStack[8];
+        std::vector<VkSemaphore> presentSemHeap;
+        VkSemaphore* presentSemaphores = presentSemStack;
+        uint32_t presentSemCount = 0;
+        if (pPresentInfo->swapchainCount > 8) {
+            presentSemHeap.resize(pPresentInfo->swapchainCount);
+            presentSemaphores = presentSemHeap.data();
+        }
 
-        std::vector<VkPipelineStageFlags> waitStages(pPresentInfo->waitSemaphoreCount, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        VkPipelineStageFlags waitStagesStack[8];
+        std::vector<VkPipelineStageFlags> waitStagesHeap;
+        VkPipelineStageFlags* waitStages = waitStagesStack;
+        if (pPresentInfo->waitSemaphoreCount > 8) {
+            waitStagesHeap.resize(pPresentInfo->waitSemaphoreCount, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            waitStages = waitStagesHeap.data();
+        } else {
+            for (uint32_t wi = 0; wi < pPresentInfo->waitSemaphoreCount; wi++)
+                waitStages[wi] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
 
         bool forceOutOfDate = false;
 
@@ -567,14 +583,14 @@ namespace vkBasalt
                 submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
                 submitInfo.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
                 submitInfo.pWaitSemaphores = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
-                submitInfo.pWaitDstStageMask = i == 0 ? waitStages.data() : nullptr;
+                submitInfo.pWaitDstStageMask = i == 0 ? waitStages : nullptr;
                 submitInfo.commandBufferCount = 1;
                 submitInfo.pCommandBuffers = &(pLogicalSwapchain->commandBuffersNoEffect[index]);
                 submitInfo.signalSemaphoreCount = 1;
                 submitInfo.pSignalSemaphores = &(pLogicalSwapchain->semaphores[index]);
-                
+
                 pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
-                presentSemaphores.push_back(pLogicalSwapchain->semaphores[index]);
+                presentSemaphores[presentSemCount++] = pLogicalSwapchain->semaphores[index];
                 continue; 
             }
 
@@ -591,14 +607,14 @@ namespace vkBasalt
             submitInfo.pNext              = nullptr;
             submitInfo.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
             submitInfo.pWaitSemaphores    = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
-            submitInfo.pWaitDstStageMask  = i == 0 ? waitStages.data() : nullptr;
+            submitInfo.pWaitDstStageMask  = i == 0 ? waitStages : nullptr;
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers =
                 g_effectsEnabled.load() ? &(pLogicalSwapchain->commandBuffersEffect[index]) : &(pLogicalSwapchain->commandBuffersNoEffect[index]);
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores    = &(pLogicalSwapchain->semaphores[index]);
 
-            presentSemaphores.push_back(pLogicalSwapchain->semaphores[index]);
+            presentSemaphores[presentSemCount++] = pLogicalSwapchain->semaphores[index];
 
             VkResult vr = pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
 
@@ -609,7 +625,7 @@ namespace vkBasalt
 
             // ImGui use return value to decide semaphore swap not isOverlayOpen() as the overlay may close itself during rendering.
             if (g_overlayManager.renderOverlay(pLogicalDevice.get(), pLogicalSwapchain, swapchain, index)) {
-                presentSemaphores.back() = g_overlayManager.getOverlaySemaphore(swapchain, index);
+                presentSemaphores[presentSemCount - 1] = g_overlayManager.getOverlaySemaphore(swapchain, index);
             }
 
             // Screenshot capture (async submits GPU copy, writes file next frame)
@@ -626,8 +642,8 @@ namespace vkBasalt
         // Process any pending screenshot from the previous frame
         processPendingScreenshot();
         VkPresentInfoKHR presentInfo   = *pPresentInfo;
-        presentInfo.waitSemaphoreCount = presentSemaphores.size();
-        presentInfo.pWaitSemaphores    = presentSemaphores.data();
+        presentInfo.waitSemaphoreCount = presentSemCount;
+        presentInfo.pWaitSemaphores    = presentSemaphores;
 
         VkResult result = pLogicalDevice->vkd.QueuePresentKHR(queue, &presentInfo);
 
