@@ -621,10 +621,10 @@ namespace vkBasalt
                 int quality = pConfig->getOption<int>("screenshotQuality", 95);
                 captureScreenshot(pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path, fmt, quality);
             }
-
-            // Process any pending screenshot from the previous frame
-            processPendingScreenshot();
         }
+
+        // Process any pending screenshot from the previous frame
+        processPendingScreenshot();
         VkPresentInfoKHR presentInfo   = *pPresentInfo;
         presentInfo.waitSemaphoreCount = presentSemaphores.size();
         presentInfo.pWaitSemaphores    = presentSemaphores.data();
