@@ -221,8 +221,11 @@ namespace vkBasalt {
         writeCommandBuffers(pLogicalDevice, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
         Logger::debug("wrote CommandBuffers");
 
-        pLogicalSwapchain->semaphores = createSemaphores(pLogicalDevice, pLogicalSwapchain->imageCount);
-        Logger::debug("created semaphores");
+        // Only create semaphores on initial setup. Rebuilds preserve them as imageCount is fixed for a given swapchain.
+        if (pLogicalSwapchain->semaphores.empty()) {
+            pLogicalSwapchain->semaphores = createSemaphores(pLogicalDevice, pLogicalSwapchain->imageCount);
+            Logger::debug("created semaphores");
+        }
 
         for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++)
         {
@@ -331,10 +334,7 @@ namespace vkBasalt {
                                                    pLogicalSwapchain->commandBuffersNoEffect.data());
             pLogicalSwapchain->commandBuffersNoEffect.clear();
         }
-        for (auto sem : pLogicalSwapchain->semaphores) {
-            pLogicalDevice->vkd.DestroySemaphore(pLogicalDevice->device, sem, nullptr);
-        }
-        pLogicalSwapchain->semaphores.clear();
+
         pLogicalSwapchain->effects.clear();
         pLogicalSwapchain->defaultTransfer.reset();
 
