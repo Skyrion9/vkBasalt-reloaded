@@ -181,32 +181,22 @@ namespace vkBasalt
     
     void SimpleEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
-        // Used to make the Image accessable by the shader
+        // Barrier 1: Acquire inputImages for reading
         VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
+        memoryBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        memoryBarrier.oldLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                                                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
         memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-        VkImageMemoryBarrier secondBarrier = {};
-        secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        secondBarrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        secondBarrier.newLayout           = finalLayout; // Respect the final layout defined by the effect
-        secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        secondBarrier.image               = inputImages[imageIndex];
-        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,  // Present engine wrote this image
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
@@ -217,7 +207,6 @@ namespace vkBasalt
         renderPassBeginInfo.renderArea.offset = {0, 0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
-        // conditionally attach clearValue only if the effect requested it
         VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 0.0f}}};
         if (needsClear) {
             renderPassBeginInfo.clearValueCount = 1;
@@ -225,18 +214,12 @@ namespace vkBasalt
         }
 
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
-
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-        // Push constant injection
-        // Dynamically sized based on the derived effect's pushConstantSize.
-        // Shaders that declare a push_constant block (like Clarity) will read this.
-        // Shaders that don't (like CAS/FXAA) will safely ignore it, provided pushConstantSize matches the layout.
         if (pushConstantSize > 0) {
-            float pushData[32] = {}; // Max 128 bytes, zero-initialized on stack
+            float pushData[32] = {}; 
             float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
             float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
             pushData[0] = texelSizeX;
@@ -246,23 +229,50 @@ namespace vkBasalt
                 pushData[5] = texelSizeY;
             }
             pLogicalDevice->vkd.CmdPushConstants(
-                commandBuffer,
-                pipelineLayout,
-                VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,
-                pushConstantSize,
-                pushData
-            );
+                commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, pushConstantSize, pushData);
         }
 
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
-
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
-        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,  // Next effect or present engine reads this
+        // Barrier 2: Restore inputImages layout after we're done reading it.
+        VkImageMemoryBarrier secondBarrier = {};
+        secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        secondBarrier.dstAccessMask       = isFirstInChain ? VK_ACCESS_MEMORY_READ_BIT : 0;
+        secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        secondBarrier.newLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        secondBarrier.image               = inputImages[imageIndex];
+        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer, 
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
             0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+
+        // Barrier 3: Prepare outputImages for the next consumer.
+        if (!isLastInChain) {
+            VkImageMemoryBarrier thirdBarrier = {};
+            thirdBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            thirdBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            thirdBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            thirdBarrier.oldLayout           = finalLayout; // Left by render pass
+            thirdBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            thirdBarrier.image               = outputImages[imageIndex];
+            thirdBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+            pLogicalDevice->vkd.CmdPipelineBarrier(
+                commandBuffer, 
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &thirdBarrier);
+        }
     }
 
     double SimpleEffect::getParam(const std::string& key) const {

@@ -31,7 +31,7 @@ namespace vkBasalt
     {
     public:
         SimpleEffect();
-        void virtual applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
+        virtual void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         virtual ~SimpleEffect();
 
         // Declarative parameter interface, getParamDescs() inherits the empty-vector default from Effect.

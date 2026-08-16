@@ -27,9 +27,15 @@ namespace vkBasalt
     class Effect
     {
     public:
-        void virtual applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) = 0;
-        void virtual updateEffect(){};
-        void virtual useDepthImage(VkImageView depthImageView){};
+        virtual void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) = 0;
+        virtual void updateEffect() {}
+        virtual void useDepthImage(VkImageView depthImageView){};
+        
+        virtual void setChainPosition(bool isFirst, bool isLast) {
+            isFirstInChain = isFirst;
+            isLastInChain = isLast;
+        }
+
         virtual ~Effect(){};
 
         // Functions for UI related Read/Updating of params.
@@ -44,6 +50,10 @@ namespace vkBasalt
         virtual double getParam(const std::string& key) const { return 0.0; }
 
         virtual bool setParam(const std::string& key, double value) { return false; }
+
+    protected:
+        bool isFirstInChain = false;
+        bool isLastInChain = false;
 
     private:
     };

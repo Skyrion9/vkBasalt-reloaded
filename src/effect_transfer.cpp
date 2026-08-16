@@ -24,72 +24,77 @@ namespace vkBasalt
 
     void TransferEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
-        VkImageCopy imageCopy;
-        imageCopy.srcSubresource            = {};
-        imageCopy.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        imageCopy.srcSubresource.layerCount = 1;
-        imageCopy.srcOffset                 = {};
-        imageCopy.dstSubresource            = {};
-        imageCopy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        imageCopy.dstSubresource.layerCount = 1;
-        imageCopy.dstOffset                 = {};
+        VkImageCopy imageCopy = {};
+        imageCopy.srcSubresource            = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        imageCopy.srcOffset                 = {0, 0, 0};
+        imageCopy.dstSubresource            = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        imageCopy.dstOffset                 = {0, 0, 0};
         imageCopy.extent                    = {imageExtent.width, imageExtent.height, 1};
 
-        VkImageMemoryBarrier memoryBarrier;
-        memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.pNext               = nullptr;
+        VkImageMemoryBarrier barrier = {};
+        barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        // Barrier 1: Input -> TRANSFER_SRC
+        barrier.image         = inputImages[imageIndex];
+        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.oldLayout     = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         
-        // Fixed: Use MEMORY_READ_BIT for PRESENT_SRC_KHR
-        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT; 
-        memoryBarrier.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
-        memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        memoryBarrier.image               = inputImages[imageIndex];
-
-        memoryBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        memoryBarrier.subresourceRange.baseMipLevel   = 0;
-        memoryBarrier.subresourceRange.levelCount     = 1;
-        memoryBarrier.subresourceRange.baseArrayLayer = 0;
-        memoryBarrier.subresourceRange.layerCount     = 1;
-
-        // Image comes from present engine (not a pipeline stage), wait for all prior commands (Previously had changed BOTTOM_OF_PIPE_BIT -> COLOR_ATTACHMENT_OUTPUT_BIT)
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
 
-        memoryBarrier.image         = outputImages[imageIndex];
-        memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-        memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        memoryBarrier.srcAccessMask = 0;
-        memoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        // Barrier 2: Output UNDEFINED -> TRANSFER_DST
+        barrier.image         = outputImages[imageIndex];
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         
-        // UNDEFINED to TRANSFER_DST requires no wait, so TOP_OF_PIPE is perfectly fine here
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
 
+        // Execute Copy
         pLogicalDevice->vkd.CmdCopyImage(commandBuffer,
-                                         inputImages[imageIndex],
-                                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                         outputImages[imageIndex],
-                                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                         1,
-                                         &imageCopy);
+                                        inputImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                        outputImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                        1, &imageCopy);
 
-        memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        memoryBarrier.dstAccessMask = 0;
-        memoryBarrier.image         = outputImages[imageIndex];
-        memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+        // Barrier 3: Output TRANSFER_DST -> Final Layout
+        barrier.image         = outputImages[imageIndex];
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout     = isLastInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        
+        VkPipelineStageFlags dstStage3 = isLastInChain 
+            ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT 
+            : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        barrier.dstAccessMask = isLastInChain 
+            ? VK_ACCESS_MEMORY_READ_BIT 
+            : (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
-        memoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        memoryBarrier.image         = inputImages[imageIndex];
-        memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, dstStage3, 
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+        // Barrier 4: Input TRANSFER_SRC -> Restore original layout
+        barrier.image         = inputImages[imageIndex];
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.dstAccessMask = 0;
+        barrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout     = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
     }
 
     TransferEffect::~TransferEffect()

@@ -206,9 +206,12 @@ namespace vkBasalt {
         Logger::debug("effect string count: " + std::to_string(effectStrings.size()));
         Logger::debug("effect count: " + std::to_string(pLogicalSwapchain->effects.size()));
 
-        for (auto& effect : pLogicalSwapchain->effects)
+        for (uint32_t ei = 0; ei < pLogicalSwapchain->effects.size(); ei++)
         {
-            effect->useDepthImage(depthImageView);
+            pLogicalSwapchain->effects[ei]->useDepthImage(depthImageView);
+            pLogicalSwapchain->effects[ei]->setChainPosition(
+                ei == 0,
+                ei == pLogicalSwapchain->effects.size() - 1);
         }
 
         pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
@@ -242,6 +245,9 @@ namespace vkBasalt {
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
                 pLogicalSwapchain->images,
                 pConfig));
+            
+            // defaultTransfer is a standalone 1-effect chain (slice 0 -> real swapchain). It must be marked as both first and last so its barriers use PRESENT_SRC_KHR.
+            pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
 
             pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
             writeCommandBuffers(pLogicalDevice,
@@ -307,16 +313,18 @@ namespace vkBasalt {
 
             pLogicalSwapchain->effects.clear();
             pLogicalSwapchain->defaultTransfer.reset();
-
             pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
                 pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
                 std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
-                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
                 pLogicalSwapchain->images, pConfig));
+            
+            // Mark as first and last for correct barrier layouts.
+            pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
 
             writeCommandBuffers(pLogicalDevice, {pLogicalSwapchain->defaultTransfer},
-                                VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
-                                pLogicalSwapchain->commandBuffersNoEffect);
+                VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
+                pLogicalSwapchain->commandBuffersNoEffect);
             return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
         }
 
