@@ -340,10 +340,6 @@ namespace vkBasalt {
 
         buildEffectChain(pLogicalDevice, pLogicalSwapchain, VK_NULL_HANDLE, pConfig, overlayManager);
 
-        if (waitForIdle) {
-            pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
-        }
-
         Logger::debug("Rebuild complete.");
     }
 
