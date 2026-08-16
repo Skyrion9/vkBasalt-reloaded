@@ -209,14 +209,13 @@ namespace vkBasalt
 
     void SmaaEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
-        
-        // Barrier 1 inputImage -> SHADER_READ_ONLY
+        // Barrier 1: inputImages -> SHADER_READ_ONLY
         VkImageMemoryBarrier barrier1 = {};
         barrier1.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        // Wait for the game's color/transfer writes to finish and become visible
-        barrier1.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        barrier1.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         barrier1.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        barrier1.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrier1.oldLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier1.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -224,7 +223,7 @@ namespace vkBasalt
         barrier1.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &barrier1);
 
         VkRenderPassBeginInfo renderPassBeginInfo = {}; 
@@ -237,7 +236,7 @@ namespace vkBasalt
         renderPassBeginInfo.clearValueCount   = 1;
         renderPassBeginInfo.pClearValues      = &clearValue;
 
-        // Pass 1 edge detection
+        // Pass 1: edge detection
         renderPassBeginInfo.renderPass  = unormRenderPass;
         renderPassBeginInfo.framebuffer = edgeFramebuffers[imageIndex];
 
@@ -247,7 +246,7 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
-        // Barrier 2 edge image memory visibility
+        // Barrier 2: edge image memory visibility (Internal to SMAA)
         VkImageMemoryBarrier barrier2 = {};
         barrier2.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier2.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -263,7 +262,7 @@ namespace vkBasalt
             commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
             0, 0, nullptr, 0, nullptr, 1, &barrier2);
 
-        // pass 2 blend weight calculation
+        // Pass 2: blend weight calculation
         renderPassBeginInfo.framebuffer = blendFramebuffers[imageIndex];
         
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -271,7 +270,7 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
-        // barrier 3 blend image memory visibility
+        // Barrier 3: blend image memory visibility (Internal to SMAA)
         VkImageMemoryBarrier barrier3 = {};
         barrier3.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier3.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -287,7 +286,7 @@ namespace vkBasalt
             commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
             0, 0, nullptr, 0, nullptr, 1, &barrier3);
 
-        // pass 3 neighborhood blending
+        // Pass 3: neighborhood blending (writes to outputImages) SMAA's renderPass hardcodes the final layout of outputImages to PRESENT_SRC_KHR.
         renderPassBeginInfo.framebuffer = neighborFramebuffers[imageIndex];
         renderPassBeginInfo.renderPass  = renderPass; 
         renderPassBeginInfo.clearValueCount = 0; 
@@ -298,21 +297,43 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
-        // barrier 4 inputImage -> PRESENT_SRC_KHR
+        // Barrier 4: Restore inputImages layout after we're done reading it.
+        // The game engine (if first) expects it in PRESENT_SRC_KHR to write the next frame. If intermediate, we leave it in SHADER_READ_ONLY_OPTIMAL.
         VkImageMemoryBarrier barrier4 = {};
         barrier4.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier4.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        barrier4.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
+        barrier4.dstAccessMask       = isFirstInChain ? VK_ACCESS_MEMORY_READ_BIT : 0;
         barrier4.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier4.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrier4.newLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier4.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier4.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier4.image               = inputImages[imageIndex];
         barrier4.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             0, 0, nullptr, 0, nullptr, 1, &barrier4);
+
+        // Barrier 5: Prepare outputImages for the next consumer.
+        // Pass 3 left outputImages in PRESENT_SRC_KHR. If we are an intermediate effect, the next effect expects SHADER_READ_ONLY_OPTIMAL.
+        if (!isLastInChain) {
+            VkImageMemoryBarrier barrier5 = {};
+            barrier5.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier5.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            barrier5.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            barrier5.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            barrier5.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier5.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier5.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier5.image               = outputImages[imageIndex];
+            barrier5.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+            pLogicalDevice->vkd.CmdPipelineBarrier(
+                commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &barrier5);
+        }
     }
 
     const std::vector<EffectParamDesc>& SmaaEffect::getParamDescs() const {

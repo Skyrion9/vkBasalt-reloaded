@@ -430,44 +430,28 @@ namespace vkBasalt
     }
 
     void CrystalClearEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) {
-
-        VkImageMemoryBarrier memoryBarrier;
+        // Barrier 1: Acquire inputImages for reading
+        VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.pNext               = nullptr;
-        memoryBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
+        memoryBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        memoryBarrier.oldLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-        memoryBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        memoryBarrier.subresourceRange.baseMipLevel   = 0;
-        memoryBarrier.subresourceRange.levelCount     = 1;
-        memoryBarrier.subresourceRange.baseArrayLayer = 0;
-        memoryBarrier.subresourceRange.layerCount     = 1;
+        memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
-        VkImageMemoryBarrier secondBarrier;
-        secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        secondBarrier.pNext               = nullptr;
-        secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        secondBarrier.dstAccessMask       = 0;
-        secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        secondBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        secondBarrier.image               = inputImages[imageIndex];
-        secondBarrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        secondBarrier.subresourceRange.baseMipLevel   = 0;
-        secondBarrier.subresourceRange.levelCount     = 1;
-        secondBarrier.subresourceRange.baseArrayLayer = 0;
-        secondBarrier.subresourceRange.layerCount     = 1;
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer, 
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
-        pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-
+        // Render Pass (writes to outputImages, automatically transitions them to finalLayout = PRESENT_SRC_KHR)
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassBeginInfo.pNext             = nullptr;
         renderPassBeginInfo.renderPass        = renderPass;
         renderPassBeginInfo.framebuffer       = framebuffers[imageIndex];
         renderPassBeginInfo.renderArea.offset = {0, 0};
@@ -476,12 +460,49 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         pLogicalDevice->vkd.CmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-
         pLogicalDevice->vkd.CmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(CrystalClearPushConstants), &pushConstants);
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
-    pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+        // Barrier 2: Restore inputImages layout after we're done reading it.
+        VkImageMemoryBarrier secondBarrier = {};
+        secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        secondBarrier.dstAccessMask       = isFirstInChain ? VK_ACCESS_MEMORY_READ_BIT : 0;
+        secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        secondBarrier.newLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+                                                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        secondBarrier.image               = inputImages[imageIndex];
+        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        // BOTTOM_OF_PIPE is sufficient because no subsequent pipeline work reads inputImages.
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer, 
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
+            0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+
+        // Barrier 3: Prepare outputImages for the next consumer. The render pass left outputImages in PRESENT_SRC_KHR (finalLayout).  If we are an intermediate effect, the next effect expects SHADER_READ_ONLY_OPTIMAL.
+        if (!isLastInChain) {
+            VkImageMemoryBarrier thirdBarrier = {};
+            thirdBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            thirdBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            thirdBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            thirdBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            thirdBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            thirdBarrier.image               = outputImages[imageIndex];
+            thirdBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+            pLogicalDevice->vkd.CmdPipelineBarrier(
+                commandBuffer, 
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &thirdBarrier);
+        }
     }
 
     // Declarative parameter interface
