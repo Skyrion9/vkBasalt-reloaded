@@ -81,6 +81,8 @@ namespace vkBasalt
         int32_t def_enableCDL = 0;
         float def_cdlSlopeR = 1.0f; float def_cdlSlopeG = 1.0f; float def_cdlSlopeB = 1.0f;
         float def_cdlPowerR = 1.0f; float def_cdlPowerG = 1.0f; float def_cdlPowerB = 1.0f;
+        int32_t def_enableCheckerboardFix = 0;
+        float def_checkerboardStrength = 0.5f;
 
         // Override defaults based on preset via lookup table. -1 means "not set" for [0,+inf) params, -999 for signed params.
         struct PresetOverride {
@@ -100,7 +102,9 @@ namespace vkBasalt
             float    gammaAdjust = -999; float blackLift = -1; float whiteClip = -1;
             int32_t  enableCDL = -1; float cdlSlopeR = -1; float cdlSlopeG = -1; float cdlSlopeB = -1;
             float    cdlPowerR = -1; float cdlPowerG = -1; float cdlPowerB = -1;
+            int32_t enableCheckerboardFix = -1; float checkerboardStrength = -1;
         };
+
         static const std::unordered_map<std::string, PresetOverride> presetTable = {
             {"esports", {.SharpStrength=2.0f, .casStrength=2.5f, .guardStrength=0.6f,
                         .extremeProtection=0.5f, .shimmerReduction=0.6f, .filmGrainStrength=0.8f,
@@ -199,6 +203,8 @@ namespace vkBasalt
             if (p.cdlPowerR >= 0)              def_cdlPowerR = p.cdlPowerR;
             if (p.cdlPowerG >= 0)              def_cdlPowerG = p.cdlPowerG;
             if (p.cdlPowerB >= 0)              def_cdlPowerB = p.cdlPowerB;
+            if (p.enableCheckerboardFix >= 0)  def_enableCheckerboardFix = p.enableCheckerboardFix;
+            if (p.checkerboardStrength >= 0)   def_checkerboardStrength = p.checkerboardStrength;
         }
 
         this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", def_radius), 0.5f, 8.0f);
@@ -239,6 +245,7 @@ namespace vkBasalt
             float stHighR; float stHighG; float stHighB;
             float splitToneStrength; float temperature; float tint;
             float gammaAdjust; float blackLift; float whiteClip;
+            int32_t enableCheckerboardFix; float checkerboardStrength;
         };
 
         CrystalClearSpecData specData;
@@ -334,6 +341,8 @@ namespace vkBasalt
         specData.gammaAdjust               = std::clamp((float)getAndStore("crystalclearGammaAdjust", def_gammaAdjust), -0.9f, 0.9f);
         specData.blackLift                 = std::clamp((float)getAndStore("crystalclearBlackLift", def_blackLift), 0.0f, 0.5f);
         specData.whiteClip                 = std::clamp((float)getAndStore("crystalclearWhiteClip", def_whiteClip), 0.0f, 0.5f);
+        specData.enableCheckerboardFix     = std::clamp((int32_t)getAndStoreInt("crystalclearEnableCheckerboardFix", def_enableCheckerboardFix), int32_t(0), int32_t(1));
+        specData.checkerboardStrength      = std::clamp((float)getAndStore("crystalclearCheckerboardStrength", def_checkerboardStrength), 0.0f, 1.0f);
 
         VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -405,7 +414,9 @@ namespace vkBasalt
             {66, offsetof(CrystalClearSpecData, tint),                      sizeof(float)},
             {67, offsetof(CrystalClearSpecData, gammaAdjust),               sizeof(float)},
             {68, offsetof(CrystalClearSpecData, blackLift),                 sizeof(float)},
-            {69, offsetof(CrystalClearSpecData, whiteClip),                 sizeof(float)}
+            {69, offsetof(CrystalClearSpecData, whiteClip),                 sizeof(float)},
+            {70, offsetof(CrystalClearSpecData, enableCheckerboardFix),    sizeof(int32_t)},
+            {71, offsetof(CrystalClearSpecData, checkerboardStrength),     sizeof(float)}
         };
 
         VkSpecializationInfo specializationInfo;
@@ -579,6 +590,8 @@ namespace vkBasalt
             {"crystalclearGammaAdjust",           "Gamma",                  ParamType::Float, 0.0,  -0.9,   0.9,  0.01, {}, "Color Grade"},
             {"crystalclearBlackLift",             "Black Point Lift",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grade"},
             {"crystalclearWhiteClip",             "White Point Clip",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grade"},
+            {"crystalclearEnableCheckerboardFix",  "Checkerboard Fix",      ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
+            {"crystalclearCheckerboardStrength",   "Checkerboard Strength", ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Protection"},
         };
         return params;
     }

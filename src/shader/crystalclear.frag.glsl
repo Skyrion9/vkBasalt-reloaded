@@ -136,6 +136,8 @@ layout(constant_id = 66) const float tint = 0.0;        // -1.0 (magenta) to 1.0
 layout(constant_id = 67) const float gammaAdjust = 0.0;  // -0.9 to 0.9, 0 = off
 layout(constant_id = 68) const float blackLift = 0.0;    // 0.0 to 0.5, raises black floor (faded film)
 layout(constant_id = 69) const float whiteClip = 0.0;    // 0.0 to 0.5, lowers white ceiling
+layout(constant_id = 70) const int enableCheckerboardFix = 0;   // removes checker board transparency effect used for camera obstruction
+layout(constant_id = 71) const float checkerboardStrength = 0.5;
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -212,16 +214,35 @@ void main() {
     vec3 eRaw = e;
 
     float crossAvg = (lB + lH + lD + lF) * 0.25;
-    // phase 1.5 despeckle pulls isolated outlier pixels toward their cross average before any sharpening can amplify them. neighborAgree ensures we only touch
-    // pixels whose neighbors agree with each other on impulse noise instead of real detail.
-    if (enableDespeckle == 1) {
-        float isolation      = abs(lE - crossAvg);
+
+    // phase 1.5 Checkerboard correction and anti speckle, combined as they share spread math and despeckle interacts with checkerboard patterns.
+    if (enableDespeckle == 1 || enableCheckerboardFix == 1) {
         float neighborSpread = max(max(lB, lH), max(lD, lF)) - min(min(lB, lH), min(lD, lF));
-        float neighborAgree  = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, neighborSpread);
-        float outlierMask    = smoothstep(despeckleThreshold * hdrNorm, despeckleThreshold * 2.5 * hdrNorm, isolation) * neighborAgree;
-        float targetLuma     = mix(lE, crossAvg, outlierMask);
-        e  = e * (targetLuma / max(lE, 0.0001));
-        lE = targetLuma;
+
+        // Checkerboard transparency correction (structured alternating pattern)
+        if (enableCheckerboardFix == 1) {
+            float isolation    = abs(lE - crossAvg);
+            float crossUniform = 1.0 - smoothstep(0.04 * hdrNorm, 0.15 * hdrNorm, neighborSpread);
+
+            vec3 diagAvgRGB   = (a + c + g + i) * 0.25;
+            float diagAgree   = 1.0 - smoothstep(0.03 * hdrNorm, 0.12 * hdrNorm, abs(lE - getLuma(diagAvgRGB)));
+            float crossMismatch = smoothstep(0.04 * hdrNorm, 0.15 * hdrNorm, isolation);
+
+            float checkerMask = diagAgree * crossMismatch * crossUniform;
+            vec3 bgEstimate   = (b + d + f + h) * 0.25;
+            e  = mix(e, bgEstimate, checkerMask * checkerboardStrength);
+            lE = getLuma(e);
+        }
+
+        // Impulse noise despeckle (random isolated outliers)
+        if (enableDespeckle == 1) {
+            float isolation     = abs(lE - crossAvg); // recomputed if checkerboard modified lE
+            float neighborAgree = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, neighborSpread);
+            float outlierMask   = smoothstep(despeckleThreshold * hdrNorm, despeckleThreshold * 2.5 * hdrNorm, isolation) * neighborAgree;
+            float targetLuma    = mix(lE, crossAvg, outlierMask);
+            e  = e * (targetLuma / max(lE, 0.0001));
+            lE = targetLuma;
+        }
     }
 
     // phase 2: clarity wide fetches for latency hiding
