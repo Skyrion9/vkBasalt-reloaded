@@ -6,9 +6,12 @@
 #include <unordered_map>
 #include <cstdlib>
 #include <mutex>
+#include <atomic>
 
 namespace vkBasalt
 {
+    extern std::atomic<bool> g_configDirty;
+
     class Config
     {
     public:

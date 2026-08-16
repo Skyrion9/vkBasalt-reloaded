@@ -1,5 +1,6 @@
 #include "config.hpp"
 #include "logger.hpp"
+#include "game_detect.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -15,10 +16,12 @@
 #include <algorithm>
 #include <unordered_map>
 #include <vector>
-#include "game_detect.hpp"
+#include <atomic>
 
 namespace vkBasalt
 {
+    std::atomic<bool> g_configDirty{true};
+
     // Helpers
     static std::string trim(const std::string& s) {
         size_t start = s.find_first_not_of(" \t\r\n");
@@ -201,13 +204,18 @@ namespace vkBasalt
 
     void Config::setOption(const std::string& option, const std::string& value) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_game[option] = value;
+        if (m_game[option] != value) {
+            m_game[option] = value;
+            g_configDirty = true;
+        }
     }
-
 
     void Config::setGlobalOption(const std::string& option, const std::string& value) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_global[option] = value;
+        if (m_global[option] != value) {
+            m_global[option] = value;
+            g_configDirty = true;
+        }
     }
 
     bool Config::saveGlobal() {
@@ -233,7 +241,10 @@ namespace vkBasalt
 
     void Config::resetToGlobal() {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_game.clear();
+        if (!m_game.empty()) {
+            m_game.clear();
+            g_configDirty = true;
+        }
     }
 
     // Parsing (preserves old locale-safe behavior)
@@ -363,6 +374,7 @@ namespace vkBasalt
         std::lock_guard<std::mutex> lock(m_mutex);
         m_game.clear();
         readConfigFile(f, m_game);
+        g_configDirty = true;
         Logger::info("Loaded preset: " + path);
         return true;
     }

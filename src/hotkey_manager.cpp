@@ -27,11 +27,13 @@ namespace vkBasalt {
         static uint32_t keySymbol        = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
         static uint32_t reloadKeySymbol  = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
         static uint32_t overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
-        static std::string cachedToggleKey, cachedReloadKey, cachedOverlayKey;
+        static uint32_t screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
+        static std::string cachedToggleKey, cachedReloadKey, cachedOverlayKey, cachedScreenshotKey;
         static bool pressed       = false;
         static bool reloadPressed = false;
         static bool overlayPressed = false;
         static bool skipNextPresent = false;
+        
         // Read enableOnLaunch from config only once upon init, so runtime toggles don't conflict with it.
         static bool initialized = false;
         if (!initialized) {
@@ -45,6 +47,8 @@ namespace vkBasalt {
             keySymbol        = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
             reloadKeySymbol  = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
             overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
+            screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
+            
             // On config reload, respect enableOnLaunch from the new config
             g_effectsEnabled = pConfig->getOption<bool>("enableOnLaunch", true);
             
@@ -52,6 +56,10 @@ namespace vkBasalt {
             cachedToggleKey  = pConfig->getOption<std::string>("toggleKey", "Insert");
             cachedReloadKey  = pConfig->getOption<std::string>("reloadConfigKey", "End");
             cachedOverlayKey = pConfig->getOption<std::string>("overlayToggleKey", "Home");
+            cachedScreenshotKey = pConfig->getOption<std::string>("screenshotKey", "Delete");
+            
+            // Consume the dirty flag since we just manually synced everything
+            g_configDirty = false;
         };
 
         auto rebuildAll = [&]() {
@@ -60,14 +68,17 @@ namespace vkBasalt {
             }
         };
 
-        // Refresh cached keysyms whenever the config keybind values changes in memory
-        {
+        // Refresh cached keysyms only when config is mutated
+        if (g_configDirty.exchange(false)) {
             std::string tk = pConfig->getOption<std::string>("toggleKey", "Insert");
             std::string rk = pConfig->getOption<std::string>("reloadConfigKey", "End");
             std::string ok = pConfig->getOption<std::string>("overlayToggleKey", "Home");
+            std::string sk = pConfig->getOption<std::string>("screenshotKey", "Delete");
+            
             if (tk != cachedToggleKey)  { keySymbol = convertToKeySym(tk);        cachedToggleKey = tk; }
             if (rk != cachedReloadKey)  { reloadKeySymbol = convertToKeySym(rk);  cachedReloadKey = rk; }
             if (ok != cachedOverlayKey) { overlayKeySymbol = convertToKeySym(ok); cachedOverlayKey = ok; }
+            if (sk != cachedScreenshotKey) { screenshotKeySymbol = convertToKeySym(sk); cachedScreenshotKey = sk; }
         }
 
         // Check if any overlay is in keybinding mode (suppress all hotkeys)
@@ -105,12 +116,6 @@ namespace vkBasalt {
         } else {
             overlayPressed = false;
         }
-
-        // Screenshot hotkey
-        static uint32_t screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
-        static std::string cachedScreenshotKey;
-        std::string sk = pConfig->getOption<std::string>("screenshotKey", "Delete");
-        if (sk != cachedScreenshotKey) { screenshotKeySymbol = convertToKeySym(sk); cachedScreenshotKey = sk; }
 
         if (!anyBinding && isKeyPressed(screenshotKeySymbol)) {
             g_triggerScreenshot = true;
