@@ -258,9 +258,11 @@ namespace vkBasalt {
             overlayManager.initOverlay(pLogicalDevice, pLogicalSwapchain, swapchain, unormFormat, pConfig);
         }
 
-        // Save pipeline cache after all pipelines are compiled. Game might exit without calling vkDestroyDevice, so this is the reliable save point.
-        savePipelineCacheData(pLogicalDevice->device, pLogicalDevice->vkd,
-                              pLogicalDevice->pipelineCache, pLogicalDevice->pipelineCachePath);
+        // Save pipeline cache only on initial setup so that we don't write to disk for every slider adjustment. The cache is already saved in vkBasalt_DestroyDevice for normal exits.
+        if (swapchain != VK_NULL_HANDLE) {
+            savePipelineCacheData(pLogicalDevice->device, pLogicalDevice->vkd,
+                pLogicalDevice->pipelineCache, pLogicalDevice->pipelineCachePath);
+        }
     }
 
     void rebuildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
