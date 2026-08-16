@@ -1,6 +1,4 @@
 
----
-
 # vkBasalt-reloaded Configuration Guide
 
 Complete documentation for configuring shaders, effect chains, and runtime parameters.
@@ -52,13 +50,13 @@ Presets always include the active effect chain, making them fully self-contained
 vkBasalt-reloaded automatically detects games and creates unique config files:
 
 **Steam games:**
-```
+```text
 steam_<appid>_<GameName>.conf
 ```
 Example: `steam_2357570_Overwatch.conf`
 
 **Non-Steam games (Wine/Proton/Native):**
-```
+```text
 <exename>_<md5hash>.conf
 ```
 Example: `Unity_a1b2c3d4.conf`
@@ -118,10 +116,10 @@ effects = smaa:colorfulness:crystalclear
 
 ### Performance Notes
 
-- **SMAA** is the highest quality AA but has the highest cost
-- **CrystalClear's built-in FXAA** (`crystalclearEnableAA = 1`) reuses shader data for better performance than standalone FXAA
-- **ClarityRCAS** is the lightest option, ideal for handheld/low-end systems
-- Each additional effect adds ~0.1-0.3ms on modern GPUs
+- **SMAA** is the highest quality AA but has the highest cost.
+- **CrystalClear's built-in FXAA** (`crystalclearEnableAA = 1`) reuses shader data for better performance than standalone FXAA.
+- **ClarityRCAS** is the lightest option, ideal for handheld/low-end systems.
+- Each additional effect adds ~0.1-0.3ms on modern GPUs.
 
 ---
 
@@ -182,12 +180,11 @@ All theme settings can be adjusted live in the overlay's Style tab.
 | :--- | :--- | :--- | :--- |
 | `screenshotFormat` | `string` | `png` | Output format: `png`, `jpg`, `bmp`, `tga`, `hdr` |
 | `screenshotQuality` | `int` | `95` | JPEG quality (1-100). Ignored for non-JPEG formats. |
-| `screenshotPath` | `string` | `(empty)` | Screenshot output directory. Empty = `$HOME`. |
+| `screenshotPath` | `string` | `(empty)` | Screenshot output directory. Empty = `$HOME/Pictures/vkBasalt-reloaded`. |
 | `screenshotBeforeAfter` | `bool` | `false` | Save both raw game output (`_before`) and post-processed result (`_after`) |
 
-
 Filenames include a timestamp and the detected game ID:
-```
+```text
 20260813_152600_after_steam_1203220_NARAKA_BLADEPOINT.png
 20260813_152600_before_steam_1203220_NARAKA_BLADEPOINT.png
 ```
@@ -210,12 +207,12 @@ Filenames include a timestamp and the detected game ID:
 
 **All-in-one HDR-aware shader combining:**
 - Anti-aliasing (FXAA)
-- Macro contrast (Clarity-inspired)
+- Macro contrast (Clarity-inspired) & Local Contrast
 - Micro contrast (AMD CAS)
 - Perceptual film grain
-- Debanding
-- Tone curve
-- Chroma smoothing
+- Debanding & Tone curve
+- Chroma smoothing & Fringe fixing (CA)
+- Full Color Grading (CDL, Split Toning, Temp/Tint, Gamma/Black/White)
 
 **Prefix:** `crystalclear`
 
@@ -223,7 +220,7 @@ Filenames include a timestamp and the detected game ID:
 
 ```ini
 # Choose a baseline preset (individual options override preset values)
-# Options: devfav, esports, artifactless, maxsharp, vibrantsharp, devfxaa, cinematic
+# Options: devfav, esports, artifactless, maxsharp, vibrantsharp, devfxaa, cinematic, film, vivid, noir
 crystalclearPreset = devfav
 ```
 
@@ -237,9 +234,9 @@ crystalclearEnableAA = 0
 crystalclearEnableRGBEdgeDetection = 1
 ```
 
-#### Macro Contrast (Clarity)
+#### Sharpening & Contrast
 
-Local contrast enhancement for cinematic "pop".
+Local contrast enhancement for cinematic "pop" and fine detail.
 
 ```ini
 # Measurement distance for local contrast (higher = wider, more cinematic)
@@ -249,29 +246,17 @@ crystalclearBilateralOffset = 1.5       # Range: 0.5-3.0
 # Intensity of macro contrast (1.0 standard, up to 5.0+)
 crystalclearSharpStrength = 1.0         # Range: 0.0-5.0
 
+# Additional local contrast strength
+crystalclearLocalContrastStrength = 0.0 # Range: 0.0-2.0
+
 # Blend mode for applying contrast
-# 0=Soft Light (smooth), 1=Overlay (pop), 2=Hard Light, 3=Multiply, 4=Vivid, 5=Linear Light, 6=Addition
+# 0=Soft Light, 1=Overlay, 2=Hard Light, 3=Multiply, 4=Vivid, 5=Linear Light, 6=Addition
 crystalclearBlendMode = 5               # Range: 0-6
 
 # Mid-tone targeting (0-255). Excludes pure shadows/highlights from contrast enhancement.
 crystalclearBlendIfDark = 40            # Range: 0-255
 crystalclearBlendIfLight = 220          # Range: 0-255
 
-# Bilateral filter bounds (edge detection for contrast)
-# Low = blur start threshold, High = blur cross threshold (pop intensity)
-crystalclearEdgeThreshLow = 0.05        # Range: 0.0-1.0
-crystalclearEdgeThreshHigh = 0.35       # Range: 0.0-1.0
-
-# Suppress clarity on micro-textures (gravel, skin) to prevent crunch
-# 0.0 = off, 0.5 = balanced, 1.0 = max protection
-crystalclearClarityTextureProtection = 0.5  # Range: 0.0-1.0
-```
-
-#### Micro Contrast (CAS)
-
-AMD FidelityFX Contrast Adaptive Sharpening for fine detail.
-
-```ini
 # Internal CAS curve (0.0 = less sharp, 1.0 = max)
 crystalclearCasSharpness = 0.8          # Range: 0.0-1.0
 
@@ -279,126 +264,156 @@ crystalclearCasSharpness = 0.8          # Range: 0.0-1.0
 crystalclearCasStrength = 2.0           # Range: 0.0-5.0
 ```
 
+#### Protection & Artifact Clearing
+
+Control how aggressively the shader protects against artifacts. Lower values = more visible effect, higher values = more protection.
+
+```ini
+# Bilateral filter bounds (edge detection for contrast)
+crystalclearEdgeThreshLow = 0.05        # Range: 0.0-1.0
+crystalclearEdgeThreshHigh = 0.35       # Range: 0.0-1.0
+
+# Suppress clarity on micro-textures (gravel, skin) to prevent crunch
+crystalclearClarityTextureProtection = 0.5  # Range: 0.0-1.0
+
+# Master multiplier for all protective masks
+crystalclearGuardStrength = 0.6         # Range: 0.0-1.0
+
+# Upper edge of local-contrast band-pass window
+crystalclearBandPassWidth = 0.8         # Range: 0.3-1.5
+
+# Back off at brightness extremes
+crystalclearExtremeProtection = 0.5     # Range: 0.0-1.0
+
+# Isolation/shimmer averaging gate strength
+crystalclearShimmerReduction = 0.5      # Range: 0.0-1.0
+
+# Blurs only chroma channels in flat areas to kill color noise without softening luma
+crystalclearEnableChromaSmooth = 0      # Range: 0-1
+crystalclearChromaSmoothStrength = 0.5  # Range: 0.0-1.0
+
+# Despeckle filter for isolated bright/dark pixel noise
+crystalclearEnableDespeckle = 0         # Range: 0-1
+crystalclearDespeckleThreshold = 0.15   # Range: 0.0-1.0
+
+# Chromatic Aberration (Fringe) Fix
+crystalclearEnableFringeFix = 0         # Range: 0-1
+crystalclearFringeStrength = 0.5        # Range: 0.0-1.0
+```
+
 #### FXAA (Built-in Anti-Aliasing)
 
 ```ini
-# Min contrast for edge detection (lower = more AA/blur, higher = sharper/more aliasing)
+# Enable built-in FXAA (reuses shader data, better performance than standalone FXAA)
+crystalclearEnableAA = 0            # Range: 0-1
+
+# Enable RGB edge detection (detects color edges, not just luma)
+crystalclearEnableRGBEdgeDetection = 1  # Range: 0-1
+
+# Min contrast for edge detection (lower = more AA/blur, higher = sharper)
 crystalclearFxaaEdgeThreshold = 0.05    # Range: 0.001-1.0
 
 # Dark scene floor (prevents AA from blurring noise in deep shadows)
-crystalclearFxaaEdgeThresholdMin = 0.0312  # Range: 0.0-1.0
+crystalclearFxaaEdgeThresholdMin = 0.0312 # Range: 0.0-1.0
 
 # Subpixel smoothing (thin wires/hair). 1.0 = soft, 0.5 = sharp, 0.0 = off
-crystalclearFxaaSubpixAmount = 0.75     # Range: 0.0-1.0
+crystalclearFxaaSubpixAmount = 1.0      # Range: 0.0-1.0
 
 # Edge walk step size (keep at 1.0)
 crystalclearFxaaSearchScale = 1.0       # Range: 0.1-3.0
 
-# Min perpendicular contrast to start edge walk (prevents artifacts on soft gradients)
+# Min perpendicular contrast to start edge walk
 crystalclearFxaaHardEdgeThreshold = 0.08  # Range: 0.0-1.0
 
 # Debug: Bypass other effects, apply only FXAA
 crystalclearFxaaOnlyMode = 0            # Range: 0-1
 ```
 
-#### Color Enhancement
+#### Color & Tone
 
 ```ini
-# Non-linear saturation boost (boosts less saturated colors more than already saturated ones)
-# Preserves luma (brightness). 0.0 = off, 0.5 = noticeable pop, 1.0 = max. Negative = desaturate.
+# Non-linear saturation boost (boosts less saturated colors more). Preserves luma.
 crystalclearVibrance = 0.0              # Range: -1.0 to 1.0
-```
 
-#### Debanding
-
-Breaks up color banding in flat/gradient areas (skies, fog, shadows).
-
-```ini
-# Enable debanding
+# Breaks up color banding in flat/gradient areas (skies, fog, shadows)
 crystalclearEnableDeband = 0            # Range: 0-1
-
-# Intensity of debanding (0.0 = off, 1.0 = max)
 crystalclearDebandStrength = 0.5        # Range: 0.0-1.0
-```
 
-#### Tone Curve
-
-```ini
-# Filmic highlight rolloff (softly compresses bright highlights to prevent harsh clipping)
-# 0.0 = off, 1.0 = max
+# Filmic highlight rolloff (softly compresses bright highlights)
 crystalclearToneCurve = 0.0             # Range: 0.0-1.0
-```
 
-#### Chroma Smoothing (Color Denoise)
-
-Blurs only chroma channels in flat areas to kill color noise from TAA/compression without softening luma detail.
-
-```ini
-# Enable chroma smoothing
-crystalclearEnableChromaSmooth = 0      # Range: 0-1
-
-# Intensity of chroma smoothing (0.0 = off, 0.5 = balanced, 1.0 = max)
-crystalclearChromaSmoothStrength = 0.5  # Range: 0.0-1.0
-```
-
-#### Specular Desaturation
-
-```ini
 # Desaturates extreme specular highlights toward white (mimics real lens behavior)
-# Prevents "neon" highlights. 0.0 = off, 0.4 = subtle, 1.0 = max
 crystalclearSpecularDesat = 0.0         # Range: 0.0-1.0
 ```
 
-#### Perceptual Film Grain
+#### Color Grading
 
-Uses 4-layer masking (Luma, Texture, Edge, Sharpening awareness) for organic, non-distracting grain.
+Professional color grading suite. Operates on HDR-normalized values for HDR consistency.
 
 ```ini
-# Enable film grain
+# Standard Saturation (-1.0 = grayscale, 0.0 = off, 1.0 = max)
+crystalclearSaturation = 0.0            # Range: -1.0 to 1.0
+
+# ASC Color Decision List (CDL)
+crystalclearEnableCDL = 0               # Range: 0-1
+crystalclearCDLSlopeR = 1.0             # Range: 0.0-4.0 (Contrast/Gain)
+crystalclearCDLSlopeG = 1.0             # Range: 0.0-4.0
+crystalclearCDLSlopeB = 1.0             # Range: 0.0-4.0
+crystalclearCDLOffsetR = 0.0            # Range: -1.0 to 1.0 (Lift/Bias)
+crystalclearCDLOffsetG = 0.0            # Range: -1.0 to 1.0
+crystalclearCDLOffsetB = 0.0            # Range: -1.0 to 1.0
+crystalclearCDLPowerR = 1.0             # Range: 0.1-4.0 (Gamma)
+crystalclearCDLPowerG = 1.0             # Range: 0.1-4.0
+crystalclearCDLPowerB = 1.0             # Range: 0.1-4.0
+
+# Split Toning (Colorize shadows and highlights independently)
+crystalclearEnableSplitTone = 0         # Range: 0-1
+crystalclearSplitToneStrength = 0.0     # Range: 0.0-1.0
+crystalclearSTShadowR = 0.0             # Range: 0.0-1.0 (Shadow Hue RGB)
+crystalclearSTShadowG = 0.5             # Range: 0.0-1.0
+crystalclearSTShadowB = 0.5             # Range: 0.0-1.0
+crystalclearSTHighR = 0.5               # Range: 0.0-1.0 (Highlight Hue RGB)
+crystalclearSTHighG = 0.3               # Range: 0.0-1.0
+crystalclearSTHighB = 0.0               # Range: 0.0-1.0
+
+# White Balance
+crystalclearTemperature = 0.0           # Range: -1.0 to 1.0 (Blue/Yellow)
+crystalclearTint = 0.0                  # Range: -1.0 to 1.0 (Green/Magenta)
+
+# Tone Response Shaping
+crystalclearGammaAdjust = 0.0           # Range: -0.9 to 0.9 (Perceptual brightness curve)
+crystalclearBlackLift = 0.0             # Range: 0.0-0.5 (Raises black floor for faded film look)
+crystalclearWhiteClip = 0.0             # Range: 0.0-0.5 (Lowers white ceiling)
+```
+
+#### Perceptual Film Grain & Dithering
+
+Uses 4-layer masking (Luma, Texture, Edge, Sharpening awareness) for organic grain.
+
+```ini
+# Temporal dithering (reduces banding)
+crystalclearEnableDithering = 1         # Range: 0-1
+
+# Film Grain Master Toggle & Intensity
 crystalclearEnableFilmGrain = 1         # Range: 0-1
-
-# Overall intensity
 crystalclearFilmGrainStrength = 1.0     # Range: 0.0-2.0
+crystalclearFilmGrainMinimum = 0.0      # Range: 0.0-2.0 (Floor amount)
 
-# Floor amount applied regardless of masks
-crystalclearFilmGrainMinimum = 0.0      # Range: 0.0-2.0
-
-# Fine grain: 1:1 pixel resolution, updates every frame (sharp, high-ISO digital feel)
+# Fine grain: 1:1 pixel resolution, sharp, high-ISO digital feel
 crystalclearFineGrainWeight = 0.4       # Range: 0.0-1.0
 
-# Coarse grain: 1/4th resolution, updates every 2 frames (heavy, cinematic 35mm clumps)
+# Coarse grain: 1/4th resolution, heavy, cinematic 35mm clumps
 crystalclearCoarseGrainWeight = 0.8     # Range: 0.0-1.0
 ```
 
-#### Guard & Masking Controls
-
-Control how aggressively the shader protects against artifacts. Lower values = more visible effect, higher values = more protection.
+#### Debug Overlays
 
 ```ini
-# Master multiplier for all protective masks (0.0 = off, 1.0 = full protection)
-crystalclearGuardStrength = 0.6         # Range: 0.0-1.0
-
-# Upper edge of local-contrast band-pass window (wider = effect applies to more contrast levels)
-crystalclearBandPassWidth = 0.8         # Range: 0.3-1.5
-
-# Back off at brightness extremes (0.0 = sharpen everything equally, 1.0 = full protection)
-crystalclearExtremeProtection = 0.5     # Range: 0.0-1.0
-
-# Isolation/shimmer averaging gate strength (0.0 = off, 1.0 = full suppression)
-crystalclearShimmerReduction = 0.5      # Range: 0.0-1.0
-```
-
-#### Dithering & Debug
-
-```ini
-# Enable temporal dithering (reduces banding)
-crystalclearEnableDithering = 1         # Range: 0-1
-
-# Debug overlays: Red=FXAA, Green=CAS, Blue=Clarity, Cyan=Grain Mask
-crystalclearEnableDebugAA = 0           # Range: 0-1
-crystalclearEnableDebugCAS = 0          # Range: 0-1
-crystalclearEnableDebugClarity = 0      # Range: 0-1
-crystalclearEnableDebugGrain = 0        # Range: 0-1
+# Isolate specific effect passes for debugging
+crystalclearEnableDebugAA = 0           # Range: 0-1 (Red)
+crystalclearEnableDebugCAS = 0          # Range: 0-1 (Green)
+crystalclearEnableDebugClarity = 0      # Range: 0-1 (Blue)
+crystalclearEnableDebugGrain = 0        # Range: 0-1 (Cyan)
 ```
 
 ---
@@ -410,31 +425,16 @@ crystalclearEnableDebugGrain = 0        # Range: 0-1
 **Prefix:** `clarityR`
 
 ```ini
-# Intensity of macro contrast (1.0 standard, up to 5.0+)
-clarityRStrength = 1.0                  # Range: 0.0-5.0
-
-# Measurement distance for local contrast (higher = wider, more cinematic)
-clarityRBilateralRadius = 2.0           # Range: 0.5-8.0
-clarityRBilateralOffset = 1.5           # Range: 0.5-3.0
-
-# CAS sharpness (0.0 = less sharp, 1.0 = max)
-clarityRcasSharpness = 0.8              # Range: 0.0-2.0
-
-# CAS strength (1.0 standard, >2.0 may cause crunchy artifacts)
-clarityRcasStrength = 1.0               # Range: 0.0-5.0
-
-# Mid-tone targeting (0-255)
-clarityRBlendIfDark = 40                # Range: 0-255
-clarityRBlendIfLight = 220              # Range: 0-255
-
-# Bilateral filter bounds
-clarityREdgeThreshLow = 0.05            # Range: 0.0-1.0
-clarityREdgeThreshHigh = 0.35           # Range: 0.0-1.0
-
-# Dithering
+clarityRStrength = 1.0                  # Macro contrast intensity (Range: 0.0-5.0)
+clarityRBilateralRadius = 2.0           # Measurement distance (Range: 0.5-8.0)
+clarityRBilateralOffset = 1.5           # Measurement offset (Range: 0.5-3.0)
+clarityRcasSharpness = 0.8              # CAS sharpness (Range: 0.0-2.0)
+clarityRcasStrength = 1.0               # CAS strength (Range: 0.0-5.0)
+clarityRBlendIfDark = 40                # Mid-tone dark bound (Range: 0-255)
+clarityRBlendIfLight = 220              # Mid-tone light bound (Range: 0-255)
+clarityREdgeThreshLow = 0.05            # Bilateral low bound (Range: 0.0-1.0)
+clarityREdgeThreshHigh = 0.35           # Bilateral high bound (Range: 0.0-1.0)
 clarityREnableDithering = 1             # Range: 0-1
-
-# Film grain (same parameters as CrystalClear)
 clarityREnableFilmGrain = 1             # Range: 0-1
 clarityRFilmGrainStrength = 1.0         # Range: 0.0-2.0
 clarityRFilmGrainMinimum = 0.0          # Range: 0.0-2.0
@@ -451,24 +451,13 @@ clarityRCoarseGrainWeight = 0.8         # Range: 0.0-1.0
 **Prefix:** `clarity`
 
 ```ini
-# Intensity of macro contrast
-clarityStrength = 1.0                   # Range: 0.0-5.0
-
-# Radius/distance from center pixel where sampling begins
-clarityRadius = 2                       # Range: 1-8
-clarityOffset = 1.5                     # Range: 0.5-3.0
-
-# Dithering
+clarityStrength = 1.0                   # Macro contrast intensity (Range: 0.0-5.0)
+clarityRadius = 2                       # Sampling radius (Range: 1-8)
+clarityOffset = 1.5                     # Sampling offset (Range: 0.5-3.0)
 clarityEnableDithering = 1              # Range: 0-1
-
-# Blend mode (0-6, see CrystalClear for descriptions)
-clarityBlendMode = 5                    # Range: 0-6
-
-# Mid-tone targeting
+clarityBlendMode = 5                    # 0=Soft Light, 1=Overlay, 2=Hard Light, 3=Multiply, 4=Vivid, 5=Linear Light, 6=Addition
 clarityBlendIfDark = 40                 # Range: 0-255
 clarityBlendIfLight = 220               # Range: 0-255
-
-# Edge detection thresholds
 clarityEdgeThreshLow = 0.05             # Range: 0.0-1.0
 clarityEdgeThreshHigh = 0.35            # Range: 0.0-1.0
 ```
@@ -482,94 +471,49 @@ clarityEdgeThreshHigh = 0.35            # Range: 0.0-1.0
 **Prefix:** `smaa`
 
 ```ini
-# Edge detection mode: 'color' catches macro edges better than 'luma'
 smaaEdgeDetection = color               # Options: color, luma
-
-# Edge detection threshold (lower = more sensitive, catches more edges)
-smaaThreshold = 0.05                    # Range: 0.01-0.5
-
-# Maximum search steps for edge patterns (higher = better quality, slower)
-smaaMaxSearchSteps = 32                 # Range: 0-112
-
-# Diagonal search steps (catches diagonal edges)
-smaaMaxSearchStepsDiag = 16             # Range: 0-20
-
-# Corner rounding (0 = preserves razor-sharp geometric corners, 100 = max rounding)
-smaaCornerRounding = 0                  # Range: 0-100
+smaaThreshold = 0.05                    # Edge detection threshold (Range: 0.01-0.5)
+smaaMaxSearchSteps = 32                 # Max search steps (Range: 0-112)
+smaaMaxSearchStepsDiag = 16             # Diagonal search steps (Range: 0-20)
+smaaCornerRounding = 0                  # Corner rounding (Range: 0-100)
 ```
 
 ---
 
-### CAS
+### Standalone Effects
 
-**AMD FidelityFX Contrast Adaptive Sharpening (standalone).** Use if you want CAS without Clarity or CrystalClear.
-
+#### CAS (AMD FidelityFX Contrast Adaptive Sharpening)
 **Prefix:** `cas`
-
 ```ini
-# Sharpness intensity
-casSharpness = 0.8                      # Range: 0.0-1.0
+casSharpness = 0.8                      # Sharpness intensity (Range: 0.0-1.0)
 ```
 
----
-
-### FXAA
-
-**Fast Approximate Anti-Aliasing (standalone).** Use if you want FXAA without CrystalClear's integrated version.
-
+#### FXAA (Fast Approximate Anti-Aliasing)
 **Prefix:** `fxaa`
-
 ```ini
-# Edge detection threshold
 fxaaEdgeThreshold = 0.05                # Range: 0.001-1.0
 fxaaEdgeThresholdMin = 0.0312           # Range: 0.0-1.0
-
-# Subpixel smoothing
 fxaaSubpixAmount = 0.75                 # Range: 0.0-1.0
-
-# Search scale
 fxaaSearchScale = 1.0                   # Range: 0.1-3.0
-
-# Hard edge threshold
 fxaaHardEdgeThreshold = 0.08            # Range: 0.0-1.0
 ```
 
----
-
-### Deband
-
-**Standalone debanding shader.** Use if you want debanding without CrystalClear's integrated version.
-
+#### Deband
 **Prefix:** `deband`
-
 ```ini
-# Debanding strength
 debandStrength = 0.5                    # Range: 0.0-1.0
 ```
 
----
-
-### LUT
-
-**Color grading via Look-Up Table.** Apply custom color transformations.
-
+#### LUT (Color grading via Look-Up Table)
 **Prefix:** `lut`
-
 ```ini
-# Path to LUT file (PNG format, 256x16 or 512x512)
-lutFile = /path/to/lut.png
+lutFile = /path/to/lut.png              # PNG format, 256x16 or 512x512
 ```
 
----
-
-### DLS
-
-**Denoised Luma Sharpening.** Alternative sharpening algorithm. I wouldn't recommend using this in TAA enabled games as it can exaggerate artifacts.
-
+#### DLS (Denoised Luma Sharpening)
+*Not recommended for TAA enabled games as it can exaggerate artifacts.*
 **Prefix:** `dls`
-
 ```ini
-# Sharpening strength
 dlsStrength = 1.0                       # Range: 0.0-5.0
 ```
 
@@ -577,7 +521,7 @@ dlsStrength = 1.0                       # Range: 0.0-5.0
 
 ### ReShade Effects
 
-vkBasalt-reloaded supports most single-technique ReShade FX shaders. However it's not a priority to maintain compatibility as many things can go wrong and Reshade updates often. Place them in your config as shown:
+vkBasalt-reloaded supports most single-technique ReShade FX shaders. Place them in your config as shown:
 
 ```ini
 effects = colorfulness:denoise
@@ -592,12 +536,9 @@ reshadeIncludePath = /home/user/reshade-shaders/Shaders
 ```
 
 **Limitations:**
-- Multi-technique shaders may not work
-- Depth buffer access isn't supported (`depthCapture = on`) exists however.
-- Some blending/stencil operations may have issues
-
-To modify ReShade shader parameters, edit the `.fx` file directly.
-- This might change in the future, but playing catch up with Reshade is a lot of work so I'd rather have a roster of high performance shaders in GLSL, compute shaders and other more important features before chasing that.
+- Multi-technique shaders may not work.
+- Depth buffer access isn't fully supported (`depthCapture = on` exists but is experimental).
+- To modify ReShade shader parameters, edit the `.fx` file directly.
 
 ---
 
@@ -606,8 +547,7 @@ To modify ReShade shader parameters, edit the `.fx` file directly.
 *For developers who want to add custom shaders to vkBasalt-reloaded. (PRs welcome)*
 
 ### Step 1: Create the Effect Class
-
-Create `src/effect_myshader.hpp` and `src/effect_myshader.cpp`. Inherit from `SimpleEffect`.
+Create `src/effect_myshader.hpp` and `src/effect_myshader.cpp`. Inherit from `SimpleEffect`. The base class automatically handles the optimized 3-barrier chain-aware pipeline layout.
 
 ```cpp
 // src/effect_myshader.hpp
@@ -622,9 +562,6 @@ namespace vkBasalt {
                        std::vector<VkImage> outputImages, Config* pConfig);
         ~MyShaderEffect();
         
-        void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        
-        // Declarative parameter interface
         std::string getName() const override { return "myshader"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
     };
@@ -632,68 +569,42 @@ namespace vkBasalt {
 ```
 
 ### Step 2: Declare Parameters
-
-Override `getParamDescs()` to return a static vector of `EffectParamDesc`:
+Override `getParamDescs()` to return a static vector of `EffectParamDesc`. The ImGui overlay will automatically generate the UI, handle Save/Load, and integrate with the Preset system.
 
 ```cpp
 const std::vector<EffectParamDesc>& MyShaderEffect::getParamDescs() const {
     static const std::vector<EffectParamDesc> params = {
-        {"myshaderStrength", "Strength", ParamType::Float, 1.0, 0.0, 5.0, 0.1},
-        {"myshaderEnableFeature", "Enable Feature", ParamType::Bool, 0.0, 0.0, 1.0, 1.0},
-        {"myshaderMode", "Mode", ParamType::Int, 0.0, 0.0, 3.0, 1.0},
+        {"myshaderStrength", "Strength", ParamType::Float, 1.0, 0.0, 5.0, 0.1, {}, "General"},
+        {"myshaderEnableFeature", "Enable Feature", ParamType::Bool, 0.0, 0.0, 1.0, 1.0, {}, "General"},
     };
     return params;
 }
 ```
 
-The ImGui overlay will automatically:
-- Show your effect in the left panel
-- Generate sliders/checkboxes/combos for each parameter
-- Handle Save/Load/Preset integration
-
 ### Step 3: Register the Effect
-
 In `src/effect_chain.cpp`, add a branch in `buildEffectChain`:
-
 ```cpp
-else if (effectStrings[i] == "myshader")
-{
+else if (effectStrings[i] == "myshader") {
     pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(
         new MyShaderEffect(pLogicalDevice, unormFormat, pLogicalSwapchain->imageExtent,
                            firstImages, secondImages, pConfig)));
-    Logger::debug("created MyShaderEffect");
 }
 ```
 
 ### Step 4: Add to meson.build
-
-Add your `.cpp` file to the `vkBasalt_src` list in `src/meson.build`:
-
-```meson
-vkBasalt_src = [
-    # ... existing files ...
-    'effect_myshader.cpp',
-]
-```
+Add your `.cpp` file to the `vkBasalt_src` list in `src/meson.build`.
 
 ### Step 5: Read Parameters in Constructor
-
 ```cpp
 MyShaderEffect::MyShaderEffect(...) {
-    // Read from config, store in m_paramValues for live tweaking
     float strength = pConfig->getOption<float>("myshaderStrength", 1.0f);
     m_paramValues["myshaderStrength"] = strength;
     
-    // Build specialization constants from m_paramValues
-    // ... your shader setup code ...
+    // Build specialization constants from m_paramValues...
     
     init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
 }
 ```
-
-### Maintenance Rule
-
-Adding a new parameter to an existing effect = **one line** in the `getParamDescs()` array + one line in the constructor to read it. No ImGui code changes needed.
 
 ---
 
@@ -715,79 +626,39 @@ crystalclearVibrance = 0.3
 effects = clarityrcas
 clarityRcasStrength = 1.0
 
-# Integrated FXAA (CrystalClear with built-in AA)
-effects = crystalclear
-crystalclearEnableAA = 1
-crystalclearPreset = devfxaa
-
 # Competitive gaming (minimal latency)
 effects = cas
 casSharpness = 0.5
 ```
 
-### Overlay Navigation
-
-| Key | Action |
-| :--- | :--- |
-| `Mouse` | All of the below |
-| Drag left / right | Adjust sliders/numeric fields incrementally |
-| `Tab` / `Arrows` | Navigate widgets |
-| `Enter` | Activate / Edit (click a drag field to type exact values) |
-| `Left` / `Right` | Adjust focused value |
-| `Space` | Toggle checkbox |
-| `Shift` + `Left` / `Right` | Cycle tabs |
-| `/` | Focus search box |
-| `Esc` | Close overlay |
-
-### Window Behavior
-
-- **Draggable** with edge-snapping (blue highlight zones appear while dragging)
-- **Full-height**, resizable width (persisted across sessions)
-- **Unsaved changes warning** on close
-- **Mouse & Keybaord optimized** draggable widgets (drag left/right to change values, click to type exact numbers)
 ---
 
 ## Troubleshooting
 
 ### Game won't launch
+Ensure that you're using `ENABLE_VKBASALT_RELOADED=1` and NOT `ENABLE_VKBASALT=1`. Some Proton versions bundle the old upstream vkBasalt by default, which lacks our custom effects and will halt Vulkan.
 
-Ensure that you're using `ENABLE_VKBASALT_RELOADED=1` and NOT `ENABLE_VKBASALT=1` env flag as some proton versions install the old upstream vkbasalt by default.
-```bash
-# Remove old installations
-sudo rm -f /usr/share/vulkan/implicit_layer.d/vkBasalt.json
-sudo rm -f /usr/local/share/vulkan/implicit_layer.d/vkBasalt.json
-sudo rm -f /usr/lib/libvkbasalt.so
-sudo rm -f /usr/lib/x86_64-linux-gnu/libvkbasalt.so
-```
-
-### Artifacts
-
+### Artifacts / Crunchy Sharpening
 - Try a different preset: `crystalclearPreset = artifactless`
 - Lower sharpness: `crystalclearSharpStrength = 0.5`
-- Disable film grain: `crystalclearEnableFilmGrain = 0`
 - Increase protection: `crystalclearGuardStrength = 0.8`
+- Disable film grain: `crystalclearEnableFilmGrain = 0`
 
 ### Overlay not responding
-
-- Check Wayland/X11 input is working: `ENABLE_VKBASALT_RELOADED=1 vkcube`
-- Verify hotkey isn't conflicting with game controls
+- Verify hotkey isn't conflicting with game controls.
 - Try different hotkey: `overlayToggleKey = F10`
-- Try using the overlay with in-game cursor on (Menu, map etc.) as software cursor can be buggy.
+- Try using the overlay with an in-game cursor on (Menu, map, etc.) as software cursor fallback.
 
 ### Performance issues
-
-- Use lighter effect chain: `effects = clarityrcas`
-- Reduce sharpness values
-- Disable film grain, dithering and debanding can be cheaper.
-- Check GPU utilization with `mangohud` as you tweak settings. Each setting you turn off is extra FPS.
+- Use a lighter effect chain: `effects = clarityrcas`
+- Reduce sharpness values.
+- Disable film grain, dithering, and debanding.
+- Check GPU utilization with `mangohud`. Each setting you turn off yields extra FPS.
 
 ---
 
 ## Support
 
 - **GitHub Issues**: [vkBasalt-reloaded/issues](https://github.com/Skyrion9/vkBasalt-reloaded/issues)
-- **Discussions**: Share configs and presets with the community
-- **Contributions**: PRs for new shaders, optimizations and features are welcome!
-
----
-
+- **Logging**: Set env flag `VKBASALT_LOG_LEVEL=debug` (trace, debug, info, warn, error, none). Output goes to stderr or `VKBASALT_LOG_FILE="vkBasalt.log"`.
+- **Contributions**: PRs for new shaders, optimizations, and features are highly welcome! You can also donate using addresses in **[Readme](README.md)**
