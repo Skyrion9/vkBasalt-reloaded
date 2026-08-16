@@ -578,11 +578,12 @@ namespace vkBasalt
                 continue; 
             }
 
-            std::lock_guard<std::mutex> lock(pLogicalSwapchain->effectMutex);
-
-            for (auto& effect : pLogicalSwapchain->effects)
-            {
-                effect->updateEffect();
+            if (g_effectsEnabled.load()) {
+                std::lock_guard<std::mutex> lock(pLogicalSwapchain->effectMutex);
+                for (auto& effect : pLogicalSwapchain->effects)
+                {
+                    effect->updateEffect();
+                }
             }
 
             VkSubmitInfo submitInfo;
