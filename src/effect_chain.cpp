@@ -232,24 +232,25 @@ namespace vkBasalt {
             Logger::debug(std::to_string(i) + " written commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersEffect[i]));
         }
 
-        // Default transfer for when effects are toggled off
-        pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
-            pLogicalDevice,
-            pLogicalSwapchain->format,
-            pLogicalSwapchain->imageExtent,
-            std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
-                                 pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
-            pLogicalSwapchain->images,
-            pConfig));
+        // Default transfer for when effects are toggled off, preserved across rebuilds.
+        if (!pLogicalSwapchain->defaultTransfer) {
+            pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
+                pLogicalDevice,
+                pLogicalSwapchain->format,
+                pLogicalSwapchain->imageExtent,
+                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                pLogicalSwapchain->images,
+                pConfig));
 
-        pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-
-        writeCommandBuffers(pLogicalDevice,
-                            {pLogicalSwapchain->defaultTransfer},
-                            VK_NULL_HANDLE,
-                            VK_NULL_HANDLE,
-                            VK_FORMAT_UNDEFINED,
-                            pLogicalSwapchain->commandBuffersNoEffect);
+            pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+            writeCommandBuffers(pLogicalDevice,
+                {pLogicalSwapchain->defaultTransfer},
+                VK_NULL_HANDLE,
+                VK_NULL_HANDLE,
+                VK_FORMAT_UNDEFINED,
+                pLogicalSwapchain->commandBuffersNoEffect);
+        }
 
         for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++)
         {
@@ -328,18 +329,9 @@ namespace vkBasalt {
                                                    pLogicalSwapchain->commandBuffersEffect.data());
             pLogicalSwapchain->commandBuffersEffect.clear();
         }
-        if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                                                   pLogicalSwapchain->commandBuffersNoEffect.size(),
-                                                   pLogicalSwapchain->commandBuffersNoEffect.data());
-            pLogicalSwapchain->commandBuffersNoEffect.clear();
-        }
 
         pLogicalSwapchain->effects.clear();
-        pLogicalSwapchain->defaultTransfer.reset();
-
         buildEffectChain(pLogicalDevice, pLogicalSwapchain, VK_NULL_HANDLE, pConfig, overlayManager);
-
         Logger::debug("Rebuild complete.");
     }
 
