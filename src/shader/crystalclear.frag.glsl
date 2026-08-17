@@ -163,8 +163,10 @@ float getNeutralLuma(vec3 rgb) {
     return (rgb.r + rgb.g + rgb.b) * 0.33333333;
 }
 
-float bilateralDiff(float d, float weight, float threshLow, float threshHigh) {
-    return d * (1.0 - smoothstep(threshLow, threshHigh, abs(d))) * weight;
+// invThreshRange = 1.0 / (threshHigh - threshLow), precomputed once per pixel to avoid 16 divisions inside smoothstep. Manual smoothstep expansion.
+float bilateralDiff(float d, float weight, float threshLow, float invThreshRange) {
+    float t = clamp((abs(d) - threshLow) * invThreshRange, 0.0, 1.0);
+    return d * (1.0 - t * t * (3.0 - 2.0 * t)) * weight;
 }
 
 // HDR: 'norm' is the adaptation factor (hdrNorm). Mode 5 (Linear Light) is additive, self-normalizing via the downstream luma ratio, so it stays on raw values.
@@ -465,23 +467,24 @@ void main() {
     float edgeChoke = smoothstep(0.15 * hdrNorm, 0.45 * hdrNorm, localContrast);
     float dynamicThreshHigh = mix(bilateralThreshHighBase, bilateralThreshLow + 0.02 * hdrNorm, edgeChoke);
 
+    float invThreshRange = 1.0 / max(dynamicThreshHigh - bilateralThreshLow, 0.0001);
     float diff = (
-        bilateralDiff(lumaAA - lB, 2.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - lD, 2.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - lF, 2.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - lH, 2.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - lA, 1.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - lC, 1.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - lG, 1.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - lI, 1.0, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, dynamicThreshHigh) +
-        bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, dynamicThreshHigh)
+        bilateralDiff(lumaAA - lB, 2.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lD, 2.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lF, 2.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lH, 2.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lA, 1.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lC, 1.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lG, 1.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lI, 1.0,     bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, invThreshRange)
     ) * 0.0625;
 
     if (localContrastStrength > 0.0) {
