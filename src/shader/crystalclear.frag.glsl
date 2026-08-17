@@ -520,6 +520,10 @@ void main() {
     float adjustedGuard = mix(1.0, combinedGuard, guardStrength);
     diff = diff > 0.0 ? diff : diff * adjustedGuard;
 
+    float minCrossLuma = min(min(lB, lH), min(lD, lF));
+    float silhouetteGate = smoothstep(0.005 * hdrNorm, 0.05 * hdrNorm, minCrossLuma);
+    diff *= mix(1.0, silhouetteGate, guardStrength);
+
     // Extreme protection: At 0: no penalty at brightness extremes (sharpen everything equally).
     // At 1: full protection (old behavior). Default 0.5 is a middle ground.
     if (hdrMode == 1) {
@@ -573,7 +577,8 @@ void main() {
         vec3 casDeltaFinal = casDeltaRGB
             * (1.0 - chromaPenalty * 0.8 * guardStrength)
             * mix(1.0, edgeMask, guardStrength)
-            * mix(1.0, bandPassMask, guardStrength);
+            * mix(1.0, bandPassMask, guardStrength)
+            * mix(1.0, silhouetteGate, guardStrength);
 
         finalColor = clarityColor + (casDeltaFinal * casStrength);
 
