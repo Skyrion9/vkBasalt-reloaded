@@ -282,7 +282,9 @@ void main() {
     vec3 casDeltaRGB = (4.0 * e - tightWindow) / (P - 4.0);
 
     // Perceptual: local contrast for edge/texture detection
-    float localContrast = getLuma(trueMxRGB) - getLuma(trueMnRGB);
+    float localMaxLuma = getLuma(trueMxRGB);
+    float localMinLuma = getLuma(trueMnRGB);
+    float localContrast = localMaxLuma - localMinLuma;
 
     float bpLow = 0.01 * hdrNorm;
     float bpFadeIn = 0.04 * hdrNorm;
@@ -484,9 +486,10 @@ void main() {
 
     if (localContrastStrength > 0.0) {
         float wideAvg = (h1_raw + h2_raw + h3_raw + h4_raw + v1_raw + v2_raw + v3_raw + v4_raw) * 0.125;
+        // Halo prevention by clamping wide blur to the 3x3 bounds already computed by CAS.
+        wideAvg = clamp(wideAvg, localMinLuma, localMaxLuma);
         float lcRatio = lumaAA / max(wideAvg, 0.0001 * hdrNorm);
         float lcBoost = pow(clamp(lcRatio, 0.25, 4.0), localContrastStrength) - 1.0;
-        // edge masking to reduce halos
         diff += lcBoost * 0.08 * hdrNorm * edgeMask;
     }
 
