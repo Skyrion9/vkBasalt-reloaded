@@ -138,6 +138,7 @@ layout(constant_id = 68) const float blackLift = 0.0;    // 0.0 to 0.5, raises b
 layout(constant_id = 69) const float whiteClip = 0.0;    // 0.0 to 0.5, lowers white ceiling
 layout(constant_id = 70) const int enableCheckerboardFix = 0;   // removes checker board transparency effect used for camera obstruction
 layout(constant_id = 71) const float checkerboardStrength = 0.5;
+layout(constant_id = 72) const int liteMode = 0;  // 1 = strip expensive features for low end GPUs
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -250,12 +251,15 @@ void main() {
     // phase 2: clarity wide fetches for latency hiding
     float h1_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb);
     float h2_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb);
-    float h3_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb);
-    float h4_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb);
     float v1_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb);
     float v2_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb);
-    float v3_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb);
-    float v4_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb);
+    float h3_raw = 0.0; float h4_raw = 0.0; float v3_raw = 0.0; float v4_raw = 0.0;
+    if (liteMode == 0) {
+        h3_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb);
+        h4_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb);
+        v3_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb);
+        v4_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb);
+    }
 
     // phase 3: "lantern" data, cas math and band-pass mask
     vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
@@ -289,13 +293,16 @@ void main() {
     float localContrast = localMaxLuma - localMinLuma;
 
     // Phase 3.5: directional coherence gate to suppress amplification of compression artifacts (DCT ringing, oiliness etc.)
-    float sobelX = (lC + lF + lF + lI) - (lA + lD + lD + lG);
-    float sobelY = (lG + lH + lH + lI) - (lA + lB + lB + lC);
-    float gradMagSq = sobelX * sobelX + sobelY * sobelY;
+    float oilinessGate = 1.0;
+    if (liteMode == 0) {
+        float sobelX = (lC + lF + lF + lI) - (lA + lD + lD + lG);
+        float sobelY = (lG + lH + lH + lI) - (lA + lB + lB + lC);
+        float gradMagSq = sobelX * sobelX + sobelY * sobelY;
 
-    float edgeThresholdSq = 0.04 * hdrNorm * hdrNorm; 
-    float isDirectional = smoothstep(edgeThresholdSq, edgeThresholdSq * 4.0, gradMagSq);
-    float oilinessGate = mix(1.0, isDirectional, guardStrength);
+        float edgeThresholdSq = 0.04 * hdrNorm * hdrNorm; 
+        float isDirectional = smoothstep(edgeThresholdSq, edgeThresholdSq * 4.0, gradMagSq);
+        oilinessGate = mix(1.0, isDirectional, guardStrength);
+    }
 
     float bpLow = 0.01 * hdrNorm;
     float bpFadeIn = 0.04 * hdrNorm;
@@ -479,24 +486,30 @@ void main() {
     float dynamicThreshHigh = mix(bilateralThreshHighBase, bilateralThreshLow + 0.02 * hdrNorm, edgeChoke);
 
     float invThreshRange = 1.0 / max(dynamicThreshHigh - bilateralThreshLow, 0.0001);
+    // 3x3 grid diffs (always active, weight sum = 12)
     float diff = (
-        bilateralDiff(lumaAA - lB, 2.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lD, 2.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lF, 2.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lH, 2.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lA, 1.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lC, 1.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lG, 1.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lI, 1.0,     bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, invThreshRange)
-    ) * 0.0625;
+        bilateralDiff(lumaAA - lB, 2.0, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lD, 2.0, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lF, 2.0, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lH, 2.0, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lA, 1.0, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lC, 1.0, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lG, 1.0, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - lI, 1.0, bilateralThreshLow, invThreshRange)
+    ) * (liteMode == 1 ? 0.08333 : 0.0625);
+    // Wide fetch diffs (full mode only, adds 4 more weight units)
+    if (liteMode == 0) {
+        diff += (
+            bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, invThreshRange) +
+            bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, invThreshRange) +
+            bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, invThreshRange) +
+            bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, invThreshRange) +
+            bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, invThreshRange) +
+            bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, invThreshRange) +
+            bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, invThreshRange) +
+            bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, invThreshRange)
+        ) * 0.0625;
+    }
 
     if (localContrastStrength > 0.0) {
         float wideAvg = (h1_raw + h2_raw + h3_raw + h4_raw + v1_raw + v2_raw + v3_raw + v4_raw) * 0.125;
@@ -532,9 +545,12 @@ void main() {
     // Only apply positive bilateral boosts to directional detail. Darkening remains for shadow definition.
     diff = diff > 0.0 ? diff * oilinessGate : diff * adjustedGuard;
 
-    float minCrossLuma = min(min(lB, lH), min(lD, lF));
-    float silhouetteGate = smoothstep(0.005 * hdrNorm, 0.05 * hdrNorm, minCrossLuma);
-    diff *= mix(1.0, silhouetteGate, guardStrength);
+    float silhouetteGate = 1.0;
+    if (liteMode == 0) {
+        float minCrossLuma = min(min(lB, lH), min(lD, lF));
+        silhouetteGate = smoothstep(0.005 * hdrNorm, 0.05 * hdrNorm, minCrossLuma);
+        diff *= mix(1.0, silhouetteGate, guardStrength);
+    }
 
     // Extreme protection: At 0: no penalty at brightness extremes (sharpen everything equally).
     // At 1: full protection (old behavior). Default 0.5 is a middle ground.

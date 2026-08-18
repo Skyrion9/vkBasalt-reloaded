@@ -353,13 +353,27 @@ namespace vkBasalt {
         if (params.empty()) {
             ImGui::TextWrapped("This effect has no configurable parameters.");
         } else {
-            struct Category { const char* name; std::vector<const EffectParamDesc*> items; };
+            struct Category { const char* name; int sortOrder; std::vector<const EffectParamDesc*> items; };
             std::vector<Category> categories;
+            
+            auto getCategorySortOrder = [](const std::string& name) -> int {
+                if (name == "Presets & Performance") return 0;
+                if (name == "Sharpening & Contrast" || name == "Sharpening") return 1;
+                if (name == "Anti-Aliasing (FXAA)" || name == "Anti-Aliasing") return 2;
+                if (name == "Artifact Protection" || name == "Protection") return 3;
+                if (name == "Film Grain & Dither" || name == "Film Grain") return 4;
+                if (name == "Color & Tone") return 5;
+                if (name == "Color Grading" || name == "Color Grade") return 6;
+                if (name == "Blending") return 7;
+                if (name == "Debug") return 99;
+                return 50; // General / Unknown
+            };
+
             auto findOrAddCategory = [&](const char* name) -> Category& {
                 for (auto& c : categories) {
                     if (std::string(c.name) == name) return c;
                 }
-                categories.push_back({name, {}});
+                categories.push_back({name, getCategorySortOrder(name), {}});
                 return categories.back();
             };
 
@@ -381,16 +395,22 @@ namespace vkBasalt {
                 const char* cat = "General";
                 if (!p.category.empty()) {
                     cat = p.category.c_str();
-                } else if (p.key.find("Preset") != std::string::npos) cat = "Preset";
-                else if (p.key.find("Sharp") != std::string::npos || p.key.find("Cas") != std::string::npos || p.key.find("Bilateral") != std::string::npos) cat = "Sharpening";
-                else if (p.key.find("AA") != std::string::npos || p.key.find("Fxaa") != std::string::npos || p.key.find("Edge") != std::string::npos || p.key.find("Dithering") != std::string::npos) cat = "Anti-Aliasing";
+                } else if (p.key.find("Preset") != std::string::npos) cat = "Presets & Performance";
+                else if (p.key.find("Sharp") != std::string::npos || p.key.find("Cas") != std::string::npos || p.key.find("Bilateral") != std::string::npos || p.key.find("Contrast") != std::string::npos) cat = "Sharpening & Contrast";
+                else if (p.key.find("AA") != std::string::npos || p.key.find("Fxaa") != std::string::npos || p.key.find("Smaa") != std::string::npos) cat = "Anti-Aliasing";
+                else if (p.key.find("Edge") != std::string::npos || p.key.find("Guard") != std::string::npos || p.key.find("BandPass") != std::string::npos || p.key.find("Extreme") != std::string::npos || p.key.find("Shimmer") != std::string::npos || p.key.find("Clarity") != std::string::npos || p.key.find("Despeckle") != std::string::npos || p.key.find("Fringe") != std::string::npos || p.key.find("Checkerboard") != std::string::npos) cat = "Artifact Protection";
+                else if (p.key.find("Grain") != std::string::npos || p.key.find("grain") != std::string::npos || p.key.find("Dither") != std::string::npos) cat = "Film Grain & Dither";
+                else if (p.key.find("Vibrance") != std::string::npos || p.key.find("Deband") != std::string::npos || p.key.find("Tone") != std::string::npos || p.key.find("Specular") != std::string::npos || p.key.find("Saturation") != std::string::npos) cat = "Color & Tone";
+                else if (p.key.find("CDL") != std::string::npos || p.key.find("ST") != std::string::npos || p.key.find("Temperature") != std::string::npos || p.key.find("Tint") != std::string::npos || p.key.find("Gamma") != std::string::npos || p.key.find("Lift") != std::string::npos || p.key.find("Clip") != std::string::npos) cat = "Color Grading";
                 else if (p.key.find("Blend") != std::string::npos) cat = "Blending";
-                else if (p.key.find("Grain") != std::string::npos || p.key.find("grain") != std::string::npos) cat = "Film Grain";
-                else if (p.key.find("Vibrance") != std::string::npos || p.key.find("Deband") != std::string::npos || p.key.find("Tone") != std::string::npos || p.key.find("Chroma") != std::string::npos || p.key.find("Specular") != std::string::npos) cat = "Color & Tone";
-                else if (p.key.find("Guard") != std::string::npos || p.key.find("BandPass") != std::string::npos || p.key.find("Extreme") != std::string::npos || p.key.find("Shimmer") != std::string::npos || p.key.find("Clarity") != std::string::npos) cat = "Protection";
                 else if (p.key.find("Debug") != std::string::npos) cat = "Debug";
                 findOrAddCategory(cat).items.push_back(&p);
             }
+
+            // Sort categories logically from top to bottom
+            std::sort(categories.begin(), categories.end(), [](const Category& a, const Category& b) {
+                return a.sortOrder < b.sortOrder;
+            });
 
             bool focusedFirst = false;
 

@@ -83,6 +83,7 @@ namespace vkBasalt
         float def_cdlPowerR = 1.0f; float def_cdlPowerG = 1.0f; float def_cdlPowerB = 1.0f;
         int32_t def_enableCheckerboardFix = 0;
         float def_checkerboardStrength = 0.5f;
+        int32_t def_liteMode = 0;
 
         // Override defaults based on preset via lookup table. -1 means "not set" for [0,+inf) params, -999 for signed params.
         struct PresetOverride {
@@ -103,6 +104,7 @@ namespace vkBasalt
             int32_t  enableCDL = -1; float cdlSlopeR = -1; float cdlSlopeG = -1; float cdlSlopeB = -1;
             float    cdlPowerR = -1; float cdlPowerG = -1; float cdlPowerB = -1;
             int32_t enableCheckerboardFix = -1; float checkerboardStrength = -1;
+            int32_t liteMode = -1;
         };
 
         static const std::unordered_map<std::string, PresetOverride> presetTable = {
@@ -205,6 +207,7 @@ namespace vkBasalt
             if (p.cdlPowerB >= 0)              def_cdlPowerB = p.cdlPowerB;
             if (p.enableCheckerboardFix >= 0)  def_enableCheckerboardFix = p.enableCheckerboardFix;
             if (p.checkerboardStrength >= 0)   def_checkerboardStrength = p.checkerboardStrength;
+            if (p.liteMode >= 0)               def_liteMode = p.liteMode;
         }
 
         this->radius = std::clamp(pConfig->getOption<float>("crystalclearBilateralRadius", def_radius), 0.5f, 8.0f);
@@ -246,6 +249,7 @@ namespace vkBasalt
             float splitToneStrength; float temperature; float tint;
             float gammaAdjust; float blackLift; float whiteClip;
             int32_t enableCheckerboardFix; float checkerboardStrength;
+            int32_t liteMode;
         };
 
         CrystalClearSpecData specData;
@@ -343,6 +347,15 @@ namespace vkBasalt
         specData.whiteClip                 = std::clamp((float)getAndStore("crystalclearWhiteClip", def_whiteClip), 0.0f, 0.5f);
         specData.enableCheckerboardFix     = std::clamp((int32_t)getAndStoreInt("crystalclearEnableCheckerboardFix", def_enableCheckerboardFix), int32_t(0), int32_t(1));
         specData.checkerboardStrength      = std::clamp((float)getAndStore("crystalclearCheckerboardStrength", def_checkerboardStrength), 0.0f, 1.0f);
+        specData.liteMode                  = std::clamp((int32_t)getAndStoreInt("crystalclearLiteMode", def_liteMode), int32_t(0), int32_t(1));
+
+        // Lite mode disable expensive features at the spec constant level. The compiler strips these blocks entirely from the compiled shader.
+        if (specData.liteMode == 1) {
+            specData.enableFilmGrain = 0;
+            specData.enableDithering = 0;
+            specData.enableRGBEdgeDetection = 0;
+            specData.shimmerReduction = 0.0f;
+        }
 
         VkSpecializationMapEntry mapEntries[] = {
             {0,  offsetof(CrystalClearSpecData, radius),                    sizeof(float)},
@@ -415,8 +428,9 @@ namespace vkBasalt
             {67, offsetof(CrystalClearSpecData, gammaAdjust),               sizeof(float)},
             {68, offsetof(CrystalClearSpecData, blackLift),                 sizeof(float)},
             {69, offsetof(CrystalClearSpecData, whiteClip),                 sizeof(float)},
-            {70, offsetof(CrystalClearSpecData, enableCheckerboardFix),    sizeof(int32_t)},
-            {71, offsetof(CrystalClearSpecData, checkerboardStrength),     sizeof(float)}
+            {70, offsetof(CrystalClearSpecData, enableCheckerboardFix),     sizeof(int32_t)},
+            {71, offsetof(CrystalClearSpecData, checkerboardStrength),      sizeof(float)},
+            {72, offsetof(CrystalClearSpecData, liteMode),                  sizeof(int32_t)},
         };
 
         VkSpecializationInfo specializationInfo;
@@ -519,79 +533,95 @@ namespace vkBasalt
     // Declarative parameter interface
     const std::vector<EffectParamDesc>& CrystalClearEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
+            // Presets & Performance
             {"crystalclearPreset", "Preset", ParamType::Combo, 0.0, 0.0, 0.0, 0.0,
-            {"devfav", "esports", "artifactless", "maxsharp", "vibrantsharp", "devfxaa", "cinematic", "film", "vivid", "noir"}, "Preset"},
-            {"crystalclearBilateralRadius",       "Bilateral Radius",       ParamType::Float, 2.5,   0.5,   8.0,   0.1, {}, "Sharpening"},
-            {"crystalclearBilateralOffset",       "Bilateral Offset",       ParamType::Float, 1.5,   0.5,   3.0,   0.1, {}, "Sharpening"},
-            {"crystalclearSharpStrength",         "Sharp Strength",         ParamType::Float, 2.5,   0.0,   5.0,   0.1, {}, "Sharpening"},
-            {"crystalclearBlendMode",             "Blend Mode",             ParamType::Int,   5.0,   0.0,   6.0,   1.0, {}, "Sharpening"},
-            {"crystalclearBlendIfDark",           "Blend If Dark",          ParamType::Int,   8.0,   0.0, 255.0,   1.0, {}, "Sharpening"},
-            {"crystalclearBlendIfLight",          "Blend If Light",         ParamType::Int, 248.0,   0.0, 255.0,   1.0, {}, "Sharpening"},
-            {"crystalclearCasSharpness",          "CAS Sharpness",          ParamType::Float, 1.0,   0.0,   1.0,  0.01, {}, "Sharpening"},
-            {"crystalclearCasStrength",           "CAS Strength",           ParamType::Float, 3.0,   0.0,   5.0,   0.1, {}, "Sharpening"},
-            {"crystalclearEdgeThreshLow",         "Edge Thresh Low",        ParamType::Float, 0.03,  0.0,   1.0,  0.01, {}, "Protection"},
-            {"crystalclearEdgeThreshHigh",        "Edge Thresh High",       ParamType::Float, 0.28,  0.0,   1.0,  0.01, {}, "Protection"},
-            {"crystalclearEnableDithering",       "Enable Dithering",       ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Grain & Dither"},
-            {"crystalclearEnableAA",              "Enable AA",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Anti-Aliasing"},
-            {"crystalclearEnableRGBEdgeDetection","RGB Edge Detection",     ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Protection"},
-            {"crystalclearFxaaEdgeThreshold",     "FXAA Edge Thresh",       ParamType::Float, 0.05,  0.001, 1.0,  0.01, {}, "Anti-Aliasing"},
-            {"crystalclearFxaaSubpixAmount",      "FXAA Subpix",            ParamType::Float, 1.0,   0.0,   1.0,  0.01, {}, "Anti-Aliasing"},
-            {"crystalclearFxaaSearchScale",       "FXAA Search Scale",      ParamType::Float, 1.0,   0.1,   3.0,   0.1, {}, "Anti-Aliasing"},
-            {"crystalclearFxaaHardEdgeThreshold", "FXAA Hard Edge",         ParamType::Float, 0.08,  0.0,   1.0,  0.01, {}, "Anti-Aliasing"},
-            {"crystalclearClarityTextureProtection","Clarity Protection",   ParamType::Float, 0.35,  0.0,   1.0,  0.01, {}, "Protection"},
-            {"crystalclearFxaaEdgeThresholdMin",  "FXAA Edge Min",          ParamType::Float, 0.0312,0.0,   1.0, 0.001, {}, "Anti-Aliasing"},
-            {"crystalclearFxaaOnlyMode",          "FXAA Only",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Anti-Aliasing"},
-            {"crystalclearEnableDebugAA",         "Debug AA",               ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
-            {"crystalclearEnableDebugCAS",        "Debug CAS",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
-            {"crystalclearEnableDebugClarity",    "Debug Clarity",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
-            {"crystalclearEnableFilmGrain",       "Enable Film Grain",      ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Grain & Dither"},
-            {"crystalclearFilmGrainStrength",     "Grain Strength",         ParamType::Float, 1.0,   0.0,   2.0,   0.1, {}, "Grain & Dither"},
-            {"crystalclearFilmGrainMinimum",      "Grain Minimum",          ParamType::Float, 0.0,   0.0,   2.0,   0.1, {}, "Grain & Dither"},
-            {"crystalclearEnableDebugGrain",      "Debug Grain",            ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
-            {"crystalclearFineGrainWeight",       "Fine Grain",             ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Grain & Dither"},
-            {"crystalclearCoarseGrainWeight",     "Coarse Grain",           ParamType::Float, 0.8,   0.0,   1.0,  0.01, {}, "Grain & Dither"},
-            {"crystalclearGuardStrength",         "Guard Strength",         ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Protection"},
-            {"crystalclearBandPassWidth",         "Band Pass Width",        ParamType::Float, 0.85,  0.3,   1.5,  0.05, {}, "Protection"},
-            {"crystalclearExtremeProtection",     "Extreme Protection",     ParamType::Float, 0.3,   0.0,   1.0,  0.01, {}, "Protection"},
-            {"crystalclearShimmerReduction",      "Shimmer Reduction",      ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Protection"},
+            {"devfav", "esports", "artifactless", "maxsharp", "vibrantsharp", "devfxaa", "cinematic", "film", "vivid", "noir"}, "Presets & Performance"},
+            {"crystalclearLiteMode",              "Lite Mode (iGPU)",       ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Presets & Performance"},
+
+            // Sharpening & Contrast
+            {"crystalclearBilateralRadius",       "Bilateral Radius",       ParamType::Float, 2.5,   0.5,   8.0,   0.1, {}, "Sharpening & Contrast"},
+            {"crystalclearBilateralOffset",       "Bilateral Offset",       ParamType::Float, 1.5,   0.5,   3.0,   0.1, {}, "Sharpening & Contrast"},
+            {"crystalclearSharpStrength",         "Sharp Strength",         ParamType::Float, 2.5,   0.0,   5.0,   0.1, {}, "Sharpening & Contrast"},
+            {"crystalclearBlendMode",             "Blend Mode",             ParamType::Int,   5.0,   0.0,   6.0,   1.0, {}, "Sharpening & Contrast"},
+            {"crystalclearBlendIfDark",           "Blend If Dark",          ParamType::Int,   8.0,   0.0, 255.0,   1.0, {}, "Sharpening & Contrast"},
+            {"crystalclearBlendIfLight",          "Blend If Light",         ParamType::Int, 248.0,   0.0, 255.0,   1.0, {}, "Sharpening & Contrast"},
+            {"crystalclearCasSharpness",          "CAS Sharpness",          ParamType::Float, 1.0,   0.0,   1.0,  0.01, {}, "Sharpening & Contrast"},
+            {"crystalclearCasStrength",           "CAS Strength",           ParamType::Float, 3.0,   0.0,   5.0,   0.1, {}, "Sharpening & Contrast"},
+            {"crystalclearLocalContrastStrength", "Local Contrast",         ParamType::Float, 0.0,   0.0,   2.0,  0.05, {}, "Sharpening & Contrast"},
+
+            // Anti-Aliasing (FXAA)
+            {"crystalclearEnableAA",              "Enable AA",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Anti-Aliasing (FXAA)"},
+            {"crystalclearFxaaEdgeThreshold",     "FXAA Edge Thresh",       ParamType::Float, 0.05,  0.001, 1.0,  0.01, {}, "Anti-Aliasing (FXAA)"},
+            {"crystalclearFxaaEdgeThresholdMin",  "FXAA Edge Min",          ParamType::Float, 0.0312,0.0,   1.0, 0.001, {}, "Anti-Aliasing (FXAA)"},
+            {"crystalclearFxaaSubpixAmount",      "FXAA Subpix",            ParamType::Float, 1.0,   0.0,   1.0,  0.01, {}, "Anti-Aliasing (FXAA)"},
+            {"crystalclearFxaaSearchScale",       "FXAA Search Scale",      ParamType::Float, 1.0,   0.1,   3.0,   0.1, {}, "Anti-Aliasing (FXAA)"},
+            {"crystalclearFxaaHardEdgeThreshold", "FXAA Hard Edge",         ParamType::Float, 0.08,  0.0,   1.0,  0.01, {}, "Anti-Aliasing (FXAA)"},
+            {"crystalclearFxaaOnlyMode",          "FXAA Only",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Anti-Aliasing (FXAA)"},
+
+            // Artifact Protection
+            {"crystalclearGuardStrength",         "Guard Strength",         ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearBandPassWidth",         "Band Pass Width",        ParamType::Float, 0.85,  0.3,   1.5,  0.05, {}, "Artifact Protection"},
+            {"crystalclearExtremeProtection",     "Extreme Protection",     ParamType::Float, 0.3,   0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearShimmerReduction",      "Shimmer Reduction",      ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearEdgeThreshLow",         "Edge Thresh Low",        ParamType::Float, 0.03,  0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearEdgeThreshHigh",        "Edge Thresh High",       ParamType::Float, 0.28,  0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearEnableRGBEdgeDetection","RGB Edge Detection",     ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Artifact Protection"},
+            {"crystalclearClarityTextureProtection","Clarity Protection",   ParamType::Float, 0.35,  0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearEnableChromaSmooth",    "Chroma Smooth",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Artifact Protection"},
+            {"crystalclearChromaSmoothStrength",  "Chroma Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearEnableDespeckle",       "Enable Despeckle",       ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Artifact Protection"},
+            {"crystalclearDespeckleThreshold",    "Despeckle Threshold",    ParamType::Float, 0.15,  0.0,   1.0,  0.01, {}, "Artifact Protection"},
+            {"crystalclearEnableFringeFix",       "Fringe Fix (CA)",        ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Artifact Protection"},
+            {"crystalclearFringeStrength",        "Fringe Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Artifact Protection"},
+            {"crystalclearEnableCheckerboardFix", "Checkerboard Fix",       ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Artifact Protection"},
+            {"crystalclearCheckerboardStrength",  "Checkerboard Strength",  ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Artifact Protection"},
+
+            // Film Grain & Dither
+            {"crystalclearEnableFilmGrain",       "Enable Film Grain",      ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Film Grain & Dither"},
+            {"crystalclearFilmGrainStrength",     "Grain Strength",         ParamType::Float, 1.0,   0.0,   2.0,   0.1, {}, "Film Grain & Dither"},
+            {"crystalclearFilmGrainMinimum",      "Grain Minimum",          ParamType::Float, 0.0,   0.0,   2.0,   0.1, {}, "Film Grain & Dither"},
+            {"crystalclearFineGrainWeight",       "Fine Grain",             ParamType::Float, 0.4,   0.0,   1.0,  0.01, {}, "Film Grain & Dither"},
+            {"crystalclearCoarseGrainWeight",     "Coarse Grain",           ParamType::Float, 0.8,   0.0,   1.0,  0.01, {}, "Film Grain & Dither"},
+            {"crystalclearEnableDithering",       "Enable Dithering",       ParamType::Bool,  1.0,   0.0,   1.0,   1.0, {}, "Film Grain & Dither"},
+
+            // Color & Tone
             {"crystalclearVibrance",              "Vibrance",               ParamType::Float, 0.0,  -1.0,   1.0,  0.05, {}, "Color & Tone"},
+            {"crystalclearSaturation",            "Saturation",             ParamType::Float, 0.0,  -1.0,   1.0,  0.05, {}, "Color & Tone"},
             {"crystalclearEnableDeband",          "Enable Deband",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color & Tone"},
             {"crystalclearDebandStrength",        "Deband Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Color & Tone"},
             {"crystalclearToneCurve",             "Tone Curve",             ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color & Tone"},
-            {"crystalclearEnableChromaSmooth",    "Chroma Smooth",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
-            {"crystalclearChromaSmoothStrength",  "Chroma Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Protection"},
             {"crystalclearSpecularDesat",         "Specular Desat",         ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color & Tone"},
-            {"crystalclearLocalContrastStrength", "Local Contrast",         ParamType::Float, 0.0,   0.0,   2.0,  0.05, {}, "Sharpening"},
-            {"crystalclearEnableDespeckle",       "Enable Despeckle",       ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
-            {"crystalclearDespeckleThreshold",    "Despeckle Threshold",    ParamType::Float, 0.15,  0.0,   1.0,  0.01, {}, "Protection"},
-            {"crystalclearEnableFringeFix",       "Fringe Fix (CA)",        ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
-            {"crystalclearFringeStrength",        "Fringe Strength",        ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Protection"},
-            {"crystalclearSaturation",            "Saturation",             ParamType::Float, 0.0,  -1.0,   1.0,  0.05, {}, "Color Grade"},
-            {"crystalclearEnableCDL",             "CDL Enable",             ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color Grade"},
-            {"crystalclearCDLSlopeR",             "CDL Slope R",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLSlopeG",             "CDL Slope G",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLSlopeB",             "CDL Slope B",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLOffsetR",            "CDL Offset R",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLOffsetG",            "CDL Offset G",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLOffsetB",            "CDL Offset B",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLPowerR",             "CDL Power R",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLPowerG",             "CDL Power G",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grade"},
-            {"crystalclearCDLPowerB",             "CDL Power B",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grade"},
-            {"crystalclearEnableSplitTone",       "Split Tone Enable",      ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color Grade"},
-            {"crystalclearSTShadowR",             "ST Shadow R",            ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearSTShadowG",             "ST Shadow G",            ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearSTShadowB",             "ST Shadow B",            ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearSTHighR",               "ST Highlight R",         ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearSTHighG",               "ST Highlight G",         ParamType::Float, 0.3,   0.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearSTHighB",               "ST Highlight B",         ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearSplitToneStrength",     "Split Tone Strength",    ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearTemperature",           "Temperature",            ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearTint",                  "Tint",                   ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grade"},
-            {"crystalclearGammaAdjust",           "Gamma",                  ParamType::Float, 0.0,  -0.9,   0.9,  0.01, {}, "Color Grade"},
-            {"crystalclearBlackLift",             "Black Point Lift",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grade"},
-            {"crystalclearWhiteClip",             "White Point Clip",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grade"},
-            {"crystalclearEnableCheckerboardFix",  "Checkerboard Fix",      ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Protection"},
-            {"crystalclearCheckerboardStrength",   "Checkerboard Strength", ParamType::Float, 0.5,   0.0,   1.0,  0.05, {}, "Protection"},
+
+            // Color Grading
+            {"crystalclearEnableCDL",             "CDL Enable",             ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color Grading"},
+            {"crystalclearCDLSlopeR",             "CDL Slope R",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLSlopeG",             "CDL Slope G",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLSlopeB",             "CDL Slope B",            ParamType::Float, 1.0,   0.0,   4.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLOffsetR",            "CDL Offset R",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLOffsetG",            "CDL Offset G",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLOffsetB",            "CDL Offset B",           ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLPowerR",             "CDL Power R",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLPowerG",             "CDL Power G",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grading"},
+            {"crystalclearCDLPowerB",             "CDL Power B",            ParamType::Float, 1.0,   0.1,   4.0,  0.01, {}, "Color Grading"},
+            {"crystalclearEnableSplitTone",       "Split Tone Enable",      ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Color Grading"},
+            {"crystalclearSTShadowR",             "ST Shadow R",            ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearSTShadowG",             "ST Shadow G",            ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearSTShadowB",             "ST Shadow B",            ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearSTHighR",               "ST Highlight R",         ParamType::Float, 0.5,   0.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearSTHighG",               "ST Highlight G",         ParamType::Float, 0.3,   0.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearSTHighB",               "ST Highlight B",         ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearSplitToneStrength",     "Split Tone Strength",    ParamType::Float, 0.0,   0.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearTemperature",           "Temperature",            ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearTint",                  "Tint",                   ParamType::Float, 0.0,  -1.0,   1.0,  0.01, {}, "Color Grading"},
+            {"crystalclearGammaAdjust",           "Gamma",                  ParamType::Float, 0.0,  -0.9,   0.9,  0.01, {}, "Color Grading"},
+            {"crystalclearBlackLift",             "Black Point Lift",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grading"},
+            {"crystalclearWhiteClip",             "White Point Clip",       ParamType::Float, 0.0,   0.0,   0.5,  0.01, {}, "Color Grading"},
+
+            // Debug
+            {"crystalclearEnableDebugAA",         "Debug AA",               ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
+            {"crystalclearEnableDebugCAS",        "Debug CAS",              ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
+            {"crystalclearEnableDebugClarity",    "Debug Clarity",          ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
+            {"crystalclearEnableDebugGrain",      "Debug Grain",            ParamType::Bool,  0.0,   0.0,   1.0,   1.0, {}, "Debug"},
         };
         return params;
     }
