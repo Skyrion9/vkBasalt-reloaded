@@ -288,6 +288,15 @@ void main() {
     float localMinLuma = getLuma(trueMnRGB);
     float localContrast = localMaxLuma - localMinLuma;
 
+    // Phase 3.5: directional coherence gate to suppress amplification of compression artifacts (DCT ringing, oiliness etc.)
+    float sobelX = (lC + lF + lF + lI) - (lA + lD + lD + lG);
+    float sobelY = (lG + lH + lH + lI) - (lA + lB + lB + lC);
+    float gradMagSq = sobelX * sobelX + sobelY * sobelY;
+
+    float edgeThresholdSq = 0.04 * hdrNorm * hdrNorm; 
+    float isDirectional = smoothstep(edgeThresholdSq, edgeThresholdSq * 4.0, gradMagSq);
+    float oilinessGate = mix(1.0, isDirectional, guardStrength);
+
     float bpLow = 0.01 * hdrNorm;
     float bpFadeIn = 0.04 * hdrNorm;
     float bpHigh = bandPassWidth * hdrNorm;
@@ -516,9 +525,10 @@ void main() {
 
     float edgeProximityGuard = 1.0 - smoothstep(0.0, 0.15 * hdrNorm, brightnessContrast);
     float combinedGuard = min(darkSmearGuard, edgeProximityGuard);
-
     float adjustedGuard = mix(1.0, combinedGuard, guardStrength);
-    diff = diff > 0.0 ? diff : diff * adjustedGuard;
+
+    // Only apply positive bilateral boosts to directional detail. Darkening remains for shadow definition.
+    diff = diff > 0.0 ? diff * oilinessGate : diff * adjustedGuard;
 
     float minCrossLuma = min(min(lB, lH), min(lD, lF));
     float silhouetteGate = smoothstep(0.005 * hdrNorm, 0.05 * hdrNorm, minCrossLuma);
@@ -574,11 +584,16 @@ void main() {
         float chromaNoise = (localContrast < 0.3 * hdrNorm) ? max(0.0, maxChromaRange - localContrast) : 0.0;
         float chromaPenalty = smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, chromaNoise);
 
-        vec3 casDeltaFinal = casDeltaRGB
-            * (1.0 - chromaPenalty * 0.8 * guardStrength)
-            * mix(1.0, edgeMask, guardStrength)
-            * mix(1.0, bandPassMask, guardStrength)
-            * mix(1.0, silhouetteGate, guardStrength);
+        float invGuard = 1.0 - guardStrength;
+        
+        // Compute the scalar attenuation mask first (guarantees scalar ALU, not vector)
+        float casMask = (1.0 - chromaPenalty * 0.8 * guardStrength)
+                    * (invGuard + guardStrength * edgeMask)
+                    * (invGuard + guardStrength * bandPassMask)
+                    * (invGuard + guardStrength * silhouetteGate)
+                    * oilinessGate;
+                    
+        vec3 casDeltaFinal = casDeltaRGB * casMask;
 
         finalColor = clarityColor + (casDeltaFinal * casStrength);
 
