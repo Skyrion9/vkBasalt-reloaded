@@ -412,8 +412,9 @@ void main() {
         vec2 posN = posB - offNP * 1.0;
         vec2 posP = posB + offNP * 1.0;
 
-        float lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - lumaNN * 0.5;
-        float lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - lumaNN * 0.5;
+        float halfLumaNN = lumaNN * 0.5;
+        float lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - halfLumaNN;
+        float lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - halfLumaNN;
 
         bool doneN = abs(lumaEndN) >= gradientScaled;
         bool doneP = abs(lumaEndP) >= gradientScaled;
@@ -423,14 +424,15 @@ void main() {
         for(int j = 0; j < 11; j++) {
             if (doneN && doneP) break;
             float stepSize = steps[j];
+            vec2 step = offNP * stepSize;
             if (!doneN) {
-                posN -= offNP * stepSize;
-                lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - lumaNN * 0.5;
+                posN -= step;
+                lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - halfLumaNN;
                 doneN = abs(lumaEndN) >= gradientScaled;
             }
             if (!doneP) {
-                posP += offNP * stepSize;
-                lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - lumaNN * 0.5;
+                posP += step;
+                lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - halfLumaNN;
                 doneP = abs(lumaEndP) >= gradientScaled;
             }
         }
@@ -731,8 +733,13 @@ void main() {
         float isolation = abs(lumaAA - crossAvg);
 
         float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
-        // If FXAA actively blended this pixel, reduce shimmer correction avoid fighting FXAA's anti-aliasing. aaColor==eRaw when FXAA is off.
-        float fxaaActivity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
+        // If FXAA is enabled & actively blended this pixel, reduce shimmer correction avoid fighting FXAA's anti-aliasing. aaColor==eRaw when FXAA is off.
+        float fxaaActivity = 0.0;
+
+        if (enableAA == 1) {
+            fxaaActivity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
+        }
+
         float shimmerMask = smoothstep(0.08 * hdrNorm, 0.2 * hdrNorm, isolation)
                         * microTextureMask * edgeMask * (1.0 - fxaaActivity * 0.5)
                         * shimmerChoke * shimmerReduction;
