@@ -545,45 +545,40 @@ namespace vkBasalt {
                             ImGui::PopItemWidth();
 
                             // Simple file browser that lists .cube files from common directories
-                            static bool showBrowser = false;
-                            static std::string browserDir;
-                            if (browserDir.empty()) {
+                            if (m_browserDir.empty()) {
                                 const char* home = getenv("HOME");
-                                browserDir = home ? std::string(home) : ".";
+                                m_browserDir = home ? std::string(home) : ".";
                             }
-
                             if (ImGui::Button("Browse...")) {
-                                showBrowser = !showBrowser;
+                                m_showBrowser = !m_showBrowser;
                             }
-
-                            if (showBrowser) {
+                            if (m_showBrowser) {
                                 ImGui::BeginChild("##file_browser", ImVec2(0, 200), true);
-                                ImGui::Text("Directory: %s", browserDir.c_str());
+                                ImGui::Text("Directory: %s", m_browserDir.c_str());
 
                                 // List .cube files in current directory
                                 std::error_code ec;
-                                if (std::filesystem::exists(browserDir, ec)) {
-                                    for (auto& entry : std::filesystem::directory_iterator(browserDir, ec)) {
+                                if (std::filesystem::exists(m_browserDir, ec)) {
+                                    for (auto& entry : std::filesystem::directory_iterator(m_browserDir, ec)) {
                                         std::string name = entry.path().filename().string();
                                         if (entry.is_directory()) {
                                             if (ImGui::Selectable(("[DIR] " + name).c_str())) {
-                                                browserDir = entry.path().string();
+                                                m_browserDir = entry.path().string();
                                             }
                                         } else if (name.size() > 5 && name.substr(name.size() - 5) == ".cube") {
                                             if (ImGui::Selectable(name.c_str())) {
                                                 m_pConfig->setOption(p->key, entry.path().string());
                                                 m_hasUnsavedChanges = true;
                                                 g_triggerPreviewReload = true;
-                                                showBrowser = false;
+                                                m_showBrowser = false;
                                             }
                                         }
                                     }
                                 }
-
                                 // Navigate up
                                 if (ImGui::Button(".. (parent)")) {
-                                    std::filesystem::path parent = std::filesystem::path(browserDir).parent_path();
-                                    if (!parent.empty()) browserDir = parent.string();
+                                    std::filesystem::path parent = std::filesystem::path(m_browserDir).parent_path();
+                                    if (!parent.empty()) m_browserDir = parent.string();
                                 }
                                 ImGui::EndChild();
                             }

@@ -59,6 +59,8 @@ namespace vkBasalt {
         char m_searchFilter[256] = {};
         int m_activeTab = 0;   // 0=Shaders, 1=Settings, 2=Presets
         int m_bindingField = -1; // -1=none, 0=toggle, 1=reload, 2=overlay
+        bool        m_showBrowser = false;
+        std::string m_browserDir;
 
         bool m_hasUnsavedChanges = false;
         bool m_previewDirty = false;
