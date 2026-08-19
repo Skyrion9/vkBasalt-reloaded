@@ -36,6 +36,17 @@ namespace vkBasalt
         return root + "/.config/vkBasalt-reloaded";
     }
 
+    static bool writeConfigFile(const std::string& path,
+                                const std::string& header,
+                                const std::unordered_map<std::string, std::string>& data) {
+        std::ofstream out(path);
+        if (!out.good()) return false;
+        out << header;
+        for (auto& kv : data)
+            out << kv.first << "=" << kv.second << "\n";
+        return true;
+    }
+
     // Construction / paths
     Config::Config() {
         ensureDirectories();
@@ -220,23 +231,15 @@ namespace vkBasalt
 
     bool Config::saveGlobal() {
         std::lock_guard<std::mutex> lock(m_mutex);
-        std::ofstream out(m_globalPath);
-        if (!out.good()) return false;
-        out << "# vkBasalt-reloaded global config (baseline)\n";
-        for (auto& kv : m_global)
-            out << kv.first << "=" << kv.second << "\n";
-        return true;
+        return writeConfigFile(m_globalPath, "# vkBasalt-reloaded global config (baseline)\n", m_global);
     }
 
     bool Config::savePerGame() {
         std::lock_guard<std::mutex> lock(m_mutex);
-        std::ofstream out(m_gamePath);
-        if (!out.good()) return false;
-        out << "# vkBasalt-reloaded per-game config\n";
-        out << "# Only overridden keys are stored here. Missing keys fall back to the global config.\n";
-        for (auto& kv : m_game)
-            out << kv.first << "=" << kv.second << "\n";
-        return true;
+        return writeConfigFile(m_gamePath,
+            "# vkBasalt-reloaded per-game config\n"
+            "# Only overridden keys are stored here. Missing keys fall back to the global config.\n",
+            m_game);
     }
 
     void Config::resetToGlobal() {
