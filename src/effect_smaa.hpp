@@ -1,18 +1,17 @@
 #ifndef EFFECT_SMAA_HPP_INCLUDED
 #define EFFECT_SMAA_HPP_INCLUDED
+
 #include <vector>
 #include <fstream>
 #include <string>
 #include <iostream>
 #include <unordered_map>
 #include <memory>
-#include <map>
 
 #include "vulkan_include.hpp"
 
 #include "effect.hpp"
 #include "config.hpp"
-
 #include "logical_device.hpp"
 
 namespace vkBasalt
@@ -31,8 +30,6 @@ namespace vkBasalt
 
         std::string getName() const override { return "smaa"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
-        double getParam(const std::string& key) const override;
-        bool setParam(const std::string& key, double value) override;
 
     private:
         LogicalDevice*               pLogicalDevice;
@@ -74,8 +71,6 @@ namespace vkBasalt
         VkSampler                    sampler;
 
         Config* pConfig;
-
-        std::map<std::string, double> m_paramValues;
     };
 
 } // namespace vkBasalt

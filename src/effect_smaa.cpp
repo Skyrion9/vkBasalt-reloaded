@@ -1,7 +1,8 @@
 #include "effect_smaa.hpp"
-
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <algorithm>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
@@ -25,6 +26,21 @@
 
 namespace vkBasalt
 {
+    struct SmaaOptions
+    {
+        float   screenWidth;
+        float   screenHeight;
+        float   reverseScreenWidth;
+        float   reverseScreenHeight;
+        float   threshold;
+        int32_t maxSearchSteps;
+        int32_t maxSearchStepsDiag;
+        int32_t cornerRounding;
+        int32_t disableDiagDetection;
+    };
+
+    #define SPEC(id, field) id, offsetof(SmaaOptions, field), sizeof(((SmaaOptions*)0)->field)
+
     SmaaEffect::SmaaEffect(LogicalDevice*       pLogicalDevice,
                            VkFormat             format,
                            VkExtent2D           imageExtent,
@@ -41,11 +57,10 @@ namespace vkBasalt
         this->outputImages   = outputImages;
         this->pConfig        = pConfig;
 
-        // create Images for the first and second pass at once -> less memory fragmentation
         std::vector<VkImage> edgeAndBlendImages = createImages(pLogicalDevice,
                                                                inputImages.size() * 2,
                                                                {imageExtent.width, imageExtent.height, 1},
-                                                               VK_FORMAT_B8G8R8A8_UNORM, // TODO search for format and save it
+                                                               VK_FORMAT_B8G8R8A8_UNORM,
                                                                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                                                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                                                imageMemory);
@@ -92,47 +107,38 @@ namespace vkBasalt
         descriptorPool = createDescriptorPool(pLogicalDevice, poolSizes);
         Logger::debug("created descriptorPool");
 
-        // get config options
-        struct SmaaOptions
-        {
-            float   screenWidth;
-            float   screenHeight;
-            float   reverseScreenWidth;
-            float   reverseScreenHeight;
-            float   threshold;
+        std::string preset = pConfig->getOption<std::string>("smaaPreset", "");
+        std::string edgeDetection = pConfig->getOption<std::string>("smaaEdgeDetection", "luma");
+        
+        m_paramValues["smaaPreset"] = 0.0;
+        m_paramValues["smaaEdgeDetection"] = 0.0;
+
+        struct SmaaPreset {
+            float threshold;
             int32_t maxSearchSteps;
             int32_t maxSearchStepsDiag;
             int32_t cornerRounding;
             int32_t disableDiagDetection;
         };
+        
+        SmaaPreset activePreset = {0.05f, 32, 16, 25, 0};
+        if (preset == "low") activePreset = {0.15f, 4, 0, 25, 1};
+        else if (preset == "medium") activePreset = {0.10f, 8, 0, 25, 1};
+        else if (preset == "high") activePreset = {0.10f, 16, 8, 25, 0};
+        else if (preset == "ultra") activePreset = {0.05f, 32, 16, 25, 0};
 
-        SmaaOptions smaaOptions;
+        SmaaOptions smaaOptions = {};
 
-        // Apply SMAA presets first if specified, ignore individual settings when preset is used
-        std::string preset = pConfig->getOption<std::string>("smaaPreset", "");
+        smaaOptions.screenWidth         = (float)imageExtent.width;
+        smaaOptions.screenHeight        = (float)imageExtent.height;
+        smaaOptions.reverseScreenWidth  = 1.0f / imageExtent.width;
+        smaaOptions.reverseScreenHeight = 1.0f / imageExtent.height;
+        smaaOptions.threshold           = std::clamp(pConfig->getOption<float>("smaaThreshold", activePreset.threshold), 0.01f, 0.5f);
+        smaaOptions.maxSearchSteps      = std::clamp(pConfig->getOption<int32_t>("smaaMaxSearchSteps", activePreset.maxSearchSteps), 0, 112);
+        smaaOptions.maxSearchStepsDiag  = std::clamp(pConfig->getOption<int32_t>("smaaMaxSearchStepsDiag", activePreset.maxSearchStepsDiag), 0, 20);
+        smaaOptions.cornerRounding      = std::clamp(pConfig->getOption<int32_t>("smaaCornerRounding", activePreset.cornerRounding), 0, 100);
+        smaaOptions.disableDiagDetection = std::clamp(pConfig->getOption<int32_t>("smaaDisableDiagDetection", activePreset.disableDiagDetection), 0, 1);
 
-        if (preset == "low") {
-            smaaOptions.threshold = 0.15f; smaaOptions.maxSearchSteps = 4; smaaOptions.maxSearchStepsDiag = 0;
-            smaaOptions.cornerRounding = 25; smaaOptions.disableDiagDetection = 1;
-        } else if (preset == "medium") {
-            smaaOptions.threshold = 0.10f; smaaOptions.maxSearchSteps = 8; smaaOptions.maxSearchStepsDiag = 0;
-            smaaOptions.cornerRounding = 25; smaaOptions.disableDiagDetection = 1;
-        } else if (preset == "high") {
-            smaaOptions.threshold = 0.10f; smaaOptions.maxSearchSteps = 16; smaaOptions.maxSearchStepsDiag = 8;
-            smaaOptions.cornerRounding = 25; smaaOptions.disableDiagDetection = 0;
-        } else if (preset == "ultra") {
-            smaaOptions.threshold = 0.05f; smaaOptions.maxSearchSteps = 32; smaaOptions.maxSearchStepsDiag = 16;
-            smaaOptions.cornerRounding = 25; smaaOptions.disableDiagDetection = 0;
-        } else {
-            smaaOptions.threshold = pConfig->getOption<float>("smaaThreshold", 0.05f);
-            smaaOptions.maxSearchSteps = pConfig->getOption<int32_t>("smaaMaxSearchSteps", 32);
-            smaaOptions.maxSearchStepsDiag = pConfig->getOption<int32_t>("smaaMaxSearchStepsDiag", 16);
-            smaaOptions.cornerRounding = pConfig->getOption<int32_t>("smaaCornerRounding", 25);
-            smaaOptions.disableDiagDetection = pConfig->getOption<int32_t>("smaaDisableDiagDetection", 0);
-        }
-
-        m_paramValues["smaaPreset"]              = 0.0; // Combo type, value unused
-        m_paramValues["smaaEdgeDetection"]       = 0.0; // Combo type, value unused
         m_paramValues["smaaThreshold"]           = smaaOptions.threshold;
         m_paramValues["smaaMaxSearchSteps"]      = smaaOptions.maxSearchSteps;
         m_paramValues["smaaMaxSearchStepsDiag"]  = smaaOptions.maxSearchStepsDiag;
@@ -140,7 +146,7 @@ namespace vkBasalt
         m_paramValues["smaaDisableDiagDetection"]= smaaOptions.disableDiagDetection;
 
         createShaderModule(pLogicalDevice, smaa_edge_vert, &edgeVertexModule);
-        bool useColor = pConfig->getOption<std::string>("smaaEdgeDetection", "luma") == "color";
+        bool useColor = (edgeDetection == "color");
         auto shaderCode = useColor ? smaa_edge_color_frag : smaa_edge_luma_frag;
         createShaderModule(pLogicalDevice, shaderCode, &edgeFragmentModule);
 
@@ -155,7 +161,8 @@ namespace vkBasalt
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {imageSamplerDescriptorSetLayout};
         pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
 
-        VkSpecializationMapEntry specMapEntrys[] = {
+        // mapEntries must be a stack allocated C-array. std::vector causes GPU hangs on AMD RADV when specialization constants are used as shader iteration/loop bounds.
+        VkSpecializationMapEntry mapEntries[] = {
             {0, offsetof(SmaaOptions, screenWidth),          sizeof(float)},
             {1, offsetof(SmaaOptions, screenHeight),         sizeof(float)},
             {2, offsetof(SmaaOptions, reverseScreenWidth),   sizeof(float)},
@@ -166,15 +173,10 @@ namespace vkBasalt
             {7, offsetof(SmaaOptions, cornerRounding),       sizeof(int32_t)},
             {8, offsetof(SmaaOptions, disableDiagDetection), sizeof(int32_t)},
         };
-        
-        smaaOptions.screenWidth = (float) imageExtent.width;
-        smaaOptions.screenHeight = (float) imageExtent.height;
-        smaaOptions.reverseScreenWidth  = 1.0f / imageExtent.width;
-        smaaOptions.reverseScreenHeight = 1.0f / imageExtent.height;
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = sizeof(specMapEntrys) / sizeof(specMapEntrys[0]);
-        specializationInfo.pMapEntries   = specMapEntrys;
+        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
+        specializationInfo.pMapEntries   = mapEntries;
         specializationInfo.dataSize      = sizeof(smaaOptions);
         specializationInfo.pData         = &smaaOptions;
 
@@ -338,28 +340,15 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& SmaaEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"smaaPreset",              "Preset",             ParamType::Combo, 0.0, 0.0, 0.0, 0.0, {"", "low", "medium", "high", "ultra"}, "Preset"},
-            {"smaaEdgeDetection",       "Edge Detection",     ParamType::Combo, 0.0, 0.0, 0.0, 0.0, {"luma", "color"},                        "Edge Detection"},
-            {"smaaThreshold",           "Threshold",          ParamType::Float, 0.05, 0.01, 0.5, 0.01, {},                                   "Edge Detection"},
-            {"smaaMaxSearchSteps",      "Max Search Steps",   ParamType::Int,   32.0, 0.0, 112.0, 1.0, {},                                   "Search"},
-            {"smaaMaxSearchStepsDiag",  "Max Diag Steps",     ParamType::Int,   16.0, 0.0, 20.0,  1.0, {},                                   "Search"},
-            {"smaaCornerRounding",      "Corner Rounding",    ParamType::Int,   25.0, 0.0, 100.0, 1.0, {},                                   "Anti-Aliasing"},
-            {"smaaDisableDiagDetection","Disable Diag Detection", ParamType::Bool, 0.0, 0.0, 1.0, 1.0, {},                                   "Search"},
+            {"smaaPreset",              "Preset",                 ParamType::Combo, 0.0,   0.0,   0.0,   0.0,   {"", "low", "medium", "high", "ultra"},  "Preset", -1, 0, 0},
+            {"smaaEdgeDetection",       "Edge Detection",         ParamType::Combo, 0.0,   0.0,   0.0,   0.0,   {"luma", "color"},                       "Edge Detection", -1, 0, 0},
+            {"smaaThreshold",           "Threshold",              ParamType::Float, 0.05,  0.01,  0.5,   0.01,  {},                                      "Edge Detection", SPEC(4, threshold)},
+            {"smaaMaxSearchSteps",      "Max Search Steps",       ParamType::Int,   32.0,  0.0,   112.0, 1.0,   {},                                      "Search", SPEC(5, maxSearchSteps)},
+            {"smaaMaxSearchStepsDiag",  "Max Diag Steps",         ParamType::Int,   16.0,  0.0,   20.0,  1.0,   {},                                      "Search", SPEC(6, maxSearchStepsDiag)},
+            {"smaaCornerRounding",      "Corner Rounding",        ParamType::Int,   25.0,  0.0,   100.0, 1.0,   {},                                      "Anti-Aliasing", SPEC(7, cornerRounding)},
+            {"smaaDisableDiagDetection","Disable Diag Detection", ParamType::Bool,  0.0,   0.0,   1.0,   1.0,   {},                                      "Search", SPEC(8, disableDiagDetection)},
         };
         return params;
-    }
-
-    double SmaaEffect::getParam(const std::string& key) const {
-        auto it = m_paramValues.find(key);
-        return (it != m_paramValues.end()) ? it->second : 0.0;
-    }
-
-    bool SmaaEffect::setParam(const std::string& key, double value) {
-        auto it = m_paramValues.find(key);
-        if (it == m_paramValues.end()) return false;
-        if (it->second == value) return false;
-        it->second = value;
-        return true;
     }
 
     SmaaEffect::~SmaaEffect()
