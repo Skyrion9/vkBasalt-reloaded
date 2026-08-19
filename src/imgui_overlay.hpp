@@ -44,6 +44,8 @@ namespace vkBasalt {
         void applyKeybind(int field, ImGuiKey key);
         void destroyRenderResources();
         void resetParamToDefault(Effect* effect, const EffectParamDesc& p);
+        void setParamDebounced(const std::string& key, const std::string& value);
+        void setParamImmediate(const std::string& key, const std::string& value);
         
 
         LogicalDevice* m_pDevice;

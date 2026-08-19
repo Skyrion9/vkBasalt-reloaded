@@ -141,6 +141,19 @@ namespace vkBasalt {
         }
     }
 
+    void ImGuiOverlay::setParamDebounced(const std::string& key, const std::string& value) {
+        m_pConfig->setOption(key, value);
+        m_hasUnsavedChanges = true;
+        m_previewDirty = true;
+        m_lastChangeTime = ImGui::GetTime();
+    }
+
+    void ImGuiOverlay::setParamImmediate(const std::string& key, const std::string& value) {
+        m_pConfig->setOption(key, value);
+        m_hasUnsavedChanges = true;
+        g_triggerPreviewReload = true;
+    }
+
     void ImGuiOverlay::drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect) {
         auto paramContextMenu = [&]() {
             if (ImGui::BeginPopupContextItem()) {
@@ -171,10 +184,7 @@ namespace vkBasalt {
                 if (changed) {
                     val = std::clamp(val, (float)p->minVal, (float)p->maxVal);
                     selectedEffect->setParam(p->key, (double)val);
-                    m_pConfig->setOption(p->key, doubleToConfigString(val));
-                    m_hasUnsavedChanges = true;
-                    m_previewDirty = true;
-                    m_lastChangeTime = ImGui::GetTime();
+                    setParamDebounced(p->key, doubleToConfigString(val));
                 }
                 paramContextMenu();
                 break;
@@ -196,10 +206,7 @@ namespace vkBasalt {
                 if (changed) {
                     val = std::clamp(val, (int)p->minVal, (int)p->maxVal);
                     selectedEffect->setParam(p->key, (double)val);
-                    m_pConfig->setOption(p->key, std::to_string(val));
-                    m_hasUnsavedChanges = true;
-                    m_previewDirty = true;
-                    m_lastChangeTime = ImGui::GetTime();
+                    setParamDebounced(p->key, std::to_string(val));
                 }
                 paramContextMenu();
                 break;
@@ -208,9 +215,7 @@ namespace vkBasalt {
                 bool val = selectedEffect->getParam(p->key) > 0.5;
                 if (ImGui::Checkbox(p->label.c_str(), &val)) {
                     selectedEffect->setParam(p->key, val ? 1.0 : 0.0);
-                    m_pConfig->setOption(p->key, val ? "1" : "0");
-                    m_hasUnsavedChanges = true;
-                    g_triggerPreviewReload = true;
+                    setParamImmediate(p->key, val ? "1" : "0");
                 }
                 paramContextMenu();
                 break;
@@ -226,9 +231,7 @@ namespace vkBasalt {
                     for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
                         bool is_sel = (currentIdx == (int)ci);
                         if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
-                            m_pConfig->setOption(p->key, p->comboOptions[ci]);
-                            m_hasUnsavedChanges = true;
-                            g_triggerPreviewReload = true;
+                            setParamImmediate(p->key, p->comboOptions[ci]);
                         }
                         if (is_sel) ImGui::SetItemDefaultFocus();
                     }
@@ -243,20 +246,22 @@ namespace vkBasalt {
                 strncpy(pathBuf, currentPath.c_str(), sizeof(pathBuf) - 1);
                 ImGui::Text("%s", p->label.c_str());
                 ImGui::PushItemWidth(-1.0f);
+
                 if (ImGui::InputText("##filepath", pathBuf, sizeof(pathBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
-                    m_pConfig->setOption(p->key, std::string(pathBuf));
-                    m_hasUnsavedChanges = true;
-                    m_previewDirty = true;
-                    m_lastChangeTime = ImGui::GetTime();
+                    setParamDebounced(p->key, std::string(pathBuf));
                 }
+
                 ImGui::PopItemWidth();
+
                 if (m_browserDir.empty()) {
                     const char* home = getenv("HOME");
                     m_browserDir = home ? std::string(home) : ".";
                 }
+
                 if (ImGui::Button("Browse...")) {
                     m_showBrowser = !m_showBrowser;
                 }
+
                 if (m_showBrowser) {
                     ImGui::BeginChild("##file_browser", ImVec2(0, 200), true);
                     ImGui::Text("Directory: %s", m_browserDir.c_str());
@@ -270,9 +275,7 @@ namespace vkBasalt {
                                 }
                             } else if (name.size() > 5 && name.substr(name.size() - 5) == ".cube") {
                                 if (ImGui::Selectable(name.c_str())) {
-                                    m_pConfig->setOption(p->key, entry.path().string());
-                                    m_hasUnsavedChanges = true;
-                                    g_triggerPreviewReload = true;
+                                    setParamImmediate(p->key, entry.path().string());
                                     m_showBrowser = false;
                                 }
                             }
@@ -370,10 +373,8 @@ namespace vkBasalt {
             bool checked = true;
             if (ImGui::Checkbox("##en", &checked)) {
                 chainList.erase(chainList.begin() + ci);
-                m_pConfig->setOption("effects", serializeChain(chainList));
+                setParamImmediate("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
-                m_hasUnsavedChanges = true;
-                g_triggerPreviewReload = true;
                 ImGui::PopID();
                 break; // List mutated, stop iterating
             }
@@ -393,10 +394,8 @@ namespace vkBasalt {
             ImGui::BeginDisabled(ci == 0);
             if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci - 1);
-                m_pConfig->setOption("effects", serializeChain(chainList));
+                setParamImmediate("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
-                m_hasUnsavedChanges = true;
-                g_triggerPreviewReload = true;
             }
             ImGui::EndDisabled();
 
@@ -405,10 +404,8 @@ namespace vkBasalt {
             ImGui::BeginDisabled(ci == chainList.size() - 1);
             if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci + 1);
-                m_pConfig->setOption("effects", serializeChain(chainList));
+                setParamImmediate("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
-                m_hasUnsavedChanges = true;
-                g_triggerPreviewReload = true;
             }
             ImGui::EndDisabled();
 
@@ -427,10 +424,8 @@ namespace vkBasalt {
             if (ImGui::Checkbox("##en", &checked)) {
                 // Add to chain
                 chainList.push_back(allEffects[i]);
-                m_pConfig->setOption("effects", serializeChain(chainList));
+                setParamImmediate("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
-                m_hasUnsavedChanges = true;
-                g_triggerPreviewReload = true; // Immediate rebuild
             }
             ImGui::SameLine();
 
@@ -451,10 +446,8 @@ namespace vkBasalt {
                 [](const std::string& a, const std::string& b) {
                     return getEffectSortPriority(a) < getEffectSortPriority(b);
                 });
-            m_pConfig->setOption("effects", serializeChain(chainList));
+            setParamImmediate("effects", serializeChain(chainList));
             m_chainCacheDirty = true;
-            m_hasUnsavedChanges = true;
-            g_triggerPreviewReload = true;
         }
         ImGui::EndChild();
         }
