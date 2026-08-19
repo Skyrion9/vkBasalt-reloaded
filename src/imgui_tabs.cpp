@@ -70,6 +70,15 @@ namespace vkBasalt {
         return s;
     }
 
+    static std::string serializeChain(const std::vector<std::string>& chain) {
+        std::string result;
+        for (size_t j = 0; j < chain.size(); j++) {
+            if (j) result += ":";
+            result += chain[j];
+        }
+        return result;
+    }
+
     static const char* kBuiltInEffects[] = {
         "fxaa", "cas", "deband", "smaa", "lut", "dls",
         "clarity", "clarityrcas", "crystalclear"
@@ -207,9 +216,7 @@ namespace vkBasalt {
             bool checked = true;
             if (ImGui::Checkbox("##en", &checked)) {
                 chainList.erase(chainList.begin() + ci);
-                std::string newOrder;
-                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
-                m_pConfig->setOption("effects", newOrder);
+                m_pConfig->setOption("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true;
@@ -232,9 +239,7 @@ namespace vkBasalt {
             ImGui::BeginDisabled(ci == 0);
             if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci - 1);
-                std::string newOrder;
-                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
-                m_pConfig->setOption("effects", newOrder);
+                m_pConfig->setOption("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true;
@@ -246,9 +251,7 @@ namespace vkBasalt {
             ImGui::BeginDisabled(ci == chainList.size() - 1);
             if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci + 1);
-                std::string newOrder;
-                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
-                m_pConfig->setOption("effects", newOrder);
+                m_pConfig->setOption("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true;
@@ -270,9 +273,7 @@ namespace vkBasalt {
             if (ImGui::Checkbox("##en", &checked)) {
                 // Add to chain
                 chainList.push_back(allEffects[i]);
-                std::string newOrder;
-                for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
-                m_pConfig->setOption("effects", newOrder);
+                m_pConfig->setOption("effects", serializeChain(chainList));
                 m_chainCacheDirty = true;
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true; // Immediate rebuild
@@ -296,9 +297,7 @@ namespace vkBasalt {
                 [](const std::string& a, const std::string& b) {
                     return getEffectSortPriority(a) < getEffectSortPriority(b);
                 });
-            std::string newOrder;
-            for (size_t j = 0; j < chainList.size(); j++) { if (j) newOrder += ":"; newOrder += chainList[j]; }
-            m_pConfig->setOption("effects", newOrder);
+            m_pConfig->setOption("effects", serializeChain(chainList));
             m_chainCacheDirty = true;
             m_hasUnsavedChanges = true;
             g_triggerPreviewReload = true;
