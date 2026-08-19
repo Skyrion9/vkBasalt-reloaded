@@ -2,9 +2,12 @@
 
 #include <cstdint>
 #include <cmath>
-#include <cstddef> 
+#include <cstddef>
+#include <cstring>
 #include <algorithm>
+#include <string>
 #include <vector>
+
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
@@ -14,11 +17,33 @@
 #include "logical_device.hpp"
 #include "util.hpp"
 #include "format.hpp"
-
 #include "shader_sources.hpp"
 
 namespace vkBasalt
 {
+
+    struct ClarityRcasSpecData {
+        float radius;
+        float offset;
+        float clarityStrength;
+        int32_t blendMode;
+        int32_t blendIfDark;
+        int32_t blendIfLight;
+        float rcasSharpness;
+        float rcasStrength;
+        float edgeThreshLow;
+        float edgeThreshHigh;
+        int32_t enableDithering;
+        int32_t enableFilmGrain;
+        float filmGrainStrength;
+        float filmGrainMinimum;
+        float fineGrainWeight;
+        float coarseGrainWeight;
+        int32_t hdrMode;
+    };
+
+    #define SPEC(id, field) id, offsetof(ClarityRcasSpecData, field), sizeof(((ClarityRcasSpecData*)0)->field)
+
     ClarityRcasEffect::ClarityRcasEffect(LogicalDevice*       pLogicalDevice,
                                          VkFormat             format,
                                          VkExtent2D           imageExtent,
@@ -35,86 +60,58 @@ namespace vkBasalt
         needsUniformBuffer = true;
         uniformSize = sizeof(FrameData);
 
-        auto getAndStore = [&](const std::string& key, double defaultVal) -> double {
-            double val = pConfig->getOption<float>(key, (float)defaultVal);
-            m_paramValues[key] = val;
-            return val;
-        };
-        auto getAndStoreInt = [&](const std::string& key, double defaultVal) -> double {
-            double val = (double)pConfig->getOption<int32_t>(key, (int32_t)defaultVal);
-            m_paramValues[key] = val;
-            return val;
-        };
-
-        this->radius = std::clamp((float)getAndStore("clarityRBilateralRadius", 2.0f), 0.5f, 8.0f);
-        this->offset = std::clamp((float)getAndStore("clarityRBilateralOffset", 1.5f), 0.5f, 3.0f);
-
-        float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
-        float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
-        float rawOffset = 1.5f * radius * offset;
-        float baseOffset = std::floor(rawOffset) + 0.5f;
-
-        pushConstants.step1.x = baseOffset * texelSizeX;
-        pushConstants.step1.y = baseOffset * texelSizeY;
-        pushConstants.step2.x = pushConstants.step1.x * 3.0f;
-        pushConstants.step2.y = pushConstants.step1.y * 3.0f;
-
-        struct ClarityRcasSpecData {
-            float radius; float offset; float clarityStrength; int32_t blendMode;
-            int32_t blendIfDark; int32_t blendIfLight; float rcasSharpness; float rcasStrength;
-            float edgeThreshLow; float edgeThreshHigh; int32_t enableDithering; int32_t enableFilmGrain;
-            float filmGrainStrength; float filmGrainMinimum; float fineGrainWeight; float coarseGrainWeight;
-            int32_t hdrMode;
-        };
-
         bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
                       colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
                       colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
-        ClarityRcasSpecData specData;
-        specData.radius               = this->radius;
-        specData.offset               = this->offset;
-        specData.clarityStrength      = std::clamp((float)getAndStore("clarityRStrength", 1.0f), 0.0f, 5.0f);
-        specData.blendMode            = std::clamp((int32_t)getAndStoreInt("clarityRBlendMode", 1), 0, 6);
-        specData.blendIfDark          = std::clamp((int32_t)getAndStoreInt("clarityRBlendIfDark", 40), 0, 255);
-        specData.blendIfLight         = std::clamp((int32_t)getAndStoreInt("clarityRBlendIfLight", 220), 0, 255);
-        specData.rcasSharpness        = std::clamp((float)getAndStore("clarityRcasSharpness", 0.8f), 0.0f, 2.0f);
-        specData.rcasStrength         = std::clamp((float)getAndStore("clarityRcasStrength", 1.0f), 0.0f, 5.0f);
-        specData.edgeThreshLow        = std::clamp((float)getAndStore("clarityREdgeThreshLow", 0.05f), 0.0f, 1.0f);
-        specData.edgeThreshHigh       = std::clamp((float)getAndStore("clarityREdgeThreshHigh", 0.35f), 0.0f, 1.0f);
-        specData.enableDithering      = std::clamp((int32_t)getAndStoreInt("clarityREnableDithering", 1), 0, 1);
-        specData.enableFilmGrain      = std::clamp((int32_t)getAndStoreInt("clarityREnableFilmGrain", 1), 0, 1);
-        specData.filmGrainStrength    = std::clamp((float)getAndStore("clarityRFilmGrainStrength", 1.0f), 0.0f, 2.0f);
-        specData.filmGrainMinimum     = std::clamp((float)getAndStore("clarityRFilmGrainMinimum", 0.0f), 0.0f, 2.0f);
-        specData.fineGrainWeight      = std::clamp((float)getAndStore("clarityRFineGrainWeight", 0.4f), 0.0f, 1.0f);
-        specData.coarseGrainWeight    = std::clamp((float)getAndStore("clarityRCoarseGrainWeight", 0.8f), 0.0f, 1.0f);
-        specData.hdrMode              = isHDR ? 1 : 0;
+        const auto& params = getParamDescs();
+        ClarityRcasSpecData specData = {};
+        std::vector<VkSpecializationMapEntry> mapEntries;
+        mapEntries.reserve(params.size());
 
-        VkSpecializationMapEntry mapEntries[] = {
-            {0,  offsetof(ClarityRcasSpecData, radius),                sizeof(float)},
-            {1,  offsetof(ClarityRcasSpecData, offset),                sizeof(float)},
-            {2,  offsetof(ClarityRcasSpecData, clarityStrength),       sizeof(float)},
-            {3,  offsetof(ClarityRcasSpecData, blendMode),             sizeof(int32_t)},
-            {4,  offsetof(ClarityRcasSpecData, blendIfDark),           sizeof(int32_t)},
-            {5,  offsetof(ClarityRcasSpecData, blendIfLight),          sizeof(int32_t)},
-            {6,  offsetof(ClarityRcasSpecData, rcasSharpness),         sizeof(float)},
-            {7,  offsetof(ClarityRcasSpecData, rcasStrength),          sizeof(float)},
-            {8,  offsetof(ClarityRcasSpecData, edgeThreshLow),         sizeof(float)},
-            {9,  offsetof(ClarityRcasSpecData, edgeThreshHigh),        sizeof(float)},
-            {10, offsetof(ClarityRcasSpecData, enableDithering),       sizeof(int32_t)},
-            {11, offsetof(ClarityRcasSpecData, enableFilmGrain),       sizeof(int32_t)},
-            {12, offsetof(ClarityRcasSpecData, filmGrainStrength),     sizeof(float)},
-            {13, offsetof(ClarityRcasSpecData, filmGrainMinimum),      sizeof(float)},
-            {14, offsetof(ClarityRcasSpecData, fineGrainWeight),       sizeof(float)},
-            {15, offsetof(ClarityRcasSpecData, coarseGrainWeight),     sizeof(float)},
-            {16, offsetof(ClarityRcasSpecData, hdrMode),               sizeof(int32_t)}
-        };
+        for (const auto& p : params) {
+            if (p.specId < 0) continue;
+
+            double val;
+            if (p.type == ParamType::Float) {
+                val = (double)pConfig->getOption<float>(p.key, (float)p.defaultVal);
+            } else {
+                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)p.defaultVal);
+            }
+
+            val = std::clamp(val, p.minVal, p.maxVal);
+            m_paramValues[p.key] = val;
+
+            if (p.specSize == sizeof(float)) {
+                float f = (float)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+            } else if (p.specSize == sizeof(int32_t)) {
+                int32_t i = (int32_t)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+            }
+
+            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+        }
+
+        specData.hdrMode = isHDR ? 1 : 0;
+        mapEntries.push_back({16, offsetof(ClarityRcasSpecData, hdrMode), sizeof(int32_t)});
+
+        this->radius = specData.radius;
+        this->offset = specData.offset;
+        float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
+        float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
+        float rawOffset  = 1.5f * radius * offset;
+        float baseOffset = std::floor(rawOffset) + 0.5f;
+        pushConstants.step1.x = baseOffset * texelSizeX;
+        pushConstants.step1.y = baseOffset * texelSizeY;
+        pushConstants.step2.x = pushConstants.step1.x * 3.0f;
+        pushConstants.step2.y = pushConstants.step1.y * 3.0f;
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(ClarityRcasSpecData);
         specializationInfo.pData         = &specData;
 
@@ -124,7 +121,7 @@ namespace vkBasalt
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
     }
 
-    ClarityRcasEffect::~ClarityRcasEffect() 
+    ClarityRcasEffect::~ClarityRcasEffect()
     {
         // Base class SimpleEffect::~SimpleEffect() handles UBO cleanup
     }
@@ -144,7 +141,7 @@ namespace vkBasalt
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memoryBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-        memoryBarrier.oldLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+        memoryBarrier.oldLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
                                                         : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -153,9 +150,9 @@ namespace vkBasalt
         memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, 
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
+            commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
         // Render Pass (writes to outputImages, automatically transitions them to finalLayout)
@@ -179,7 +176,7 @@ namespace vkBasalt
         secondBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
         secondBarrier.dstAccessMask       = isFirstInChain ? VK_ACCESS_MEMORY_READ_BIT : 0;
         secondBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        secondBarrier.newLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR 
+        secondBarrier.newLayout           = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
                                                         : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -187,9 +184,9 @@ namespace vkBasalt
         secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, 
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
+            commandBuffer,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
 
         // Barrier 3: Prepare outputImages for the next consumer.
@@ -206,7 +203,7 @@ namespace vkBasalt
             thirdBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
-                commandBuffer, 
+                commandBuffer,
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 0, 0, nullptr, 0, nullptr, 1, &thirdBarrier);
@@ -215,24 +212,23 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& ClarityRcasEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"clarityRStrength",         "Strength",          ParamType::Float, 1.0,   0.0,   5.0,   0.1},
-            {"clarityRBilateralRadius",  "Bilateral Radius",  ParamType::Float, 2.0,   0.5,   8.0,   0.1},
-            {"clarityRBilateralOffset",  "Bilateral Offset",  ParamType::Float, 1.5,   0.5,   3.0,   0.1},
-            {"clarityRBlendMode",        "Blend Mode",        ParamType::Int,   1.0,   0.0,   6.0,   1.0},
-            {"clarityRBlendIfDark",      "Blend If Dark",     ParamType::Int,  40.0,   0.0, 255.0,   1.0},
-            {"clarityRBlendIfLight",     "Blend If Light",    ParamType::Int, 220.0,   0.0, 255.0,   1.0},
-            {"clarityRcasSharpness",     "RCAS Sharpness",    ParamType::Float, 0.8,   0.0,   2.0,  0.01},
-            {"clarityRcasStrength",      "RCAS Strength",     ParamType::Float, 1.0,   0.0,   5.0,   0.1},
-            {"clarityREdgeThreshLow",    "Edge Thresh Low",   ParamType::Float, 0.05,  0.0,   1.0,  0.01},
-            {"clarityREdgeThreshHigh",   "Edge Thresh High",  ParamType::Float, 0.35,  0.0,   1.0,  0.01},
-            {"clarityREnableDithering",  "Enable Dithering",  ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
-            {"clarityREnableFilmGrain",  "Enable Film Grain", ParamType::Bool,  1.0,   0.0,   1.0,   1.0},
-            {"clarityRFilmGrainStrength","Grain Strength",    ParamType::Float, 1.0,   0.0,   2.0,   0.1},
-            {"clarityRFilmGrainMinimum", "Grain Minimum",     ParamType::Float, 0.0,   0.0,   2.0,   0.1},
-            {"clarityRFineGrainWeight",  "Fine Grain",        ParamType::Float, 0.4,   0.0,   1.0,  0.01},
-            {"clarityRCoarseGrainWeight","Coarse Grain",      ParamType::Float, 0.8,   0.0,   1.0,  0.01},
+            {"clarityRStrength",          "Strength",          ParamType::Float, 1.0,   0.0,   5.0,   0.1,  {}, "Sharpening",     SPEC(2, clarityStrength)},
+            {"clarityRBilateralRadius",   "Bilateral Radius",  ParamType::Float, 2.0,   0.5,   8.0,   0.1,  {}, "Sharpening",     SPEC(0, radius)},
+            {"clarityRBilateralOffset",   "Bilateral Offset",  ParamType::Float, 1.5,   0.5,   3.0,   0.1,  {}, "Sharpening",     SPEC(1, offset)},
+            {"clarityRBlendMode",         "Blend Mode",        ParamType::Int,   1.0,   0.0,   6.0,   1.0,  {}, "Sharpening",     SPEC(3, blendMode)},
+            {"clarityRBlendIfDark",       "Blend If Dark",     ParamType::Int,  40.0,   0.0, 255.0,   1.0,  {}, "Sharpening",     SPEC(4, blendIfDark)},
+            {"clarityRBlendIfLight",      "Blend If Light",    ParamType::Int, 220.0,   0.0, 255.0,   1.0,  {}, "Sharpening",     SPEC(5, blendIfLight)},
+            {"clarityRcasSharpness",      "RCAS Sharpness",    ParamType::Float, 0.8,   0.0,   2.0,  0.01,  {}, "Sharpening",     SPEC(6, rcasSharpness)},
+            {"clarityRcasStrength",       "RCAS Strength",     ParamType::Float, 1.0,   0.0,   5.0,   0.1,  {}, "Sharpening",     SPEC(7, rcasStrength)},
+            {"clarityREdgeThreshLow",     "Edge Thresh Low",   ParamType::Float, 0.05,  0.0,   1.0,  0.01,  {}, "Protection",     SPEC(8, edgeThreshLow)},
+            {"clarityREdgeThreshHigh",    "Edge Thresh High",  ParamType::Float, 0.35,  0.0,   1.0,  0.01,  {}, "Protection",     SPEC(9, edgeThreshHigh)},
+            {"clarityREnableDithering",   "Enable Dithering",  ParamType::Bool,  1.0,   0.0,   1.0,   1.0,  {}, "Dithering",      SPEC(10, enableDithering)},
+            {"clarityREnableFilmGrain",   "Enable Film Grain", ParamType::Bool,  1.0,   0.0,   1.0,   1.0,  {}, "Film Grain",     SPEC(11, enableFilmGrain)},
+            {"clarityRFilmGrainStrength", "Grain Strength",    ParamType::Float, 1.0,   0.0,   2.0,   0.1,  {}, "Film Grain",     SPEC(12, filmGrainStrength)},
+            {"clarityRFilmGrainMinimum",  "Grain Minimum",     ParamType::Float, 0.0,   0.0,   2.0,   0.1,  {}, "Film Grain",     SPEC(13, filmGrainMinimum)},
+            {"clarityRFineGrainWeight",   "Fine Grain",        ParamType::Float, 0.4,   0.0,   1.0,  0.01,  {}, "Film Grain",     SPEC(14, fineGrainWeight)},
+            {"clarityRCoarseGrainWeight", "Coarse Grain",      ParamType::Float, 0.8,   0.0,   1.0,  0.01,  {}, "Film Grain",     SPEC(15, coarseGrainWeight)},
         };
         return params;
     }
-
 } // namespace vkBasalt
