@@ -1,9 +1,13 @@
 #include "effect_lut.hpp"
+
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
+
+#include "stb_image.h"
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
@@ -14,13 +18,20 @@
 #include "logical_device.hpp"
 #include "image.hpp"
 #include "lut_cube.hpp"
-#include "stb_image.h"
+
 #include "format.hpp"
 #include "shader_sources.hpp"
 #include "logger.hpp"
 
 namespace vkBasalt
 {
+
+    struct LutSpecData {
+        int32_t lutSize;
+        int32_t flipGB;
+        int32_t hdrMode;
+    };
+
     LutEffect::LutEffect(LogicalDevice*       pLogicalDevice,
                          VkFormat             format,
                          VkExtent2D           imageExtent,
@@ -47,8 +58,8 @@ namespace vkBasalt
         stbi_uc* pixels = nullptr;
         int32_t  usingPNG = 0;
         bool     freePixels = false;
-
         bool fileValid = false;
+
         if (!lutFile.empty()) {
             std::ifstream testFile(lutFile);
             fileValid = testFile.good();
@@ -61,6 +72,7 @@ namespace vkBasalt
             0,0,255,255,     255,0,255,255,
             0,255,255,255,   255,255,255,255
         };
+
         auto useIdentityLut = [&]() {
             pixels     = identityLut;
             height     = 2;
@@ -102,13 +114,7 @@ namespace vkBasalt
             }
         }
 
-        struct LutSpecData {
-            int32_t lutSize;
-            int32_t flipGB;
-            int32_t hdrMode;
-        };
-
-        LutSpecData specData;
+        LutSpecData specData = {};
         specData.lutSize = height;
         specData.flipGB  = 0;
         specData.hdrMode = isHDR ? 1 : 0;
@@ -130,19 +136,20 @@ namespace vkBasalt
 
         VkExtent3D lutImageExtent = {(uint32_t)height, (uint32_t)height, (uint32_t)height};
         lutImage = createImages(pLogicalDevice, 1, lutImageExtent,
-            VK_FORMAT_R8G8B8A8_UNORM,
-            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, lutMemory)[0];
+                                VK_FORMAT_R8G8B8A8_UNORM,
+                                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, lutMemory)[0];
 
         uploadToImage(pLogicalDevice, lutImage, lutImageExtent,
-            static_cast<uint32_t>(height) * height * height * 4, pixels);
+                    static_cast<uint32_t>(height) * height * height * 4, pixels);
 
         if (freePixels) {
             stbi_image_free(pixels);
         }
 
         lutImageView = createImageViews(pLogicalDevice, VK_FORMAT_R8G8B8A8_UNORM,
-            std::vector<VkImage>(1, lutImage), VK_IMAGE_VIEW_TYPE_3D)[0];
+                                        std::vector<VkImage>(1, lutImage), VK_IMAGE_VIEW_TYPE_3D)[0];
+
         lutDescriptorSetLayout = createImageSamplerDescriptorSetLayout(pLogicalDevice, 1);
         descriptorSetLayouts.push_back(lutDescriptorSetLayout);
 
@@ -155,8 +162,8 @@ namespace vkBasalt
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
 
         lutDescriptorSet = allocateAndWriteImageSamplerDescriptorSets(pLogicalDevice,
-            lutDescriptorPool, lutDescriptorSetLayout, {sampler},
-            std::vector<std::vector<VkImageView>>(1, std::vector<VkImageView>(1, lutImageView)))[0];
+                            lutDescriptorPool, lutDescriptorSetLayout, {sampler},
+                            std::vector<std::vector<VkImageView>>(1, std::vector<VkImageView>(1, lutImageView)))[0];
     }
 
     LutEffect::~LutEffect()
@@ -170,7 +177,7 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& LutEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"lutFile", "LUT File (.cube)", ParamType::FilePath, 0.0, 0.0, 0.0, 0.0},
+            {"lutFile", "LUT File (.cube/.png)", ParamType::FilePath, 0.0, 0.0, 0.0, 0.0, {}, "Color Grading", -1, 0, 0},
         };
         return params;
     }
@@ -181,5 +188,4 @@ namespace vkBasalt
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &(lutDescriptorSet), 0, nullptr);
         SimpleEffect::applyEffect(imageIndex, commandBuffer);
     }
-
 } // namespace vkBasalt
