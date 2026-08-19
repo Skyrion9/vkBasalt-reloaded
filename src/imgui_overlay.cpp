@@ -32,11 +32,16 @@ namespace vkBasalt {
         s_instanceCount++;
     }
 
-    ImGuiOverlay::~ImGuiOverlay() {
+    void ImGuiOverlay::destroyRenderResources() {
         for (auto fb : m_framebuffers) { if (fb) m_pDevice->vkd.DestroyFramebuffer(m_pDevice->device, fb, nullptr); }
-        for (auto iv : m_imageViews) { if (iv) m_pDevice->vkd.DestroyImageView(m_pDevice->device, iv, nullptr); }
+        for (auto iv : m_imageViews)   { if (iv) m_pDevice->vkd.DestroyImageView(m_pDevice->device, iv, nullptr); }
         if (m_renderPass) { m_pDevice->vkd.DestroyRenderPass(m_pDevice->device, m_renderPass, nullptr); m_renderPass = VK_NULL_HANDLE; }
+        m_framebuffers.clear();
+        m_imageViews.clear();
+    }
 
+    ImGuiOverlay::~ImGuiOverlay() {
+        destroyRenderResources();
         s_instanceCount--;
         if (s_instanceCount == 0) {
             if (ImGui::GetCurrentContext()) {
@@ -56,11 +61,7 @@ namespace vkBasalt {
         }
 
         if (m_isInitialized) {
-            for (auto fb : m_framebuffers) { if (fb) m_pDevice->vkd.DestroyFramebuffer(m_pDevice->device, fb, nullptr); }
-            for (auto iv : m_imageViews) { if (iv) m_pDevice->vkd.DestroyImageView(m_pDevice->device, iv, nullptr); }
-            if (m_renderPass) { m_pDevice->vkd.DestroyRenderPass(m_pDevice->device, m_renderPass, nullptr); m_renderPass = VK_NULL_HANDLE; }
-            m_framebuffers.clear();
-            m_imageViews.clear();
+            destroyRenderResources();
             if (ImGui::GetCurrentContext()) { ImGui_ImplVulkan_Shutdown(); }
             m_isInitialized = false;
         }
@@ -234,11 +235,7 @@ namespace vkBasalt {
 
     void ImGuiOverlay::reinitImGui() {
         // Destroy current ImGui state so initImGui() runs fresh with new scale
-        for (auto fb : m_framebuffers) { if (fb) m_pDevice->vkd.DestroyFramebuffer(m_pDevice->device, fb, nullptr); }
-        for (auto iv : m_imageViews) { if (iv) m_pDevice->vkd.DestroyImageView(m_pDevice->device, iv, nullptr); }
-        if (m_renderPass) { m_pDevice->vkd.DestroyRenderPass(m_pDevice->device, m_renderPass, nullptr); m_renderPass = VK_NULL_HANDLE; }
-        m_framebuffers.clear();
-        m_imageViews.clear();
+        destroyRenderResources();
 
         if (ImGui::GetCurrentContext()) {
             ImGui_ImplVulkan_Shutdown();

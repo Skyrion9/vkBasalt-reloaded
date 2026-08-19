@@ -35,6 +35,7 @@ namespace vkBasalt {
         void drawPresetsTab();
         void drawStyleTab();
         void applyKeybind(int field, ImGuiKey key);
+        void destroyRenderResources();
 
         LogicalDevice* m_pDevice;
         LogicalSwapchain* m_pSwapchain;
