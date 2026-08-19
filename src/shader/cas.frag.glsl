@@ -20,8 +20,10 @@
 // AMD FidelityFX CAS - Algebraically Reduced & Optimized
 
 layout(set=0, binding=0) uniform sampler2D img;
+
 layout(constant_id = 0) const float sharpness = 0.4;
-layout(constant_id = 1) const int hdrMode = 0;
+layout(constant_id = 1) const float contrastLimit = 0.0; // Suppresses sharpening in low contrast/noisy areas
+layout(constant_id = 2) const int hdrMode = 0;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
@@ -52,11 +54,14 @@ void main()
     //  g h i             h
     vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
     vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
+    vec3 trueMnRGB = mnRGB2;
     mnRGB += mnRGB2;
 
     vec3 mxRGB  = max(max(max(d,e),max(f,b)),h);
     vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
+    vec3 trueMxRGB = mxRGB2;
     mxRGB += mxRGB2;
+
     // SDR formula uses absolute headroom (2.0 - mxRGB) which collapses to 0 when mxRGB > 2.0.
     // Use a scale invariant local contrast ratio for HDR.
     vec3 ampRGB;
@@ -65,7 +70,9 @@ void main()
     } else {
         ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
     }
+
     float peak = 8.0 - 3.0 * sharpness;
+
     //                          0 w 0
     //  Filter shape:           w 1 w
     //                          0 w 0
@@ -77,9 +84,20 @@ void main()
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. Perfectly stable.
     vec3 P = invAmp * peak;
     vec3 window = (b + d) + (f + h);
-    
+
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. No divide-by-zero possible.
-    vec3 outColor = (e * P - window) / (P - 4.0);
+    vec3 sharpened = (e * P - window) / (P - 4.0);
+
+    float limitMask = 1.0;
+    if (contrastLimit > 0.0) {
+        vec3 localContrast = trueMxRGB - trueMnRGB;
+        float maxContrast = max(max(localContrast.r, localContrast.g), localContrast.b);
+        float refLuma = (hdrMode == 1) ? max(max(trueMxRGB.r, trueMxRGB.g), trueMxRGB.b) : 1.0;
+        float thresh = contrastLimit * refLuma;
+        limitMask = smoothstep(thresh * 0.25, thresh, maxContrast);
+    }
+
+    vec3 outColor = mix(e, sharpened, limitMask);
 
     // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
     vec3 finalColor = (hdrMode == 1) ? max(outColor, 0.0) : clamp(outColor, 0.0, 1.0);

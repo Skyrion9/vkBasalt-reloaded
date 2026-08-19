@@ -1,11 +1,11 @@
 #include "effect_cas.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
-
 #include "config.hpp"
 #include "effect.hpp"
 #include "logical_device.hpp"
@@ -14,6 +14,15 @@
 
 namespace vkBasalt
 {
+
+    struct CasSpecData {
+        float sharpness;
+        float contrastLimit;
+        int32_t hdrMode;
+    };
+
+    #define SPEC(id, field) id, offsetof(CasSpecData, field), sizeof(((CasSpecData*)0)->field)
+
     CasEffect::CasEffect(LogicalDevice*       pLogicalDevice,
                          VkFormat             format,
                          VkExtent2D           imageExtent,
@@ -31,25 +40,41 @@ namespace vkBasalt
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
-        struct CasSpecData {
-            float sharpness;
-            int32_t hdrMode;
-        };
+        const auto& params = getParamDescs();
+        CasSpecData specData = {};
+        std::vector<VkSpecializationMapEntry> mapEntries;
+        mapEntries.reserve(params.size());
 
-        CasSpecData specData;
-        specData.sharpness = std::clamp(pConfig->getOption<float>("casSharpness", 0.4f), 0.0f, 1.0f);
-        specData.hdrMode   = isHDR ? 1 : 0;
+        for (const auto& p : params) {
+            if (p.specId < 0) continue;
 
-        m_paramValues["casSharpness"] = specData.sharpness;
+            double val;
+            if (p.type == ParamType::Float) {
+                val = (double)pConfig->getOption<float>(p.key, (float)p.defaultVal);
+            } else {
+                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)p.defaultVal);
+            }
 
-        VkSpecializationMapEntry mapEntries[] = {
-            {0, offsetof(CasSpecData, sharpness), sizeof(float)},
-            {1, offsetof(CasSpecData, hdrMode),   sizeof(int32_t)}
-        };
+            val = std::clamp(val, p.minVal, p.maxVal);
+            m_paramValues[p.key] = val;
+
+            if (p.specSize == sizeof(float)) {
+                float f = (float)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+            } else if (p.specSize == sizeof(int32_t)) {
+                int32_t i = (int32_t)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+            }
+
+            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+        }
+
+        specData.hdrMode = isHDR ? 1 : 0;
+        mapEntries.push_back({2, offsetof(CasSpecData, hdrMode), sizeof(int32_t)});
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(CasSpecData);
         specializationInfo.pData         = &specData;
 
@@ -63,7 +88,8 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& CasEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"casSharpness", "Sharpness", ParamType::Float, 0.4, 0.0, 1.0, 0.01},
+            {"casSharpness",     "Sharpness",      ParamType::Float, 0.4, 0.0, 1.0, 0.01, {}, "Sharpening", SPEC(0, sharpness)},
+            {"casContrastLimit", "Contrast Limit", ParamType::Float, 0.0, 0.0, 1.0, 0.01, {}, "Sharpening", SPEC(1, contrastLimit)},
         };
         return params;
     }
