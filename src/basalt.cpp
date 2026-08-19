@@ -86,6 +86,18 @@ namespace vkBasalt
     using scoped_lock = std::lock_guard<std::mutex>;
 #endif
 
+    static void ensureConfig()
+    {
+        if (pConfig == nullptr)
+        {
+            scoped_lock l(globalLock);
+            if (pConfig == nullptr)
+            {
+                pConfig = std::make_shared<Config>();
+            }
+        }
+    }
+
     template<typename DispatchableType>
     void* GetKey(DispatchableType inst)
     {
@@ -977,15 +989,7 @@ extern "C"
 
     VK_BASALT_EXPORT PFN_vkVoidFunction VKAPI_CALL vkBasalt_GetDeviceProcAddr(VkDevice device, const char* pName)
     {
-        // Fixed: Thread-safe initialization of pConfig using double-checked locking
-        if (vkBasalt::pConfig == nullptr)
-        {
-            vkBasalt::scoped_lock l(vkBasalt::globalLock);
-            if (vkBasalt::pConfig == nullptr)
-            {
-                vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
-            }
-        }
+        vkBasalt::ensureConfig();
 
         INTERCEPT_CALLS
 
@@ -997,15 +1001,7 @@ extern "C"
 
     VK_BASALT_EXPORT PFN_vkVoidFunction VKAPI_CALL vkBasalt_GetInstanceProcAddr(VkInstance instance, const char* pName)
     {
-        // Fixed: Thread-safe initialization of pConfig using double-checked locking
-        if (vkBasalt::pConfig == nullptr)
-        {
-            vkBasalt::scoped_lock l(vkBasalt::globalLock);
-            if (vkBasalt::pConfig == nullptr)
-            {
-                vkBasalt::pConfig = std::shared_ptr<vkBasalt::Config>(new vkBasalt::Config());
-            }
-        }
+        vkBasalt::ensureConfig();
 
         INTERCEPT_CALLS
 
