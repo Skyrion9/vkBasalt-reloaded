@@ -693,6 +693,29 @@ namespace vkBasalt
         pLogicalDevice->vkd.DestroySwapchainKHR(device, swapchain, pAllocator);
     }
 
+    static void rerecordAllCommandBuffers(LogicalDevice* pLogicalDevice, VkImage depthImage, VkImageView depthImageView, VkFormat depthFormat)
+    {
+        for (auto& it_swap : swapchainMap)
+        {
+            LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
+            if (pLogicalSwapchain->pLogicalDevice != pLogicalDevice) continue;
+            if (pLogicalSwapchain->effects.empty() || pLogicalSwapchain->commandBuffersEffect.empty()) continue;
+
+            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device,
+                                                    pLogicalDevice->commandPool,
+                                                    pLogicalSwapchain->commandBuffersEffect.size(),
+                                                    pLogicalSwapchain->commandBuffersEffect.data());
+
+            pLogicalSwapchain->commandBuffersEffect.clear();
+            pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+            Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
+
+            writeCommandBuffers(pLogicalDevice, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat,
+                                pLogicalSwapchain->commandBuffersEffect);
+            Logger::debug("wrote CommandBuffers");
+        }
+    }
+
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateImage(VkDevice                     device,
                                                          const VkImageCreateInfo*     pCreateInfo,
                                                          const VkAllocationCallbacks* pAllocator,
@@ -769,27 +792,7 @@ namespace vkBasalt
 
                 if (isFirstDepthBuffer)
                 {
-                    for (auto& it_swap : swapchainMap)
-                    {
-                        LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
-                        if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice && !pLogicalSwapchain->effects.empty())
-                        {
-                            if (pLogicalSwapchain->commandBuffersEffect.size())
-                            {
-                                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device,
-                                                                         pLogicalDevice->commandPool,
-                                                                         pLogicalSwapchain->commandBuffersEffect.size(),
-                                                                         pLogicalSwapchain->commandBuffersEffect.data());
-                                pLogicalSwapchain->commandBuffersEffect.clear();
-                                pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-                                Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
-
-                                writeCommandBuffers(
-                                    pLogicalDevice, pLogicalSwapchain->effects, image, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
-                                Logger::debug("wrote CommandBuffers");
-                            }
-                        }
-                    }
+                    rerecordAllCommandBuffers(pLogicalDevice, image, depthImageView, depthFormat);
                 }
             }
         }
@@ -827,31 +830,7 @@ namespace vkBasalt
                 VkImage     depthImage     = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImages[0] : VK_NULL_HANDLE;
                 VkFormat    depthFormat    = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthFormats[0] : VK_FORMAT_UNDEFINED;
                 
-                for (auto& it_swap : swapchainMap)
-                {
-                    LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
-                    if (pLogicalSwapchain->pLogicalDevice == pLogicalDevice && !pLogicalSwapchain->effects.empty())
-                    {
-                        if (pLogicalSwapchain->commandBuffersEffect.size())
-                        {
-                            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device,
-                                                                     pLogicalDevice->commandPool,
-                                                                     pLogicalSwapchain->commandBuffersEffect.size(),
-                                                                     pLogicalSwapchain->commandBuffersEffect.data());
-                            pLogicalSwapchain->commandBuffersEffect.clear();
-                            pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-                            Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
-
-                            writeCommandBuffers(pLogicalDevice,
-                                                pLogicalSwapchain->effects,
-                                                depthImage,
-                                                depthImageView,
-                                                depthFormat,
-                                                pLogicalSwapchain->commandBuffersEffect);
-                            Logger::debug("wrote CommandBuffers");
-                        }
-                    }
-                }
+                rerecordAllCommandBuffers(pLogicalDevice, depthImage, depthImageView, depthFormat);
                 
                 break; 
             }
