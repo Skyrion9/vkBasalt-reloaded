@@ -295,11 +295,12 @@ void main() {
     // Phase 3.5: directional coherence gate to suppress amplification of compression artifacts (DCT ringing, oiliness etc.)
     float oilinessGate = 1.0;
     if (liteMode == 0) {
-        float sobelX = (lC + lF + lF + lI) - (lA + lD + lD + lG);
-        float sobelY = (lG + lH + lH + lI) - (lA + lB + lB + lC);
+        float invCenterLuma = 1.0 / max(lE, 0.01 * hdrNorm);
+        float sobelX = ((lC + lF + lF + lI) - (lA + lD + lD + lG)) * invCenterLuma;
+        float sobelY = ((lG + lH + lH + lI) - (lA + lB + lB + lC)) * invCenterLuma;
         float gradMagSq = sobelX * sobelX + sobelY * sobelY;
 
-        float edgeThresholdSq = 0.04 * hdrNorm * hdrNorm; 
+        float edgeThresholdSq = 0.04;
         float isDirectional = smoothstep(edgeThresholdSq, edgeThresholdSq * 4.0, gradMagSq);
         oilinessGate = mix(1.0, isDirectional, guardStrength);
     }
@@ -548,7 +549,9 @@ void main() {
     float silhouetteGate = 1.0;
     if (liteMode == 0) {
         float minCrossLuma = min(min(lB, lH), min(lD, lF));
-        silhouetteGate = smoothstep(0.005 * hdrNorm, 0.05 * hdrNorm, minCrossLuma);
+        float silLow  = 0.005 * lE;
+        float silHigh = 0.05  * lE;
+        silhouetteGate = smoothstep(silLow, silHigh, minCrossLuma);
         diff *= mix(1.0, silhouetteGate, guardStrength);
     }
 
