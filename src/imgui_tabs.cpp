@@ -141,9 +141,163 @@ namespace vkBasalt {
         }
     }
 
+    void ImGuiOverlay::drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect) {
+        auto paramContextMenu = [&]() {
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Reset to Default")) {
+                    resetParamToDefault(selectedEffect, *p);
+                    m_hasUnsavedChanges = true;
+                    g_triggerPreviewReload = true;
+                }
+                ImGui::EndPopup();
+            }
+        };
+
+        switch (p->type) {
+            case ParamType::Float: {
+                float val = (float)selectedEffect->getParam(p->key);
+                float step = (p->step > 0) ? (float)p->step : 0.01f;
+                float range = (float)(p->maxVal - p->minVal);
+                float dragSpeed = range / 200.0f;
+                bool changed = false;
+                ImGui::PushItemWidth(ImGui::CalcItemWidth());
+                if (ImGui::DragFloat(p->label.c_str(), &val, dragSpeed, (float)p->minVal, (float)p->maxVal, "%.3f"))
+                    changed = true;
+                if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
+                    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
+                    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
+                }
+                ImGui::PopItemWidth();
+                if (changed) {
+                    val = std::clamp(val, (float)p->minVal, (float)p->maxVal);
+                    selectedEffect->setParam(p->key, (double)val);
+                    m_pConfig->setOption(p->key, doubleToConfigString(val));
+                    m_hasUnsavedChanges = true;
+                    m_previewDirty = true;
+                    m_lastChangeTime = ImGui::GetTime();
+                }
+                paramContextMenu();
+                break;
+            }
+            case ParamType::Int: {
+                int val = (int)selectedEffect->getParam(p->key);
+                int step = (p->step > 0) ? (int)p->step : 1;
+                float range = (float)(p->maxVal - p->minVal);
+                float dragSpeed = std::max(0.05f, range / 200.0f);
+                bool changed = false;
+                ImGui::PushItemWidth(ImGui::CalcItemWidth());
+                if (ImGui::DragInt(p->label.c_str(), &val, dragSpeed, (int)p->minVal, (int)p->maxVal))
+                    changed = true;
+                if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
+                    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
+                    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
+                }
+                ImGui::PopItemWidth();
+                if (changed) {
+                    val = std::clamp(val, (int)p->minVal, (int)p->maxVal);
+                    selectedEffect->setParam(p->key, (double)val);
+                    m_pConfig->setOption(p->key, std::to_string(val));
+                    m_hasUnsavedChanges = true;
+                    m_previewDirty = true;
+                    m_lastChangeTime = ImGui::GetTime();
+                }
+                paramContextMenu();
+                break;
+            }
+            case ParamType::Bool: {
+                bool val = selectedEffect->getParam(p->key) > 0.5;
+                if (ImGui::Checkbox(p->label.c_str(), &val)) {
+                    selectedEffect->setParam(p->key, val ? 1.0 : 0.0);
+                    m_pConfig->setOption(p->key, val ? "1" : "0");
+                    m_hasUnsavedChanges = true;
+                    g_triggerPreviewReload = true;
+                }
+                paramContextMenu();
+                break;
+            }
+            case ParamType::Combo: {
+                std::string currentStr = m_pConfig->getOption<std::string>(p->key, "");
+                int currentIdx = 0;
+                for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
+                    if (p->comboOptions[ci] == currentStr) { currentIdx = (int)ci; break; }
+                }
+                const char* preview = p->comboOptions.empty() ? "" : p->comboOptions[currentIdx].c_str();
+                if (ImGui::BeginCombo(p->label.c_str(), preview)) {
+                    for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
+                        bool is_sel = (currentIdx == (int)ci);
+                        if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
+                            m_pConfig->setOption(p->key, p->comboOptions[ci]);
+                            m_hasUnsavedChanges = true;
+                            g_triggerPreviewReload = true;
+                        }
+                        if (is_sel) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+                paramContextMenu();
+                break;
+            }
+            case ParamType::FilePath: {
+                std::string currentPath = m_pConfig->getOption<std::string>(p->key, "");
+                char pathBuf[1024] = {};
+                strncpy(pathBuf, currentPath.c_str(), sizeof(pathBuf) - 1);
+                ImGui::Text("%s", p->label.c_str());
+                ImGui::PushItemWidth(-1.0f);
+                if (ImGui::InputText("##filepath", pathBuf, sizeof(pathBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    m_pConfig->setOption(p->key, std::string(pathBuf));
+                    m_hasUnsavedChanges = true;
+                    m_previewDirty = true;
+                    m_lastChangeTime = ImGui::GetTime();
+                }
+                ImGui::PopItemWidth();
+                if (m_browserDir.empty()) {
+                    const char* home = getenv("HOME");
+                    m_browserDir = home ? std::string(home) : ".";
+                }
+                if (ImGui::Button("Browse...")) {
+                    m_showBrowser = !m_showBrowser;
+                }
+                if (m_showBrowser) {
+                    ImGui::BeginChild("##file_browser", ImVec2(0, 200), true);
+                    ImGui::Text("Directory: %s", m_browserDir.c_str());
+                    std::error_code ec;
+                    if (std::filesystem::exists(m_browserDir, ec)) {
+                        for (auto& entry : std::filesystem::directory_iterator(m_browserDir, ec)) {
+                            std::string name = entry.path().filename().string();
+                            if (entry.is_directory()) {
+                                if (ImGui::Selectable(("[DIR] " + name).c_str())) {
+                                    m_browserDir = entry.path().string();
+                                }
+                            } else if (name.size() > 5 && name.substr(name.size() - 5) == ".cube") {
+                                if (ImGui::Selectable(name.c_str())) {
+                                    m_pConfig->setOption(p->key, entry.path().string());
+                                    m_hasUnsavedChanges = true;
+                                    g_triggerPreviewReload = true;
+                                    m_showBrowser = false;
+                                }
+                            }
+                        }
+                    }
+                    if (ImGui::Button(".. (parent)")) {
+                        std::filesystem::path parent = std::filesystem::path(m_browserDir).parent_path();
+                        if (!parent.empty()) m_browserDir = parent.string();
+                    }
+                    ImGui::EndChild();
+                }
+                break;
+            }
+        }
+    }
+
     void ImGuiOverlay::drawShadersTab() {
         if (!m_pSwapchain) { ImGui::Text("No swapchain."); return; }
-        ImGui::BeginChild("##shader_list", ImVec2(260, 0), true);
+        drawChainPanel();
+        ImGui::SameLine();
+        drawEffectParamsPanel();
+    }
+
+    void ImGuiOverlay::drawChainPanel() {
+    ImGui::BeginChild("##shader_list", ImVec2(260, 0), true);
 
         // Rebuild cache only when a reload trigger fired
         if (m_chainCacheDirty || g_triggerPreviewReload || g_triggerSoftReload || g_triggerRevertReload) {
@@ -303,13 +457,12 @@ namespace vkBasalt {
             g_triggerPreviewReload = true;
         }
         ImGui::EndChild();
+        }
 
-        ImGui::SameLine();
-
-        // Right panel parameters for selected effect
+        void ImGuiOverlay::drawEffectParamsPanel() {
         ImGui::BeginChild("##effect_params", ImVec2(0, 0), true);
-        std::string selectedName = allEffects[m_selectedEffectIndex];
-        bool inChain = isInChain(selectedName);
+        std::string selectedName = m_cachedAllEffects[m_selectedEffectIndex];
+        bool inChain = std::find(m_cachedChainList.begin(), m_cachedChainList.end(), selectedName) != m_cachedChainList.end();
 
         ImGui::Text("Effect: %s", selectedName.c_str());
         if (!g_effectsEnabled) {
@@ -433,158 +586,7 @@ namespace vkBasalt {
                     if (m_justOpened && !focusedFirst) { ImGui::SetKeyboardFocusHere(); focusedFirst = true; }
 
                     // Right click context menu to reset individual params to default.
-                    auto paramContextMenu = [&]() {
-                        if (ImGui::BeginPopupContextItem()) {
-                            if (ImGui::MenuItem("Reset to Default")) {
-                                resetParamToDefault(selectedEffect, *p);
-                                m_hasUnsavedChanges = true;
-                                g_triggerPreviewReload = true;
-                            }
-                            ImGui::EndPopup();
-                        }
-                    };
-
-                    switch (p->type) {
-                        case ParamType::Float: {
-                            float val = (float)selectedEffect->getParam(p->key);
-                            float step = (p->step > 0) ? (float)p->step : 0.01f;
-                            float range = (float)(p->maxVal - p->minVal);
-                            float dragSpeed = range / 200.0f;
-                            bool changed = false;
-                            ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                            if (ImGui::DragFloat(p->label.c_str(), &val, dragSpeed, (float)p->minVal, (float)p->maxVal, "%.3f"))
-                                changed = true;
-                            if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
-                                if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
-                                if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
-                            }
-                            ImGui::PopItemWidth();
-                            if (changed) {
-                                val = std::clamp(val, (float)p->minVal, (float)p->maxVal);
-                                selectedEffect->setParam(p->key, (double)val);
-                                m_pConfig->setOption(p->key, doubleToConfigString(val));
-                                m_hasUnsavedChanges = true;
-                                m_previewDirty = true;
-                                m_lastChangeTime = ImGui::GetTime();
-                            }
-                            paramContextMenu();
-                            break;
-                        }
-                        case ParamType::Int: {
-                            int val = (int)selectedEffect->getParam(p->key);
-                            int step = (p->step > 0) ? (int)p->step : 1;
-                            float range = (float)(p->maxVal - p->minVal);
-                            float dragSpeed = std::max(0.05f, range / 200.0f);
-                            bool changed = false;
-                            ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                            if (ImGui::DragInt(p->label.c_str(), &val, dragSpeed, (int)p->minVal, (int)p->maxVal))
-                                changed = true;
-                            if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
-                                if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
-                                if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
-                            }
-                            ImGui::PopItemWidth();
-                            if (changed) {
-                                val = std::clamp(val, (int)p->minVal, (int)p->maxVal);
-                                selectedEffect->setParam(p->key, (double)val);
-                                m_pConfig->setOption(p->key, std::to_string(val));
-                                m_hasUnsavedChanges = true;
-                                m_previewDirty = true;
-                                m_lastChangeTime = ImGui::GetTime();
-                            }
-                            paramContextMenu();
-                            break;
-                        }
-                        case ParamType::Bool: {
-                            bool val = selectedEffect->getParam(p->key) > 0.5;
-                            if (ImGui::Checkbox(p->label.c_str(), &val)) {
-                                selectedEffect->setParam(p->key, val ? 1.0 : 0.0);
-                                m_pConfig->setOption(p->key, val ? "1" : "0");
-                                m_hasUnsavedChanges = true;
-                                g_triggerPreviewReload = true;
-                            }
-                            paramContextMenu();
-                            break;
-                        }
-                        case ParamType::Combo: {
-                            std::string currentStr = m_pConfig->getOption<std::string>(p->key, "");
-                            int currentIdx = 0;
-                            for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
-                                if (p->comboOptions[ci] == currentStr) { currentIdx = (int)ci; break; }
-                            }
-                            const char* preview = p->comboOptions.empty() ? "" : p->comboOptions[currentIdx].c_str();
-                            if (ImGui::BeginCombo(p->label.c_str(), preview)) {
-                                for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
-                                    bool is_sel = (currentIdx == (int)ci);
-                                    if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
-                                        m_pConfig->setOption(p->key, p->comboOptions[ci]);
-                                        m_hasUnsavedChanges = true;
-                                        g_triggerPreviewReload = true;
-                                    }
-                                    if (is_sel) ImGui::SetItemDefaultFocus();
-                                }
-                                ImGui::EndCombo();
-                            }
-                            paramContextMenu();
-                            break;
-                        }
-                        case ParamType::FilePath: {
-                            // Show current path
-                            std::string currentPath = m_pConfig->getOption<std::string>(p->key, "");
-                            char pathBuf[1024] = {};
-                            strncpy(pathBuf, currentPath.c_str(), sizeof(pathBuf) - 1);
-
-                            ImGui::Text("%s", p->label.c_str());
-                            ImGui::PushItemWidth(-1.0f);
-                            if (ImGui::InputText("##filepath", pathBuf, sizeof(pathBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
-                                m_pConfig->setOption(p->key, std::string(pathBuf));
-                                m_hasUnsavedChanges = true;
-                                m_previewDirty = true;
-                                m_lastChangeTime = ImGui::GetTime();
-                            }
-                            ImGui::PopItemWidth();
-
-                            // Simple file browser that lists .cube files from common directories
-                            if (m_browserDir.empty()) {
-                                const char* home = getenv("HOME");
-                                m_browserDir = home ? std::string(home) : ".";
-                            }
-                            if (ImGui::Button("Browse...")) {
-                                m_showBrowser = !m_showBrowser;
-                            }
-                            if (m_showBrowser) {
-                                ImGui::BeginChild("##file_browser", ImVec2(0, 200), true);
-                                ImGui::Text("Directory: %s", m_browserDir.c_str());
-
-                                // List .cube files in current directory
-                                std::error_code ec;
-                                if (std::filesystem::exists(m_browserDir, ec)) {
-                                    for (auto& entry : std::filesystem::directory_iterator(m_browserDir, ec)) {
-                                        std::string name = entry.path().filename().string();
-                                        if (entry.is_directory()) {
-                                            if (ImGui::Selectable(("[DIR] " + name).c_str())) {
-                                                m_browserDir = entry.path().string();
-                                            }
-                                        } else if (name.size() > 5 && name.substr(name.size() - 5) == ".cube") {
-                                            if (ImGui::Selectable(name.c_str())) {
-                                                m_pConfig->setOption(p->key, entry.path().string());
-                                                m_hasUnsavedChanges = true;
-                                                g_triggerPreviewReload = true;
-                                                m_showBrowser = false;
-                                            }
-                                        }
-                                    }
-                                }
-                                // Navigate up
-                                if (ImGui::Button(".. (parent)")) {
-                                    std::filesystem::path parent = std::filesystem::path(m_browserDir).parent_path();
-                                    if (!parent.empty()) m_browserDir = parent.string();
-                                }
-                                ImGui::EndChild();
-                            }
-                            break;
-                        }
-                    }
+                    drawParamWidget(p, selectedEffect);
                     ImGui::PopID();
                 }
                 ImGui::Unindent(8.0f);
