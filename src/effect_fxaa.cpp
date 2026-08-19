@@ -1,18 +1,32 @@
 #include "effect_fxaa.hpp"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
+#include <string>
 #include <vector>
+
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
 #include "effect.hpp"
 #include "logical_device.hpp"
-
 #include "shader_sources.hpp"
 
 namespace vkBasalt
 {
+
+    struct FxaaSpecData {
+        float subpix;
+        float edgeThreshold;
+        float edgeThresholdMin;
+        float screenWidth;
+        float screenHeight;
+    };
+
+    #define SPEC(id, field) id, offsetof(FxaaSpecData, field), sizeof(((FxaaSpecData*)0)->field)
+
     FxaaEffect::FxaaEffect(LogicalDevice*       pLogicalDevice,
                            VkFormat             format,
                            VkExtent2D           imageExtent,
@@ -26,61 +40,63 @@ namespace vkBasalt
         // Prevent the pipeline layout from allocating a push constant range, tells SimpleEffect::applyEffect to skip the CmdPushConstants API call.
         this->pushConstantSize = 0;
 
-        float fxaaQualitySubpix           = std::clamp(pConfig->getOption<float>("fxaaQualitySubpix", 0.75f), 0.0f, 1.0f);
-        float fxaaQualityEdgeThreshold    = std::clamp(pConfig->getOption<float>("fxaaQualityEdgeThreshold", 0.125f), 0.0f, 1.0f);
-        float fxaaQualityEdgeThresholdMin = std::clamp(pConfig->getOption<float>("fxaaQualityEdgeThresholdMin", 0.0312f), 0.0f, 1.0f);
+        const auto& params = getParamDescs();
+        FxaaSpecData specData = {};
+        std::vector<VkSpecializationMapEntry> mapEntries;
+        mapEntries.reserve(params.size() + 2);
 
-        m_paramValues["fxaaQualitySubpix"]           = fxaaQualitySubpix;
-        m_paramValues["fxaaQualityEdgeThreshold"]    = fxaaQualityEdgeThreshold;
-        m_paramValues["fxaaQualityEdgeThresholdMin"] = fxaaQualityEdgeThresholdMin;
+        for (const auto& p : params) {
+            if (p.specId < 0) continue;
 
-        std::vector<VkSpecializationMapEntry> specMapEntrys(5);
+            double val;
+            if (p.type == ParamType::Float) {
+                val = (double)pConfig->getOption<float>(p.key, (float)p.defaultVal);
+            } else {
+                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)p.defaultVal);
+            }
 
-        for (uint32_t i = 0; i < specMapEntrys.size(); i++)
-        {
-            specMapEntrys[i].constantID = i;
-            specMapEntrys[i].offset     = sizeof(float) * i;
-            specMapEntrys[i].size       = sizeof(float);
+            val = std::clamp(val, p.minVal, p.maxVal);
+            m_paramValues[p.key] = val;
+
+            if (p.specSize == sizeof(float)) {
+                float f = (float)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+            } else if (p.specSize == sizeof(int32_t)) {
+                int32_t i = (int32_t)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+            }
+
+            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
         }
-        std::vector<float> specData = {
-            fxaaQualitySubpix, fxaaQualityEdgeThreshold, fxaaQualityEdgeThresholdMin, (float) imageExtent.width, (float) imageExtent.height};
+
+        specData.screenWidth  = (float)imageExtent.width;
+        specData.screenHeight = (float)imageExtent.height;
+
+        mapEntries.push_back({3, offsetof(FxaaSpecData, screenWidth),  sizeof(float)});
+        mapEntries.push_back({4, offsetof(FxaaSpecData, screenHeight), sizeof(float)});
+
 
         VkSpecializationInfo fragmentSpecializationInfo;
-        fragmentSpecializationInfo.mapEntryCount = specMapEntrys.size();
-        fragmentSpecializationInfo.pMapEntries   = specMapEntrys.data();
-        fragmentSpecializationInfo.dataSize      = sizeof(float) * specData.size();
-        fragmentSpecializationInfo.pData         = specData.data();
+        fragmentSpecializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        fragmentSpecializationInfo.pMapEntries   = mapEntries.data();
+        fragmentSpecializationInfo.dataSize      = sizeof(FxaaSpecData);
+        fragmentSpecializationInfo.pData         = &specData;
 
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &fragmentSpecializationInfo;
 
         init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
     }
-    
-    FxaaEffect::~FxaaEffect()
-    {
-    }
+
+    FxaaEffect::~FxaaEffect() {}
 
     const std::vector<EffectParamDesc>& FxaaEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"fxaaQualitySubpix",           "Subpixel Smoothing",  ParamType::Float, 0.75,   0.0,  1.0,  0.01, {}, "Anti-Aliasing"},
-            {"fxaaQualityEdgeThreshold",    "Edge Threshold",      ParamType::Float, 0.125,  0.0,  1.0, 0.001, {}, "Anti-Aliasing"},
-            {"fxaaQualityEdgeThresholdMin", "Edge Threshold Min",  ParamType::Float, 0.0312, 0.0,  1.0, 0.001, {}, "Anti-Aliasing"},
+            {"fxaaQualitySubpix",           "Subpixel Smoothing", ParamType::Float, 0.75,   0.0, 1.0, 0.01,  {}, "Anti-Aliasing", SPEC(0, subpix)},
+            {"fxaaQualityEdgeThreshold",    "Edge Threshold",     ParamType::Float, 0.125,  0.0, 1.0, 0.001, {}, "Anti-Aliasing", SPEC(1, edgeThreshold)},
+            {"fxaaQualityEdgeThresholdMin", "Edge Threshold Min", ParamType::Float, 0.0312, 0.0, 1.0, 0.001, {}, "Anti-Aliasing", SPEC(2, edgeThresholdMin)},
         };
         return params;
-    }
-
-    double FxaaEffect::getParam(const std::string& key) const {
-        auto it = m_paramValues.find(key);
-        return (it != m_paramValues.end()) ? it->second : 0.0;
-    }
-
-    bool FxaaEffect::setParam(const std::string& key, double value) {
-        auto it = m_paramValues.find(key);
-        if (it == m_paramValues.end()) return false;
-        if (it->second == value) return false;
-        it->second = value;
-        return true;
     }
 
 } // namespace vkBasalt

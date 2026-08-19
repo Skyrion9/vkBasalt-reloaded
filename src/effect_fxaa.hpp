@@ -1,5 +1,5 @@
-#ifndef EFFECT_FXAA_HPP_INCLUDED
-#define EFFECT_FXAA_HPP_INCLUDED
+#pragma once
+
 #include <vector>
 #include <fstream>
 #include <string>
@@ -28,9 +28,5 @@ namespace vkBasalt
 
         std::string getName() const override { return "fxaa"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
-        double getParam(const std::string& key) const override;
-        bool setParam(const std::string& key, double value) override;
     };
 } // namespace vkBasalt
-
-#endif // EFFECT_FXAA_HPP_INCLUDED
