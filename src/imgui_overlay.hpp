@@ -1,7 +1,11 @@
 #pragma once
+
 #include "vulkan_include.hpp"
+#include "effect.hpp"
+
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
+
 #include <vector>
 #include <algorithm>
 #include <atomic>
@@ -36,6 +40,7 @@ namespace vkBasalt {
         void drawStyleTab();
         void applyKeybind(int field, ImGuiKey key);
         void destroyRenderResources();
+        void resetParamToDefault(Effect* effect, const EffectParamDesc& p);
 
         LogicalDevice* m_pDevice;
         LogicalSwapchain* m_pSwapchain;

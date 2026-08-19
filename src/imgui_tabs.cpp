@@ -108,6 +108,24 @@ namespace vkBasalt {
         return 6;
     }
 
+    void ImGuiOverlay::resetParamToDefault(Effect* effect, const EffectParamDesc& p) {
+        if (p.type == ParamType::Combo) {
+            if (!p.comboOptions.empty()) {
+                m_pConfig->setOption(p.key, p.comboOptions[0]);
+            }
+        } else if (p.type == ParamType::FilePath) {
+            m_pConfig->setOption(p.key, "");
+        } else if (p.type == ParamType::Bool || p.type == ParamType::Int) {
+            effect->setParam(p.key, p.defaultVal);
+            m_pConfig->setOption(p.key, std::to_string((int)p.defaultVal));
+        } else {
+            effect->setParam(p.key, p.defaultVal);
+            std::string vs = std::to_string(p.defaultVal);
+            std::replace(vs.begin(), vs.end(), ',', '.');
+            m_pConfig->setOption(p.key, vs);
+        }
+    }
+
     void ImGuiOverlay::drawShadersTab() {
         if (!m_pSwapchain) { ImGui::Text("No swapchain."); return; }
         ImGui::BeginChild("##shader_list", ImVec2(260, 0), true);
@@ -311,23 +329,7 @@ namespace vkBasalt {
             ImGui::SameLine(ImGui::GetContentRegionAvail().x - resetWidth);
             if (ImGui::Button("Reset to Default")) {
                 const auto& resetParams = selectedEffect->getParamDescs();
-                for (const auto& p : resetParams) {
-                    if (p.type == ParamType::Combo) {
-                        if (!p.comboOptions.empty()) {
-                            m_pConfig->setOption(p.key, p.comboOptions[0]);
-                        }
-                    } else if (p.type == ParamType::FilePath) {
-                        m_pConfig->setOption(p.key, "");
-                    } else if (p.type == ParamType::Bool || p.type == ParamType::Int) {
-                        selectedEffect->setParam(p.key, p.defaultVal);
-                        m_pConfig->setOption(p.key, std::to_string((int)p.defaultVal));
-                    } else {
-                        selectedEffect->setParam(p.key, p.defaultVal);
-                        std::string vs = std::to_string(p.defaultVal);
-                        std::replace(vs.begin(), vs.end(), ',', '.');
-                        m_pConfig->setOption(p.key, vs);
-                    }
-                }
+                for (const auto& p : resetParams) resetParamToDefault(selectedEffect, p);
                 m_hasUnsavedChanges = true;
                 g_triggerPreviewReload = true;
             }
@@ -429,21 +431,7 @@ namespace vkBasalt {
                     auto paramContextMenu = [&]() {
                         if (ImGui::BeginPopupContextItem()) {
                             if (ImGui::MenuItem("Reset to Default")) {
-                                if (p->type == ParamType::Combo) {
-                                    if (!p->comboOptions.empty()) {
-                                        m_pConfig->setOption(p->key, p->comboOptions[0]);
-                                    }
-                                } else if (p->type == ParamType::Bool || p->type == ParamType::Int) {
-                                    selectedEffect->setParam(p->key, p->defaultVal);
-                                    m_pConfig->setOption(p->key, std::to_string((int)p->defaultVal));
-                                } else if (p->type == ParamType::FilePath) {
-                                    m_pConfig->setOption(p->key, "");
-                                } else {
-                                    selectedEffect->setParam(p->key, p->defaultVal);
-                                    std::string vs = std::to_string(p->defaultVal);
-                                    std::replace(vs.begin(), vs.end(), ',', '.');
-                                    m_pConfig->setOption(p->key, vs);
-                                }
+                                resetParamToDefault(selectedEffect, *p);
                                 m_hasUnsavedChanges = true;
                                 g_triggerPreviewReload = true;
                             }
