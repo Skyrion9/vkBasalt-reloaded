@@ -891,21 +891,25 @@ namespace vkBasalt {
             m_pConfig->setGlobalOption("themeBg", rgbToHex(bg[0], bg[1], bg[2]));
             themeChanged = true;
         }
+
         if (ImGui::ColorEdit3("Accent Color", accent)) {
             m_pConfig->setGlobalOption("themeAccent", rgbToHex(accent[0], accent[1], accent[2]));
             themeChanged = true;
         }
+
         if (ImGui::ColorEdit3("Text Color", text)) {
             m_pConfig->setGlobalOption("themeText", rgbToHex(text[0], text[1], text[2]));
             themeChanged = true;
         }
         ImGui::Spacing();
+
         if (ImGui::SliderFloat("Background Opacity", &bgAlpha, 0.30f, 1.0f, "%.2f")) {
-            m_pConfig->setGlobalOption("themeBgAlpha", std::to_string(bgAlpha));
+            m_pConfig->setGlobalOption("themeBgAlpha", doubleToConfigString(bgAlpha));
             themeChanged = true;
         }
+
         if (ImGui::SliderFloat("Frame Rounding", &rounding, 0.0f, 12.0f, "%.1f")) {
-            m_pConfig->setGlobalOption("themeRounding", std::to_string(rounding));
+            m_pConfig->setGlobalOption("themeRounding", doubleToConfigString(rounding));
             themeChanged = true;
         }
 
@@ -917,6 +921,7 @@ namespace vkBasalt {
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
+    
         if (ImGui::Button("Reset to Default Theme")) {
             m_pConfig->setGlobalOption("themeBg", "1a0d33");
             m_pConfig->setGlobalOption("themeAccent", "47bf59");
