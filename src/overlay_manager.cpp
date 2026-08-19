@@ -50,11 +50,10 @@ namespace vkBasalt {
     bool OverlayManager::renderOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
                                        VkSwapchainKHR swapchain, uint32_t imageIndex) {
         auto overlayIt = m_overlayMap.find(swapchain);
-        if (overlayIt == m_overlayMap.end() || !overlayIt->second || !overlayIt->second->isOverlayOpen()) {
+        if (overlayIt == m_overlayMap.end() || !overlayIt->second) {
             return false;
         }
 
-        Logger::debug("Overlay is OPEN. Recording and submitting overlay command buffer...");
         VkCommandBuffer overlayCmdBuf = m_commandBuffersMap[swapchain][imageIndex];
         pDevice->vkd.ResetCommandBuffer(overlayCmdBuf, 0);
 
@@ -63,9 +62,12 @@ namespace vkBasalt {
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         pDevice->vkd.BeginCommandBuffer(overlayCmdBuf, &beginInfo);
 
-        VkFormat unormFormat = convertToUNORM(pSwapchain->format);
-        overlayIt->second->processFrame(overlayCmdBuf, imageIndex, unormFormat,
-                                        pSwapchain->imageExtent.width, pSwapchain->imageExtent.height);
+        // Only record ImGui draw commands if the overlay is actually open. When closed, we submit an empty command buffer to keep the semaphore sync chain consistent and prevent orphaned signaled semaphores.
+        if (overlayIt->second->isOverlayOpen()) {
+            VkFormat unormFormat = convertToUNORM(pSwapchain->format);
+            overlayIt->second->processFrame(overlayCmdBuf, imageIndex, unormFormat,
+                                            pSwapchain->imageExtent.width, pSwapchain->imageExtent.height);
+        }
 
         pDevice->vkd.EndCommandBuffer(overlayCmdBuf);
 
@@ -88,6 +90,7 @@ namespace vkBasalt {
     }
 
     void OverlayManager::destroyOverlay(LogicalDevice* pDevice, VkSwapchainKHR swapchain) {
+
         auto it = m_overlayMap.find(swapchain);
         if (it != m_overlayMap.end() && it->second) {
             m_lastOverlayOpenState = it->second->isOverlayOpen();
