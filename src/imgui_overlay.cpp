@@ -431,12 +431,12 @@ namespace vkBasalt {
 
         // Persist width on resize
         float currentWidth = ImGui::GetWindowWidth();
-        static float lastWidth = 0.0f;
-        if (lastWidth > 0.0f && std::fabs(currentWidth - lastWidth) > 1.0f) {
-            m_pConfig->setGlobalOption("overlayWidth", std::to_string(currentWidth));
+
+        if (m_lastWidth > 0.0f && std::fabs(currentWidth - m_lastWidth) > 1.0f) {
+            m_pConfig->setGlobalOption("overlayWidth", doubleToConfigString(currentWidth));
             m_pConfig->saveGlobal();
         }
-        lastWidth = currentWidth;
+        m_lastWidth = currentWidth;
 
         // Edge Snapping for ImGui window placement
         ImVec2 currentPos = ImGui::GetWindowPos();

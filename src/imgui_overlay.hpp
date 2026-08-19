@@ -60,6 +60,7 @@ namespace vkBasalt {
         float m_cursorScale = 1.0f;
         float m_uiScale     = 1.0f;
         float m_fontScale   = 1.0f;
+        float m_lastWidth = 0.0f;
         VkFormat m_format = VK_FORMAT_UNDEFINED;
         size_t m_selectedEffectIndex = 0;
         char m_searchFilter[256] = {};
