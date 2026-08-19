@@ -1,19 +1,39 @@
 #include "effect_deband.hpp"
+
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <string>
 #include <vector>
+
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
 #include "effect.hpp"
+#include "effect_simple.hpp"
 #include "logical_device.hpp"
 #include "format.hpp"
 #include "shader_sources.hpp"
 
 namespace vkBasalt
 {
+
+    struct DebandSpecData {
+        float   screenWidth;
+        float   screenHeight;
+        float   reverseScreenWidth;
+        float   reverseScreenHeight;
+        float   debandAvgdiff;
+        float   debandMaxdiff;
+        float   debandMiddiff;
+        float   range;
+        int32_t iterations;
+        int32_t hdrMode;
+    };
+
+    #define SPEC(id, field) id, offsetof(DebandSpecData, field), sizeof(((DebandSpecData*)0)->field)
+
     DebandEffect::DebandEffect(LogicalDevice*       pLogicalDevice,
                                VkFormat             format,
                                VkExtent2D           imageExtent,
@@ -31,20 +51,8 @@ namespace vkBasalt
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
-        struct DebandSpecData {
-            float   screenWidth;
-            float   screenHeight;
-            float   reverseScreenWidth;
-            float   reverseScreenHeight;
-            float   debandAvgdiff;
-            float   debandMaxdiff;
-            float   debandMiddiff;
-            float   range;
-            int32_t iterations;
-            int32_t hdrMode;
-        };
+        DebandSpecData specData = {};
 
-        DebandSpecData specData{};
         specData.screenWidth         = (float)imageExtent.width;
         specData.screenHeight        = (float)imageExtent.height;
         specData.reverseScreenWidth  = 1.0f / imageExtent.width;
@@ -56,12 +64,13 @@ namespace vkBasalt
         specData.iterations          = std::clamp(pConfig->getOption<int32_t>("debandIterations", 4), 1, 8);
         specData.hdrMode             = isHDR ? 1 : 0;
 
-        m_paramValues["debandAvgdiff"]   = specData.debandAvgdiff;
-        m_paramValues["debandMaxdiff"]   = specData.debandMaxdiff;
-        m_paramValues["debandMiddiff"]   = specData.debandMiddiff;
-        m_paramValues["debandRange"]     = specData.range;
+        m_paramValues["debandAvgdiff"]    = specData.debandAvgdiff;
+        m_paramValues["debandMaxdiff"]    = specData.debandMaxdiff;
+        m_paramValues["debandMiddiff"]    = specData.debandMiddiff;
+        m_paramValues["debandRange"]      = specData.range;
         m_paramValues["debandIterations"] = specData.iterations;
 
+        // mapEntries must be a stack allocated C-array. std::vector causes GPU hangs on AMD RADV when specialization constants are used as shader iteration/loop bounds.
         VkSpecializationMapEntry mapEntries[] = {
             {0, offsetof(DebandSpecData, screenWidth),         sizeof(float)},
             {1, offsetof(DebandSpecData, screenHeight),        sizeof(float)},
@@ -91,11 +100,11 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& DebandEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"debandAvgdiff",   "Avg Diff Threshold",  ParamType::Float, 3.4,  0.0, 20.0, 0.1},
-            {"debandMaxdiff",   "Max Diff Threshold",  ParamType::Float, 6.8,  0.0, 40.0, 0.1},
-            {"debandMiddiff",   "Mid Diff Threshold",  ParamType::Float, 3.3,  0.0, 20.0, 0.1},
-            {"debandRange",     "Range",               ParamType::Float, 16.0, 1.0, 64.0, 1.0},
-            {"debandIterations","Iterations",          ParamType::Int,   4.0,  1.0,  8.0, 1.0},
+            {"debandAvgdiff",    "Avg Diff Threshold", ParamType::Float, 3.4,  0.0, 20.0, 0.1, {}, "Debanding", SPEC(4, debandAvgdiff)},
+            {"debandMaxdiff",    "Max Diff Threshold", ParamType::Float, 6.8,  0.0, 40.0, 0.1, {}, "Debanding", SPEC(5, debandMaxdiff)},
+            {"debandMiddiff",    "Mid Diff Threshold", ParamType::Float, 3.3,  0.0, 20.0, 0.1, {}, "Debanding", SPEC(6, debandMiddiff)},
+            {"debandRange",      "Range",              ParamType::Float, 16.0, 1.0, 64.0, 1.0, {}, "Debanding", SPEC(7, range)},
+            {"debandIterations", "Iterations",         ParamType::Int,   4.0,  1.0,  8.0, 1.0, {}, "Debanding", SPEC(8, iterations)},
         };
         return params;
     }
