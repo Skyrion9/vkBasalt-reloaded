@@ -550,9 +550,7 @@ namespace vkBasalt {
                             for (const auto& p : params) {
                                 if (p.type == ParamType::Combo) continue;
                                 double val = eff->getParam(p.key);
-                                std::string valStr = std::to_string(val);
-                                std::replace(valStr.begin(), valStr.end(), ',', '.');
-                                m_pConfig->setOption(p.key, valStr);
+                                m_pConfig->setOption(p.key, doubleToConfigString(val));
                             }
                             break;
                         }
