@@ -46,6 +46,7 @@ namespace vkBasalt {
         LogicalSwapchain* m_pSwapchain;
         Config* m_pConfig;
 
+        static std::string doubleToConfigString(double val);
         std::atomic<bool> m_isOpen{false};
         bool m_isInitialized = false;
         bool m_justOpened = false;

@@ -64,6 +64,12 @@ namespace vkBasalt {
         }
     }
 
+    std::string ImGuiOverlay::doubleToConfigString(double val) {
+        std::string s = std::to_string(val);
+        std::replace(s.begin(), s.end(), ',', '.');
+        return s;
+    }
+
     static const char* kBuiltInEffects[] = {
         "fxaa", "cas", "deband", "smaa", "lut", "dls",
         "clarity", "clarityrcas", "crystalclear"
@@ -457,9 +463,7 @@ namespace vkBasalt {
                             if (changed) {
                                 val = std::clamp(val, (float)p->minVal, (float)p->maxVal);
                                 selectedEffect->setParam(p->key, (double)val);
-                                std::string vs = std::to_string((double)val);
-                                std::replace(vs.begin(), vs.end(), ',', '.');
-                                m_pConfig->setOption(p->key, vs);
+                                m_pConfig->setOption(p->key, doubleToConfigString(val));
                                 m_hasUnsavedChanges = true;
                                 m_previewDirty = true;
                                 m_lastChangeTime = ImGui::GetTime();
@@ -619,9 +623,7 @@ namespace vkBasalt {
         ImGui::PushItemWidth(200);
         if (ImGui::InputFloat("##cursorScale", &cursorScale, 0.05f, 0.25f, "%.2f")) {
             if (cursorScale < 0.0f) cursorScale = 0.0f;
-            std::string v = std::to_string(cursorScale);
-            std::replace(v.begin(), v.end(), ',', '.');
-            m_pConfig->setOption("cursorScale", v);
+            m_pConfig->setOption("cursorScale", doubleToConfigString(cursorScale));
         }
         ImGui::PopItemWidth();
         ImGui::Spacing();
@@ -634,9 +636,7 @@ namespace vkBasalt {
         ImGui::PushItemWidth(200);
         if (ImGui::InputFloat("##uiScale", &uiScale, 0.05f, 0.25f, "%.2f")) {
             if (uiScale < 0.0f) uiScale = 0.0f;
-            std::string v = std::to_string(uiScale);
-            std::replace(v.begin(), v.end(), ',', '.');
-            m_pConfig->setOption("uiScale", v);
+            m_pConfig->setOption("uiScale", doubleToConfigString(uiScale));
         }
         ImGui::PopItemWidth();
         ImGui::Spacing();
@@ -649,9 +649,7 @@ namespace vkBasalt {
         ImGui::PushItemWidth(200);
         if (ImGui::InputFloat("##fontScale", &fontScale, 0.05f, 0.25f, "%.2f")) {
             if (fontScale < 0.0f) fontScale = 0.0f;
-            std::string v = std::to_string(fontScale);
-            std::replace(v.begin(), v.end(), ',', '.');
-            m_pConfig->setOption("fontScale", v);
+            m_pConfig->setOption("fontScale", doubleToConfigString(fontScale));
         }
         ImGui::PopItemWidth();
         ImGui::Spacing();
@@ -846,9 +844,7 @@ namespace vkBasalt {
                             for (const auto& p : params) {
                                 if (p.type == ParamType::Combo) continue;
                                 double val = eff->getParam(p.key);
-                                std::string valStr = std::to_string(val);
-                                std::replace(valStr.begin(), valStr.end(), ',', '.');
-                                m_pConfig->setOption(p.key, valStr);
+                                m_pConfig->setOption(p.key, doubleToConfigString(val));
                             }
                             break;
                         }
