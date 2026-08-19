@@ -31,6 +31,7 @@ vkBasalt_src = [
     'overlay_manager.cpp',
     'imgui_tabs.cpp',
     'imgui_style_tab.cpp',
+    'imgui_presets_tab.cpp',
     'imgui_theme.cpp',
     'game_detect.cpp',
     'keyboard_input.cpp',
