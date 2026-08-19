@@ -27,6 +27,12 @@ namespace vkBasalt {
     VkDescriptorPool ImGuiOverlay::s_descriptorPool = VK_NULL_HANDLE;
     int ImGuiOverlay::s_instanceCount = 0;
 
+    std::string ImGuiOverlay::doubleToConfigString(double val) {
+        std::string s = std::to_string(val);
+        std::replace(s.begin(), s.end(), ',', '.');
+        return s;
+    }
+
     ImGuiOverlay::ImGuiOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, Config* pConfig)
         : m_pDevice(pDevice), m_pSwapchain(pSwapchain), m_pConfig(pConfig) {
         s_instanceCount++;
