@@ -716,10 +716,68 @@ namespace vkBasalt
         }
     }
 
+    static void bindTrackedDepthImage(LogicalDevice* pLogicalDevice, VkImage image)
+    {
+        auto it = std::find(pLogicalDevice->depthImages.begin(), pLogicalDevice->depthImages.end(), image);
+        if (it == pLogicalDevice->depthImages.end()) return;
+
+        size_t index = std::distance(pLogicalDevice->depthImages.begin(), it);
+
+        if (pLogicalDevice->depthImageViews.size() <= index) {
+            pLogicalDevice->depthImageViews.resize(index + 1, VK_NULL_HANDLE);
+        }
+
+        if (pLogicalDevice->depthImageViews[index] != VK_NULL_HANDLE) return;
+
+        VkFormat depthFormat = pLogicalDevice->depthFormats[index];
+        VkImageView depthImageView = createImageViews(pLogicalDevice,
+                                                    depthFormat,
+                                                    {image},
+                                                    VK_IMAGE_VIEW_TYPE_2D,
+                                                    VK_IMAGE_ASPECT_DEPTH_BIT)[0];
+        pLogicalDevice->depthImageViews[index] = depthImageView;
+
+        // Only re-record for the first valid depth buffer
+        bool isFirstDepthBuffer = true;
+        for (size_t i = 0; i < index; ++i) {
+            if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE) {
+                isFirstDepthBuffer = false;
+                break;
+            }
+        }
+        if (isFirstDepthBuffer) {
+            rerecordAllCommandBuffers(pLogicalDevice, image, depthImageView, depthFormat);
+        }
+    }
+
+    static void untrackDepthImage(LogicalDevice* pLogicalDevice, VkImage image)
+    {
+        for (uint32_t i = 0; i < pLogicalDevice->depthImages.size(); i++) {
+            if (pLogicalDevice->depthImages[i] != image) continue;
+
+            pLogicalDevice->depthImages.erase(pLogicalDevice->depthImages.begin() + i);
+
+            if (i < pLogicalDevice->depthImageViews.size()) {
+                if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE) {
+                    pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, pLogicalDevice->depthImageViews[i], nullptr);
+                }
+                pLogicalDevice->depthImageViews.erase(pLogicalDevice->depthImageViews.begin() + i);
+            }
+            pLogicalDevice->depthFormats.erase(pLogicalDevice->depthFormats.begin() + i);
+
+            VkImageView depthImageView = pLogicalDevice->depthImageViews.empty() ? VK_NULL_HANDLE : pLogicalDevice->depthImageViews[0];
+            VkImage     depthImage     = pLogicalDevice->depthImages.empty()     ? VK_NULL_HANDLE : pLogicalDevice->depthImages[0];
+            VkFormat    depthFormat    = pLogicalDevice->depthFormats.empty()    ? VK_FORMAT_UNDEFINED : pLogicalDevice->depthFormats[0];
+
+            rerecordAllCommandBuffers(pLogicalDevice, depthImage, depthImageView, depthFormat);
+            return;
+        }
+    }
+
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateImage(VkDevice                     device,
-                                                         const VkImageCreateInfo*     pCreateInfo,
-                                                         const VkAllocationCallbacks* pAllocator,
-                                                         VkImage*                     pImage)
+                                                        const VkImageCreateInfo*     pCreateInfo,
+                                                        const VkAllocationCallbacks* pAllocator,
+                                                        VkImage*                     pImage)
     {
         scoped_lock l(globalLock);
 
@@ -753,49 +811,7 @@ namespace vkBasalt
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
 
         VkResult result = pLogicalDevice->vkd.BindImageMemory(device, image, memory, memoryOffset);
-        
-        // Fixed: Search for the image in depthImages to handle cases where multiple images are created before binding
-        auto it = std::find(pLogicalDevice->depthImages.begin(), pLogicalDevice->depthImages.end(), image);
-        if (it != pLogicalDevice->depthImages.end())
-        {
-            size_t index = std::distance(pLogicalDevice->depthImages.begin(), it);
-            
-            // Ensure the view vector is large enough
-            if (pLogicalDevice->depthImageViews.size() <= index) {
-                pLogicalDevice->depthImageViews.resize(index + 1, VK_NULL_HANDLE);
-            }
-
-            // Only create the view if we haven't already
-            if (pLogicalDevice->depthImageViews[index] == VK_NULL_HANDLE)
-            {
-                Logger::debug("before creating depth image view");
-                VkFormat depthFormat = pLogicalDevice->depthFormats[index];
-
-                VkImageView depthImageView = createImageViews(pLogicalDevice,
-                                                                depthFormat,
-                                                                {image},
-                                                                VK_IMAGE_VIEW_TYPE_2D,
-                                                                VK_IMAGE_ASPECT_DEPTH_BIT)[0];
-
-                Logger::debug("created depth image view");
-                pLogicalDevice->depthImageViews[index] = depthImageView;
-
-                // The original code only re-recorded command buffers for the first depth buffer.
-                // We preserve this behavior by checking if this is the first valid view.
-                bool isFirstDepthBuffer = true;
-                for(size_t i = 0; i < index; ++i) {
-                    if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE) {
-                        isFirstDepthBuffer = false;
-                        break;
-                    }
-                }
-
-                if (isFirstDepthBuffer)
-                {
-                    rerecordAllCommandBuffers(pLogicalDevice, image, depthImageView, depthFormat);
-                }
-            }
-        }
+        bindTrackedDepthImage(pLogicalDevice, image);
         return result;
     }
 
@@ -803,39 +819,10 @@ namespace vkBasalt
     {
         if (!image)
             return;
-
         scoped_lock l(globalLock);
-
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
 
-        for (uint32_t i = 0; i < pLogicalDevice->depthImages.size(); i++)
-        {
-            if (pLogicalDevice->depthImages[i] == image)
-            {
-                pLogicalDevice->depthImages.erase(pLogicalDevice->depthImages.begin() + i);
-                
-                // Fixed: Safer bounds check and null check
-                if (i < pLogicalDevice->depthImageViews.size())
-                {
-                    if (pLogicalDevice->depthImageViews[i] != VK_NULL_HANDLE)
-                    {
-                        pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, pLogicalDevice->depthImageViews[i], nullptr);
-                    }
-                    pLogicalDevice->depthImageViews.erase(pLogicalDevice->depthImageViews.begin() + i);
-                }
-                
-                pLogicalDevice->depthFormats.erase(pLogicalDevice->depthFormats.begin() + i);
-
-                VkImageView depthImageView = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImageViews[0] : VK_NULL_HANDLE;
-                VkImage     depthImage     = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImages[0] : VK_NULL_HANDLE;
-                VkFormat    depthFormat    = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthFormats[0] : VK_FORMAT_UNDEFINED;
-                
-                rerecordAllCommandBuffers(pLogicalDevice, depthImage, depthImageView, depthFormat);
-                
-                break; 
-            }
-        }
-
+        untrackDepthImage(pLogicalDevice, image);
         pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, image, pAllocator);
     }
 
