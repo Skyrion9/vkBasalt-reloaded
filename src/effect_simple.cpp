@@ -21,6 +21,17 @@ namespace vkBasalt
 {
     SimpleEffect::SimpleEffect()
     {
+        graphicsPipeline                = VK_NULL_HANDLE;
+        pipelineLayout                  = VK_NULL_HANDLE;
+        renderPass                      = VK_NULL_HANDLE;
+        imageSamplerDescriptorSetLayout = VK_NULL_HANDLE;
+        vertexModule                    = VK_NULL_HANDLE;
+        fragmentModule                  = VK_NULL_HANDLE;
+        descriptorPool                  = VK_NULL_HANDLE;
+        sampler                         = VK_NULL_HANDLE;
+        uniformBuffer                   = VK_NULL_HANDLE;
+        uniformMemory                   = VK_NULL_HANDLE;
+        mappedUniform                   = nullptr;
     }
     
     void SimpleEffect::init(LogicalDevice*       pLogicalDevice,
@@ -273,23 +284,6 @@ namespace vkBasalt
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 0, 0, nullptr, 0, nullptr, 1, &thirdBarrier);
         }
-    }
-
-    double SimpleEffect::getParam(const std::string& key) const {
-        auto it = m_paramValues.find(key);
-        if (it != m_paramValues.end())
-            return it->second;
-        return 0.0;
-    }
-
-    bool SimpleEffect::setParam(const std::string& key, double value) {
-        auto it = m_paramValues.find(key);
-        if (it == m_paramValues.end())
-            return false;
-        if (it->second == value)
-            return false;
-        it->second = value;
-        return true;
     }
     
     SimpleEffect::~SimpleEffect()

@@ -22,6 +22,9 @@ namespace vkBasalt
         double      step;
         std::vector<std::string> comboOptions;
         std::string category; // optional, empty auto-detects.
+        int32_t specId = -1;
+        size_t  specOffset = 0;
+        size_t  specSize = 0;
     };
 
     class Effect
@@ -47,13 +50,24 @@ namespace vkBasalt
         }
 
         // Gets current live value of a parameter by key.
-        virtual double getParam(const std::string& key) const { return 0.0; }
+        virtual double getParam(const std::string& key) const {
+            auto it = m_paramValues.find(key);
+            return (it != m_paramValues.end()) ? it->second : 0.0;
+        }
 
-        virtual bool setParam(const std::string& key, double value) { return false; }
+        virtual bool setParam(const std::string& key, double value) {
+            auto it = m_paramValues.find(key);
+            if (it == m_paramValues.end()) return false;
+            if (it->second == value) return false;
+            it->second = value;
+            return true;
+        }
 
     protected:
         bool isFirstInChain = false;
         bool isLastInChain = false;
+        
+        std::unordered_map<std::string, double> m_paramValues;
 
     private:
     };
