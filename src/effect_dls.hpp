@@ -1,14 +1,13 @@
 #pragma once
+
 #include <vector>
 #include <fstream>
 #include <string>
 #include <iostream>
-#include <vector>
 #include <unordered_map>
 #include <memory>
 
 #include "vulkan_include.hpp"
-
 #include "effect_simple.hpp"
 #include "config.hpp"
 

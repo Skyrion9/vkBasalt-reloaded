@@ -1,9 +1,12 @@
 #include "effect_dls.hpp"
+
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <string>
 #include <vector>
+
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
@@ -14,6 +17,15 @@
 
 namespace vkBasalt
 {
+
+    struct DlsSpecData {
+        float sharpen;
+        float denoise;
+        int32_t hdrMode;
+    };
+
+    #define SPEC(id, field) id, offsetof(DlsSpecData, field), sizeof(((DlsSpecData*)0)->field)
+
     DlsEffect::DlsEffect(LogicalDevice*       pLogicalDevice,
                          VkFormat             format,
                          VkExtent2D           imageExtent,
@@ -31,29 +43,41 @@ namespace vkBasalt
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
-        struct DlsSpecData {
-            float sharpen;
-            float denoise;
-            int32_t hdrMode;
-        };
+        const auto& params = getParamDescs();
+        DlsSpecData specData = {};
+        std::vector<VkSpecializationMapEntry> mapEntries;
+        mapEntries.reserve(params.size());
 
-        DlsSpecData specData;
-        specData.sharpen  = std::clamp(pConfig->getOption<float>("dlsSharpness", 0.5f), 0.0f, 1.0f);
-        specData.denoise  = std::clamp(pConfig->getOption<float>("dlsDenoise", 0.17f), 0.0f, 1.0f);
-        specData.hdrMode  = isHDR ? 1 : 0;
+        for (const auto& p : params) {
+            if (p.specId < 0) continue;
 
-        m_paramValues["dlsSharpness"] = specData.sharpen;
-        m_paramValues["dlsDenoise"]   = specData.denoise;
+            double val;
+            if (p.type == ParamType::Float) {
+                val = (double)pConfig->getOption<float>(p.key, (float)p.defaultVal);
+            } else {
+                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)p.defaultVal);
+            }
 
-        VkSpecializationMapEntry mapEntries[] = {
-            {0, offsetof(DlsSpecData, sharpen),  sizeof(float)},
-            {1, offsetof(DlsSpecData, denoise),  sizeof(float)},
-            {2, offsetof(DlsSpecData, hdrMode),  sizeof(int32_t)}
-        };
+            val = std::clamp(val, p.minVal, p.maxVal);
+            m_paramValues[p.key] = val;
+
+            if (p.specSize == sizeof(float)) {
+                float f = (float)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+            } else if (p.specSize == sizeof(int32_t)) {
+                int32_t i = (int32_t)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+            }
+
+            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+        }
+
+        specData.hdrMode = isHDR ? 1 : 0;
+        mapEntries.push_back({2, offsetof(DlsSpecData, hdrMode), sizeof(int32_t)});
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(DlsSpecData);
         specializationInfo.pData         = &specData;
 
@@ -67,10 +91,11 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& DlsEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"dlsSharpness", "Sharpness", ParamType::Float, 0.5,  0.0, 1.0, 0.01},
-            {"dlsDenoise",   "Denoise",   ParamType::Float, 0.17, 0.0, 1.0, 0.01},
+            {"dlsSharpness", "Sharpness", ParamType::Float, 0.5,  0.0, 1.0, 0.01, {}, "Sharpening", SPEC(0, sharpen)},
+            {"dlsDenoise",   "Denoise",   ParamType::Float, 0.17, 0.0, 1.0, 0.01, {}, "Denoising",  SPEC(1, denoise)},
         };
         return params;
     }
+
 
 } // namespace vkBasalt
