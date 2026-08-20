@@ -486,9 +486,9 @@ namespace vkBasalt
              SPEC(7, casStrength)},
 
             {.key = "crystalclearLocalContrastStrength", .label = "Local Contrast", .type = ParamType::Float,
-             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 2.0, .step = 0.05,
+             .defaultVal = 2.0, .minVal = 0.0, .maxVal = 2.0, .step = 0.05,
              .category = "Sharpening & Contrast",
-             .tooltip = "Wide-radius local contrast boost. Compares pixel to a large-area blur to enhance macro structure. Disabled on High and below (requires step2 wide fetches). Default 0.0 (off).",
+             .tooltip = "Wide-radius local contrast boost. Compares pixel to a large-area blur to enhance macro structure. Disabled on High and below (requires step2 wide fetches). Default 2.0 (max).",
              SPEC(41, localContrastStrength)},
 
             // Anti-Aliasing (FXAA)
@@ -670,9 +670,9 @@ namespace vkBasalt
 
             // Color & Tone
             {.key = "crystalclearVibrance", .label = "Vibrance", .type = ParamType::Float,
-             .defaultVal = 0.0, .minVal = -1.0, .maxVal = 1.0, .step = 0.05,
+             .defaultVal = 0.3, .minVal = -1.0, .maxVal = 1.0, .step = 0.05,
              .category = "Color & Tone",
-             .tooltip = "Intelligent saturation that boosts muted colors more than already-saturated ones. Positive = more vibrant, negative = desaturate. 0 = off. Default 0.0.",
+             .tooltip = "Intelligent saturation that boosts muted colors more than already-saturated ones. Positive = more vibrant, negative = desaturate. 0 = off. Default 0.3.",
              SPEC(34, vibrance)},
 
             {.key = "crystalclearSaturation", .label = "Saturation", .type = ParamType::Float,
