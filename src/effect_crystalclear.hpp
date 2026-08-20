@@ -30,6 +30,8 @@ namespace vkBasalt
         // Declarative parameter interface
         std::string getName() const override { return "crystalclear"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
+
+        int minQualityForParam(const std::string& key) const override;
         
     private:
         float radius;

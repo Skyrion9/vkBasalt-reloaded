@@ -55,6 +55,9 @@ namespace vkBasalt
             return (it != m_paramValues.end()) ? it->second : 0.0;
         }
 
+        // Returns the maximum quality level at which a parameter is active. If current quality level > returned value, the param is disabled in UI. Default 4 = always active (iGPU minimum). Effects override as needed.
+        virtual int minQualityForParam(const std::string& key) const { return 4; }
+
         virtual bool setParam(const std::string& key, double value) {
             auto it = m_paramValues.find(key);
             if (it == m_paramValues.end()) return false;

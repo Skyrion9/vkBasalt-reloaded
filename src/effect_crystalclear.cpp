@@ -97,7 +97,7 @@ namespace vkBasalt
         float whiteClip;
         int32_t enableCheckerboardFix;
         float checkerboardStrength;
-        int32_t liteMode;
+        int32_t qualityLevel;
     };
 
     #define SPEC(id, field) id, offsetof(CrystalClearSpecData, field), sizeof(((CrystalClearSpecData*)0)->field)
@@ -240,7 +240,14 @@ namespace vkBasalt
             }
 
             double val;
-            if (p.type == ParamType::Float) {
+            if (p.type == ParamType::Combo) {
+                std::string strVal = pConfig->getOption<std::string>(p.key, "");
+                int idx = 0;
+                for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
+                    if (p.comboOptions[ci] == strVal) { idx = (int)ci; break; }
+                }
+                val = (double)idx;
+            } else if (p.type == ParamType::Float) {
                 val = (double)pConfig->getOption<float>(p.key, (float)def);
             } else {
                 val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)def);
@@ -263,14 +270,6 @@ namespace vkBasalt
 
         specData.hdrMode = isHDR ? 1 : 0;
         mapEntries.push_back({29, offsetof(CrystalClearSpecData, hdrMode), sizeof(int32_t)});
-
-        // Lite mode disable expensive features at the spec constant level. The compiler strips these blocks entirely from the compiled shader.
-        if (specData.liteMode == 1) {
-            specData.enableFilmGrain = 0;
-            specData.enableDithering = 0;
-            specData.enableRGBEdgeDetection = 0;
-            specData.shimmerReduction = 0.0f;
-        }
 
         this->radius = specData.radius;
         this->offset = specData.offset;
@@ -381,6 +380,33 @@ namespace vkBasalt
         }
     }
 
+    int CrystalClearEffect::minQualityForParam(const std::string& key) const {
+        // Parameters disabled below certain quality levels. Returns the MAXIMUM qualityLevel at which the param is still active. If current qualityLevel > returned value, the param is disabled.
+        static const std::unordered_map<std::string, int> thresholds = {
+            // Perfect only (qualityLevel == 0)
+            {"crystalclearEnableRGBEdgeDetection", 0},
+            {"crystalclearEnableFringeFix",        0},
+            {"crystalclearFringeStrength",         0},
+            // Ultra+ (qualityLevel <= 1)
+            {"crystalclearLocalContrastStrength",  1},
+            // High+ (qualityLevel <= 2)
+            {"crystalclearEnableCheckerboardFix",  2},
+            {"crystalclearCheckerboardStrength",   2},
+            {"crystalclearEnableDespeckle",        2},
+            {"crystalclearDespeckleThreshold",     2},
+            // Medium+ (qualityLevel <= 3)
+            {"crystalclearShimmerReduction",       3},
+            {"crystalclearEnableFilmGrain",        3},
+            {"crystalclearFilmGrainStrength",      3},
+            {"crystalclearFilmGrainMinimum",       3},
+            {"crystalclearFineGrainWeight",        3},
+            {"crystalclearCoarseGrainWeight",      3},
+        };
+        auto it = thresholds.find(key);
+        if (it != thresholds.end()) return it->second;
+        return 4; // Always active at all quality levels
+    }
+
     // Declarative parameter interface
     const std::vector<EffectParamDesc>& CrystalClearEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
@@ -388,7 +414,9 @@ namespace vkBasalt
             {"crystalclearPreset", "Preset", ParamType::Combo, 0.0, 0.0, 0.0, 0.0,
             {"devfav", "esports", "artifactless", "maxsharp", "vibrantsharp", "devfxaa", "cinematic", "film", "vivid", "noir"},
             "Presets & Performance", -1, 0, 0},
-            {"crystalclearLiteMode", "Lite Mode (iGPU)", ParamType::Bool, 0.0, 0.0, 1.0, 1.0, {}, "Presets & Performance", SPEC(72, liteMode)},
+            {"crystalclearQualityLevel", "Quality Level", ParamType::Combo, 0.0, 0.0, 4.0, 1.0,
+            {"Perfect", "Ultra", "High", "Medium", "iGPU"},
+            "Presets & Performance", SPEC(72, qualityLevel)},
 
             // Sharpening & Contrast
             {"crystalclearBilateralRadius", "Bilateral Radius", ParamType::Float, 2.5, 0.5, 8.0, 0.1, {}, "Sharpening & Contrast", SPEC(0, radius)},

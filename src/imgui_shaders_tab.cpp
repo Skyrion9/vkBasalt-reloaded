@@ -157,6 +157,7 @@ namespace vkBasalt {
                     for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
                         bool is_sel = (currentIdx == (int)ci);
                         if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
+                            selectedEffect->setParam(p->key, (double)ci);
                             setParamImmediate(p->key, p->comboOptions[ci]);
                         }
                         if (is_sel) ImGui::SetItemDefaultFocus();
@@ -417,6 +418,19 @@ namespace vkBasalt {
             return;
         }
 
+        const auto& params = selectedEffect->getParamDescs();
+
+        // Quality level gating (CrystalClear and future effects with quality tiers)
+        int currentQuality = 4;
+        bool hasQualityGating = false;
+        for (const auto& p : params) {
+            if (p.key.find("QualityLevel") != std::string::npos || p.key.find("qualityLevel") != std::string::npos) {
+                hasQualityGating = true;
+                currentQuality = (int)selectedEffect->getParam(p.key);
+                break;
+            }
+        }
+
         // Search filter
         if (m_focusSearch) {
             ImGui::SetKeyboardFocusHere();
@@ -425,8 +439,6 @@ namespace vkBasalt {
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##search", "/ to search", m_searchFilter, sizeof(m_searchFilter));
         ImGui::Separator();
-
-        const auto& params = selectedEffect->getParamDescs();
         if (params.empty()) {
             ImGui::TextWrapped("This effect has no configurable parameters.");
         } else {
@@ -501,7 +513,10 @@ namespace vkBasalt {
                     ImGui::PushID(p->key.c_str());
                     if (m_justOpened && !focusedFirst) { ImGui::SetKeyboardFocusHere(); focusedFirst = true; }
 
+                    bool paramDisabled = hasQualityGating && (currentQuality > selectedEffect->minQualityForParam(p->key));
+                    if (paramDisabled) ImGui::BeginDisabled();
                     drawParamWidget(p, selectedEffect);
+                    if (paramDisabled) ImGui::EndDisabled();
 
                     ImGui::PopID();
                 }

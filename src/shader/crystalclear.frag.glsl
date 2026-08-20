@@ -138,7 +138,7 @@ layout(constant_id = 68) const float blackLift = 0.0;    // 0.0 to 0.5, raises b
 layout(constant_id = 69) const float whiteClip = 0.0;    // 0.0 to 0.5, lowers white ceiling
 layout(constant_id = 70) const int enableCheckerboardFix = 0;   // removes checker board transparency effect used for camera obstruction
 layout(constant_id = 71) const float checkerboardStrength = 0.5;
-layout(constant_id = 72) const int liteMode = 0;  // 1 = strip expensive features for low end GPUs
+layout(constant_id = 72) const int qualityLevel = 0; // 0=Perfect, 1=Ultra, 2=High, 3=Medium, 4=iGPU
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -219,7 +219,7 @@ void main() {
     float crossAvg = (lB + lH + lD + lF) * 0.25;
 
     // phase 1.5 Checkerboard correction and anti speckle, combined as they share spread math and despeckle interacts with checkerboard patterns.
-    if (enableDespeckle == 1 || enableCheckerboardFix == 1) {
+    if ((enableDespeckle == 1 || enableCheckerboardFix == 1) && qualityLevel <= 2) {
         float neighborSpread = max(max(lB, lH), max(lD, lF)) - min(min(lB, lH), min(lD, lF));
 
         // Checkerboard transparency correction (structured alternating pattern)
@@ -254,7 +254,7 @@ void main() {
     float v1_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb);
     float v2_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb);
     float h3_raw = 0.0; float h4_raw = 0.0; float v3_raw = 0.0; float v4_raw = 0.0;
-    if (liteMode == 0) {
+    if (qualityLevel <= 1) {
         h3_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb);
         h4_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb);
         v3_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb);
@@ -294,7 +294,7 @@ void main() {
 
     // Phase 3.5: directional coherence gate to suppress amplification of compression artifacts (DCT ringing, oiliness etc.)
     float oilinessGate = 1.0;
-    if (liteMode == 0) {
+    if (qualityLevel <= 2) {
         float invCenterLuma = 1.0 / max(lE, 0.01 * hdrNorm);
         float sobelX = ((lC + lF + lF + lI) - (lA + lD + lD + lG)) * invCenterLuma;
         float sobelY = ((lG + lH + lH + lI) - (lA + lB + lB + lC)) * invCenterLuma;
@@ -349,7 +349,7 @@ void main() {
 
     vec3 edgeH_rgb = vec3(0.0);
     vec3 edgeV_rgb = vec3(0.0);
-    if (enableRGBEdgeDetection == 1) {
+    if (enableRGBEdgeDetection == 1 && qualityLevel == 0) {
         edgeH_rgb = abs(b + h - 2.0 * e);
         edgeV_rgb = abs(d + f - 2.0 * e);
         edgeH = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
@@ -497,22 +497,27 @@ void main() {
         bilateralDiff(lumaAA - lC, 1.0, bilateralThreshLow, invThreshRange) +
         bilateralDiff(lumaAA - lG, 1.0, bilateralThreshLow, invThreshRange) +
         bilateralDiff(lumaAA - lI, 1.0, bilateralThreshLow, invThreshRange)
-    ) * (liteMode == 1 ? 0.08333 : 0.0625);
-    // Wide fetch diffs (full mode only, adds 4 more weight units)
-    if (liteMode == 0) {
+    ) * (qualityLevel >= 2 ? 0.0714 : 0.0625);
+
+    // Step1 wide diffs (always active — this IS Clarity)
+    diff += (
+        bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, invThreshRange) +
+        bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, invThreshRange)
+    ) * (qualityLevel >= 2 ? 0.0714 : 0.0625);
+
+    // Step2 wide diffs (Perfect/Ultra only)
+    if (qualityLevel <= 1) {
         diff += (
-            bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, invThreshRange) +
-            bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, invThreshRange) +
             bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, invThreshRange) +
             bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, invThreshRange) +
-            bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, invThreshRange) +
-            bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, invThreshRange) +
             bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, invThreshRange) +
             bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, invThreshRange)
         ) * 0.0625;
     }
 
-    if (localContrastStrength > 0.0) {
+    if (localContrastStrength > 0.0 && qualityLevel <= 1) {
         float wideAvg = (h1_raw + h2_raw + h3_raw + h4_raw + v1_raw + v2_raw + v3_raw + v4_raw) * 0.125;
         // Halo prevention by clamping wide blur to the 3x3 bounds already computed by CAS.
         wideAvg = clamp(wideAvg, localMinLuma, localMaxLuma);
@@ -530,24 +535,28 @@ void main() {
     float minCenterRGB = min(min(aaColor.r, aaColor.g), aaColor.b);
     float localSaturation = maxCenterRGB - minCenterRGB;
 
-    float saturationGuard = 1.0 - smoothstep(0.4 * hdrNorm, 0.9 * hdrNorm, localSaturation);
-    diff *= mix(1.0, saturationGuard, guardStrength);
+    if (qualityLevel <= 3) {
+        float saturationGuard = 1.0 - smoothstep(0.4 * hdrNorm, 0.9 * hdrNorm, localSaturation);
+        diff *= mix(1.0, saturationGuard, guardStrength);
+    }
 
-    float darkSmearGuard = (hdrMode == 1)
-        ? (1.0 - smoothstep(0.0, 0.18, lumaAA))
-        : (1.0 - min(lumaAA, 1.0));
-    float maxNeighborLuma = max(max(lB, lH), max(lD, lF));
-    float brightnessContrast = maxNeighborLuma - lumaAA;
-
-    float edgeProximityGuard = 1.0 - smoothstep(0.0, 0.15 * hdrNorm, brightnessContrast);
-    float combinedGuard = min(darkSmearGuard, edgeProximityGuard);
-    float adjustedGuard = mix(1.0, combinedGuard, guardStrength);
+    float adjustedGuard = 1.0;
+    if (qualityLevel <= 3) {
+        float darkSmearGuard = (hdrMode == 1)
+            ? (1.0 - smoothstep(0.0, 0.18, lumaAA))
+            : (1.0 - min(lumaAA, 1.0));
+        float maxNeighborLuma = max(max(lB, lH), max(lD, lF));
+        float brightnessContrast = maxNeighborLuma - lumaAA;
+        float edgeProximityGuard = 1.0 - smoothstep(0.0, 0.15 * hdrNorm, brightnessContrast);
+        float combinedGuard = min(darkSmearGuard, edgeProximityGuard);
+        adjustedGuard = mix(1.0, combinedGuard, guardStrength);
+    }
 
     // Only apply positive bilateral boosts to directional detail. Darkening remains for shadow definition.
     diff = diff > 0.0 ? diff * oilinessGate : diff * adjustedGuard;
 
     float silhouetteGate = 1.0;
-    if (liteMode == 0) {
+    if (qualityLevel <= 2) {
         float minCrossLuma = min(min(lB, lH), min(lD, lF));
         float silLow  = 0.005 * lE;
         float silHigh = 0.05  * lE;
@@ -729,7 +738,7 @@ void main() {
         // phase 11.5: Fringing suppression detects chromatic aberration by measuring per channel edge disagreement (spread).
         // edgeMask (skip strong edges like text/UI), satGate (skip saturated pixels), bandPassMask (skip macro structure). 
         // CA fringing is mostly visible in flat, low saturation transition zones away from strong edges.
-        if (enableFringeFix == 1) {
+        if (enableFringeFix == 1 && qualityLevel == 0) {
             float hMax = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
             float hMin = min(edgeH_rgb.r, min(edgeH_rgb.g, edgeH_rgb.b));
             float vMax = max(edgeV_rgb.r, max(edgeV_rgb.g, edgeV_rgb.b));
@@ -749,25 +758,22 @@ void main() {
         // phase 12: shimmer reduction (stabilizes isolated pixels)
         float finalLuma = getLuma(finalColor);
 
-        float isolation = abs(lumaAA - crossAvg);
-
-        float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
-        // If FXAA is enabled & actively blended this pixel, reduce shimmer correction avoid fighting FXAA's anti-aliasing. aaColor==eRaw when FXAA is off.
-        float fxaaActivity = 0.0;
-
-        if (enableAA == 1) {
-            fxaaActivity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
-        }
-
-        float shimmerMask = smoothstep(0.08 * hdrNorm, 0.2 * hdrNorm, isolation)
-                        * microTextureMask * edgeMask * (1.0 - fxaaActivity * 0.5)
-                        * shimmerChoke * shimmerReduction;
-
-        if (shimmerMask > 0.0) {
-            float clampedLuma = mix(finalLuma, crossAvg, shimmerMask * 0.5);
-            float shimmerScale = clampedLuma / max(finalLuma, 0.0001);
-            finalColor *= shimmerScale;
-            finalLuma *= shimmerScale;
+        if (qualityLevel <= 3) {
+            float isolation = abs(lumaAA - crossAvg);
+            float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
+            float fxaaActivity = 0.0;
+            if (enableAA == 1) {
+                fxaaActivity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
+            }
+            float shimmerMask = smoothstep(0.08 * hdrNorm, 0.2 * hdrNorm, isolation)
+                            * microTextureMask * edgeMask * (1.0 - fxaaActivity * 0.5)
+                            * shimmerChoke * shimmerReduction;
+            if (shimmerMask > 0.0) {
+                float clampedLuma = mix(finalLuma, crossAvg, shimmerMask * 0.5);
+                float shimmerScale = clampedLuma / max(finalLuma, 0.0001);
+                finalColor *= shimmerScale;
+                finalLuma *= shimmerScale;
+            }
         }
 
         // phase 13: Filmic tone curve / highlight rolloff
@@ -784,7 +790,7 @@ void main() {
 
         // phase 14: shared noise generation (reused by deband, film grain, and dither)
         float noise = 0.0;
-        if (enableFilmGrain == 1 || enableDithering == 1 || enableDeband == 1) {
+        if ((enableFilmGrain == 1 && qualityLevel <= 3) || enableDithering == 1 || enableDeband == 1) {
             // fine grain layer at 1:1 pixel resolution updating every frame
             uint fineSeed = uint(gl_FragCoord.x) * 747796405u
                           + uint(gl_FragCoord.y) * 2891336453u
@@ -827,8 +833,8 @@ void main() {
         // phase 16: perceptual film grain
         float perceptualMask = 0.0;
         float finalGrainIntensity = 0.0;
-
-        if (enableFilmGrain == 1) {
+    
+        if (enableFilmGrain == 1 && qualityLevel <= 3) {
             // HDR: Clamp luma for grain weight calculation so it doesn't invert on values > 1.0
             float lumaForGrain = (hdrMode == 1) ? clamp(finalLuma, 0.0, 1.0) : finalLuma;
             float hvsLumaWeight = 4.0 * lumaForGrain * (1.0 - lumaForGrain);
