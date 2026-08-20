@@ -177,7 +177,12 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& LutEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"lutFile", "LUT File (.cube/.png)", ParamType::FilePath, 0.0, 0.0, 0.0, 0.0, {}, "Color Grading", -1, 0, 0},
+            {.key = "lutFile", .label = "LUT File (.cube/.png)", .type = ParamType::FilePath,
+             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 0.0, .step = 0.0,
+             .category = "Color Grading",
+             .tooltip = "Path to a color lookup table file. Supports .cube (ReShade-compatible 3D LUT) and .png (tiled 2D strip). "
+                        "Apply cinematic color grades, film emulation, or per-game color correction. "
+                        "If empty or invalid, the effect acts as a pass-through (identity LUT)."},
         };
         return params;
     }

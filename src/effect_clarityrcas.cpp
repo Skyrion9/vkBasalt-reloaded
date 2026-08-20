@@ -41,7 +41,7 @@ namespace vkBasalt
         int32_t hdrMode;
     };
 
-    #define SPEC(id, field) id, offsetof(ClarityRcasSpecData, field), sizeof(((ClarityRcasSpecData*)0)->field)
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClarityRcasSpecData, field), .specSize = sizeof(((ClarityRcasSpecData*)0)->field)
 
     ClarityRcasEffect::ClarityRcasEffect(LogicalDevice*       pLogicalDevice,
                                          VkFormat             format,
@@ -212,22 +212,103 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& ClarityRcasEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"clarityRStrength",          "Strength",          ParamType::Float, 1.0,   0.0,   5.0,   0.1,  {}, "Sharpening",     SPEC(2, clarityStrength)},
-            {"clarityRBilateralRadius",   "Bilateral Radius",  ParamType::Float, 2.0,   0.5,   8.0,   0.1,  {}, "Sharpening",     SPEC(0, radius)},
-            {"clarityRBilateralOffset",   "Bilateral Offset",  ParamType::Float, 1.5,   0.5,   3.0,   0.1,  {}, "Sharpening",     SPEC(1, offset)},
-            {"clarityRBlendMode",         "Blend Mode",        ParamType::Int,   1.0,   0.0,   6.0,   1.0,  {}, "Sharpening",     SPEC(3, blendMode)},
-            {"clarityRBlendIfDark",       "Blend If Dark",     ParamType::Int,  40.0,   0.0, 255.0,   1.0,  {}, "Sharpening",     SPEC(4, blendIfDark)},
-            {"clarityRBlendIfLight",      "Blend If Light",    ParamType::Int, 220.0,   0.0, 255.0,   1.0,  {}, "Sharpening",     SPEC(5, blendIfLight)},
-            {"clarityRcasSharpness",      "RCAS Sharpness",    ParamType::Float, 0.8,   0.0,   2.0,  0.01,  {}, "Sharpening",     SPEC(6, rcasSharpness)},
-            {"clarityRcasStrength",       "RCAS Strength",     ParamType::Float, 1.0,   0.0,   5.0,   0.1,  {}, "Sharpening",     SPEC(7, rcasStrength)},
-            {"clarityREdgeThreshLow",     "Edge Thresh Low",   ParamType::Float, 0.05,  0.0,   1.0,  0.01,  {}, "Protection",     SPEC(8, edgeThreshLow)},
-            {"clarityREdgeThreshHigh",    "Edge Thresh High",  ParamType::Float, 0.35,  0.0,   1.0,  0.01,  {}, "Protection",     SPEC(9, edgeThreshHigh)},
-            {"clarityREnableDithering",   "Enable Dithering",  ParamType::Bool,  1.0,   0.0,   1.0,   1.0,  {}, "Dithering",      SPEC(10, enableDithering)},
-            {"clarityREnableFilmGrain",   "Enable Film Grain", ParamType::Bool,  1.0,   0.0,   1.0,   1.0,  {}, "Film Grain",     SPEC(11, enableFilmGrain)},
-            {"clarityRFilmGrainStrength", "Grain Strength",    ParamType::Float, 1.0,   0.0,   2.0,   0.1,  {}, "Film Grain",     SPEC(12, filmGrainStrength)},
-            {"clarityRFilmGrainMinimum",  "Grain Minimum",     ParamType::Float, 0.0,   0.0,   2.0,   0.1,  {}, "Film Grain",     SPEC(13, filmGrainMinimum)},
-            {"clarityRFineGrainWeight",   "Fine Grain",        ParamType::Float, 0.4,   0.0,   1.0,  0.01,  {}, "Film Grain",     SPEC(14, fineGrainWeight)},
-            {"clarityRCoarseGrainWeight", "Coarse Grain",      ParamType::Float, 0.8,   0.0,   1.0,  0.01,  {}, "Film Grain",     SPEC(15, coarseGrainWeight)},
+            {.key = "clarityRStrength", .label = "Strength", .type = ParamType::Float,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 5.0, .step = 0.1,
+             .category = "Sharpening",
+             .tooltip = "Master strength of the bilateral Clarity sharpening pass. Default 1.0.",
+             SPEC(2, clarityStrength)},
+
+            {.key = "clarityRBilateralRadius", .label = "Bilateral Radius", .type = ParamType::Float,
+             .defaultVal = 2.0, .minVal = 0.5, .maxVal = 8.0, .step = 0.1,
+             .category = "Sharpening",
+             .tooltip = "Radius of the bilateral macro-contrast kernel. Larger = boosts wider features. Default 2.0.",
+             SPEC(0, radius)},
+
+            {.key = "clarityRBilateralOffset", .label = "Bilateral Offset", .type = ParamType::Float,
+             .defaultVal = 1.5, .minVal = 0.5, .maxVal = 3.0, .step = 0.1,
+             .category = "Sharpening",
+             .tooltip = "Multiplier on the bilateral sample offset. Combined with Radius to determine fetch distance. Default 1.5.",
+             SPEC(1, offset)},
+
+            {.key = "clarityRBlendMode", .label = "Blend Mode", .type = ParamType::Int,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 6.0, .step = 1.0,
+             .category = "Sharpening",
+             .tooltip = "How the sharpening delta blends with the original.\n"
+                        "0: Soft Light\n1: Overlay (default)\n2: Hard Light\n3: Vivid Light (clamped)\n"
+                        "4: Linear Light\n5: Additive\n6: Simple offset",
+             SPEC(3, blendMode)},
+
+            {.key = "clarityRBlendIfDark", .label = "Blend If Dark", .type = ParamType::Int,
+             .defaultVal = 40.0, .minVal = 0.0, .maxVal = 255.0, .step = 1.0,
+             .category = "Sharpening",
+             .tooltip = "Pixels darker than this value receive reduced sharpening. 0 = sharpen everything. Default 40.",
+             SPEC(4, blendIfDark)},
+
+            {.key = "clarityRBlendIfLight", .label = "Blend If Light", .type = ParamType::Int,
+             .defaultVal = 220.0, .minVal = 0.0, .maxVal = 255.0, .step = 1.0,
+             .category = "Sharpening",
+             .tooltip = "Pixels brighter than this value receive reduced sharpening. 255 = sharpen everything. Default 220.",
+             SPEC(5, blendIfLight)},
+
+            {.key = "clarityRcasSharpness", .label = "RCAS Sharpness", .type = ParamType::Float,
+             .defaultVal = 0.8, .minVal = 0.0, .maxVal = 2.0, .step = 0.01,
+             .category = "Sharpening",
+             .tooltip = "AMD Robust Contrast-Adaptive Sharpening amount. Higher = more aggressive micro-detail sharpening. Default 0.8.",
+             SPEC(6, rcasSharpness)},
+
+            {.key = "clarityRcasStrength", .label = "RCAS Strength", .type = ParamType::Float,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 5.0, .step = 0.1,
+             .category = "Sharpening",
+             .tooltip = "Master multiplier on the RCAS delta. Default 1.0.",
+             SPEC(7, rcasStrength)},
+
+            {.key = "clarityREdgeThreshLow", .label = "Edge Thresh Low", .type = ParamType::Float,
+             .defaultVal = 0.05, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Protection",
+             .tooltip = "Lower edge threshold. Contrast below this is suppressed. Lower = more fine detail. Default 0.05.",
+             SPEC(8, edgeThreshLow)},
+
+            {.key = "clarityREdgeThreshHigh", .label = "Edge Thresh High", .type = ParamType::Float,
+             .defaultVal = 0.35, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Protection",
+             .tooltip = "Upper edge threshold. Contrast above this passes through fully. Default 0.35.",
+             SPEC(9, edgeThreshHigh)},
+
+            {.key = "clarityREnableDithering", .label = "Enable Dithering", .type = ParamType::Bool,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+             .category = "Dithering",
+             .tooltip = "Applies dithering to break up banding from the sharpening pass. Default on.",
+             SPEC(10, enableDithering)},
+
+            {.key = "clarityREnableFilmGrain", .label = "Enable Film Grain", .type = ParamType::Bool,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+             .category = "Film Grain",
+             .tooltip = "Perceptual film grain with fine + coarse layers. Breaks up banding and adds natural texture. Default on.",
+             SPEC(11, enableFilmGrain)},
+
+            {.key = "clarityRFilmGrainStrength", .label = "Grain Strength", .type = ParamType::Float,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 2.0, .step = 0.1,
+             .category = "Film Grain",
+             .tooltip = "Master multiplier on grain amplitude. Default 1.0.",
+             SPEC(12, filmGrainStrength)},
+
+            {.key = "clarityRFilmGrainMinimum", .label = "Grain Minimum", .type = ParamType::Float,
+             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 2.0, .step = 0.1,
+             .category = "Film Grain",
+             .tooltip = "Floor for grain intensity. Higher = grain everywhere. Default 0.0.",
+             SPEC(13, filmGrainMinimum)},
+
+            {.key = "clarityRFineGrainWeight", .label = "Fine Grain", .type = ParamType::Float,
+             .defaultVal = 0.4, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Film Grain",
+             .tooltip = "Weight of the fine grain layer (1:1 pixel resolution, updates every frame). Default 0.4.",
+             SPEC(14, fineGrainWeight)},
+
+            {.key = "clarityRCoarseGrainWeight", .label = "Coarse Grain", .type = ParamType::Float,
+             .defaultVal = 0.8, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Film Grain",
+             .tooltip = "Weight of the coarse grain layer (1/4 resolution, updates every 2 frames). Default 0.8.",
+             SPEC(15, coarseGrainWeight)},
         };
         return params;
     }

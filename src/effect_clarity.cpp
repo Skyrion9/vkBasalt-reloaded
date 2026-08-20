@@ -33,7 +33,7 @@ namespace vkBasalt
         int32_t hdrMode;
     };
 
-    #define SPEC(id, field) id, offsetof(ClaritySpecData, field), sizeof(((ClaritySpecData*)0)->field)
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClaritySpecData, field), .specSize = sizeof(((ClaritySpecData*)0)->field)
 
     ClarityEffect::ClarityEffect(LogicalDevice*       pLogicalDevice,
                                  VkFormat             format,
@@ -196,15 +196,61 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& ClarityEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"clarityStrength",       "Strength",        ParamType::Float, 1.0,   0.0,   5.0,   0.1,  {}, "Sharpening", SPEC(2, strength)},
-            {"clarityRadius",         "Radius",          ParamType::Float, 2.0,   1.0,   8.0,   1.0,  {}, "Sharpening", SPEC(0, radius)},
-            {"clarityOffset",         "Offset",          ParamType::Float, 1.5,   0.5,   3.0,   0.1,  {}, "Sharpening", SPEC(1, offset)},
-            {"clarityBlendMode",      "Blend Mode",      ParamType::Int,   1.0,   0.0,   6.0,   1.0,  {}, "Sharpening", SPEC(3, blendMode)},
-            {"clarityBlendIfDark",    "Blend If Dark",   ParamType::Int,  40.0,   0.0, 255.0,   1.0,  {}, "Sharpening", SPEC(4, blendIfDark)},
-            {"clarityBlendIfLight",   "Blend If Light",  ParamType::Int, 220.0,   0.0, 255.0,   1.0,  {}, "Sharpening", SPEC(5, blendIfLight)},
-            {"clarityEdgeThreshLow",  "Edge Thresh Low", ParamType::Float, 0.05,  0.0,   1.0,  0.01,  {}, "Protection", SPEC(6, edgeThreshLow)},
-            {"clarityEdgeThreshHigh", "Edge Thresh High",ParamType::Float, 0.25,  0.0,   1.0,  0.01,  {}, "Protection", SPEC(7, edgeThreshHigh)},
-            {"clarityEnableDithering","Enable Dithering",ParamType::Bool,  1.0,   0.0,   1.0,   1.0,  {}, "Dithering",  SPEC(8, enableDithering)},
+            {.key = "clarityStrength", .label = "Strength", .type = ParamType::Float,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 5.0, .step = 0.1,
+             .category = "Sharpening",
+             .tooltip = "Master strength of the bilateral sharpening pass. Controls how strongly the macro-contrast delta is applied. Default 1.0.",
+             SPEC(2, strength)},
+
+            {.key = "clarityRadius", .label = "Radius", .type = ParamType::Float,
+             .defaultVal = 2.0, .minVal = 1.0, .maxVal = 8.0, .step = 1.0,
+             .category = "Sharpening",
+             .tooltip = "Radius of the bilateral contrast kernel. Larger = boosts wider features. Smaller = fine detail only. Default 2.0.",
+             SPEC(0, radius)},
+
+            {.key = "clarityOffset", .label = "Offset", .type = ParamType::Float,
+             .defaultVal = 1.5, .minVal = 0.5, .maxVal = 3.0, .step = 0.1,
+             .category = "Sharpening",
+             .tooltip = "Multiplier on the bilateral sample offset. Combined with Radius to determine fetch distance. Default 1.5.",
+             SPEC(1, offset)},
+
+            {.key = "clarityBlendMode", .label = "Blend Mode", .type = ParamType::Int,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 6.0, .step = 1.0,
+             .category = "Sharpening",
+             .tooltip = "How the sharpening delta blends with the original.\n"
+                        "0: Soft Light\n1: Overlay (default)\n2: Hard Light\n3: Vivid Light (clamped)\n"
+                        "4: Linear Light\n5: Additive\n6: Simple offset",
+             SPEC(3, blendMode)},
+
+            {.key = "clarityBlendIfDark", .label = "Blend If Dark", .type = ParamType::Int,
+             .defaultVal = 40.0, .minVal = 0.0, .maxVal = 255.0, .step = 1.0,
+             .category = "Sharpening",
+             .tooltip = "Pixels darker than this value receive reduced sharpening. 0 = sharpen everything. Default 40.",
+             SPEC(4, blendIfDark)},
+
+            {.key = "clarityBlendIfLight", .label = "Blend If Light", .type = ParamType::Int,
+             .defaultVal = 220.0, .minVal = 0.0, .maxVal = 255.0, .step = 1.0,
+             .category = "Sharpening",
+             .tooltip = "Pixels brighter than this value receive reduced sharpening. 255 = sharpen everything. Default 220.",
+             SPEC(5, blendIfLight)},
+
+            {.key = "clarityEdgeThreshLow", .label = "Edge Thresh Low", .type = ParamType::Float,
+             .defaultVal = 0.05, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Protection",
+             .tooltip = "Lower edge threshold. Contrast differences below this are fully suppressed. Lower = more fine detail passes through. Default 0.05.",
+             SPEC(6, edgeThreshLow)},
+
+            {.key = "clarityEdgeThreshHigh", .label = "Edge Thresh High", .type = ParamType::Float,
+             .defaultVal = 0.25, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Protection",
+             .tooltip = "Upper edge threshold. Contrast differences above this are fully passed through. The Low-to-High range is the smooth transition zone. Default 0.25.",
+             SPEC(7, edgeThreshHigh)},
+
+            {.key = "clarityEnableDithering", .label = "Enable Dithering", .type = ParamType::Bool,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+             .category = "Dithering",
+             .tooltip = "Applies dithering after sharpening to break up banding introduced by the contrast boost. Default on.",
+             SPEC(8, enableDithering)},
         };
         return params;
     }

@@ -31,7 +31,7 @@ namespace vkBasalt
         int32_t hdrMode;
     };
 
-    #define SPEC(id, field) id, offsetof(DebandSpecData, field), sizeof(((DebandSpecData*)0)->field)
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(DebandSpecData, field), .specSize = sizeof(((DebandSpecData*)0)->field)
 
     DebandEffect::DebandEffect(LogicalDevice*       pLogicalDevice,
                                VkFormat             format,
@@ -114,11 +114,35 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& DebandEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"debandAvgdiff",    "Avg Diff Threshold", ParamType::Float, 3.4,  0.0, 20.0, 0.1, {}, "Debanding", SPEC(4, debandAvgdiff)},
-            {"debandMaxdiff",    "Max Diff Threshold", ParamType::Float, 6.8,  0.0, 40.0, 0.1, {}, "Debanding", SPEC(5, debandMaxdiff)},
-            {"debandMiddiff",    "Mid Diff Threshold", ParamType::Float, 3.3,  0.0, 20.0, 0.1, {}, "Debanding", SPEC(6, debandMiddiff)},
-            {"debandRange",      "Range",              ParamType::Float, 16.0, 1.0, 64.0, 1.0, {}, "Debanding", SPEC(7, range)},
-            {"debandIterations", "Iterations",         ParamType::Int,   4.0,  1.0,  8.0, 1.0, {}, "Debanding", SPEC(8, iterations)},
+            {.key = "debandAvgdiff", .label = "Avg Diff Threshold", .type = ParamType::Float,
+             .defaultVal = 3.4, .minVal = 0.0, .maxVal = 20.0, .step = 0.1,
+             .category = "Debanding",
+             .tooltip = "Average color difference threshold. Neighbors within this range are considered part of the same band. Lower = more aggressive debanding. Default 3.4.",
+             SPEC(4, debandAvgdiff)},
+
+            {.key = "debandMaxdiff", .label = "Max Diff Threshold", .type = ParamType::Float,
+             .defaultVal = 6.8, .minVal = 0.0, .maxVal = 40.0, .step = 0.1,
+             .category = "Debanding",
+             .tooltip = "Maximum allowed difference between any single neighbor. Prevents debanding from bleeding across strong edges. Higher = less protection. Default 6.8.",
+             SPEC(5, debandMaxdiff)},
+
+            {.key = "debandMiddiff", .label = "Mid Diff Threshold", .type = ParamType::Float,
+             .defaultVal = 3.3, .minVal = 0.0, .maxVal = 20.0, .step = 0.1,
+             .category = "Debanding",
+             .tooltip = "Median neighbor difference threshold. Works with Avg Diff to classify flat banding regions. Lower = more aggressive. Default 3.3.",
+             SPEC(6, debandMiddiff)},
+
+            {.key = "debandRange", .label = "Range", .type = ParamType::Float,
+             .defaultVal = 16.0, .minVal = 1.0, .maxVal = 64.0, .step = 1.0,
+             .category = "Debanding",
+             .tooltip = "Sampling radius in pixels. Larger range catches wider banding gradients but costs more. Default 16.0.",
+             SPEC(7, range)},
+
+            {.key = "debandIterations", .label = "Iterations", .type = ParamType::Int,
+             .defaultVal = 4.0, .minVal = 1.0, .maxVal = 8.0, .step = 1.0,
+             .category = "Debanding",
+             .tooltip = "Number of sampling iterations per pixel (shader loop bound). Higher = smoother result, more GPU cost. Default 4.",
+             SPEC(8, iterations)},
         };
         return params;
     }

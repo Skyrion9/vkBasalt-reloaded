@@ -23,7 +23,7 @@ namespace vkBasalt
         int32_t hdrMode;
     };
 
-    #define SPEC(id, field) id, offsetof(DlsSpecData, field), sizeof(((DlsSpecData*)0)->field)
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(DlsSpecData, field), .specSize = sizeof(((DlsSpecData*)0)->field)
 
     DlsEffect::DlsEffect(LogicalDevice*       pLogicalDevice,
                          VkFormat             format,
@@ -90,8 +90,17 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& DlsEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"dlsSharpness", "Sharpness", ParamType::Float, 0.5,  0.0, 1.0, 0.01, {}, "Sharpening", SPEC(0, sharpen)},
-            {"dlsDenoise",   "Denoise",   ParamType::Float, 0.17, 0.0, 1.0, 0.01, {}, "Denoising",  SPEC(1, denoise)},
+            {.key = "dlsSharpness", .label = "Sharpness", .type = ParamType::Float,
+             .defaultVal = 0.5, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Sharpening",
+             .tooltip = "Luma sharpening strength. Enhances local contrast via unsharp mask. Higher = more visible sharpening. Default 0.5.",
+             SPEC(0, sharpen)},
+
+            {.key = "dlsDenoise", .label = "Denoise", .type = ParamType::Float,
+             .defaultVal = 0.17, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Denoising",
+             .tooltip = "Denoising strength. Blends pixel toward local average to reduce compression noise and film grain. Higher = smoother but softer. Default 0.17.",
+             SPEC(1, denoise)},
         };
         return params;
     }

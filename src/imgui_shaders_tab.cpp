@@ -518,6 +518,29 @@ namespace vkBasalt {
                     drawParamWidget(p, selectedEffect);
                     if (paramDisabled) ImGui::EndDisabled();
 
+                    // Smart tooltip uses custom description if provided, otherwise auto generate range/default info
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        if (!p->tooltip.empty()) {
+                            ImGui::SetTooltip("%s", p->tooltip.c_str());
+                        } else {
+                            std::string tip;
+                            if (p->type == ParamType::Bool) {
+                                tip = "Toggle\nDefault: " + std::string(p->defaultVal > 0.5 ? "On" : "Off");
+                            } else if (p->type == ParamType::Combo) {
+                                size_t defIdx = std::min((size_t)p->defaultVal, p->comboOptions.empty() ? 0 : p->comboOptions.size() - 1);
+                                const char* def = p->comboOptions.empty() ? "None" : p->comboOptions[defIdx].c_str();
+                                tip = "Options: " + std::to_string(p->comboOptions.size()) + "\nDefault: " + def;
+                            } else if (p->type == ParamType::Int) {
+                                tip = "Range: " + std::to_string((int)p->minVal) + " to " + std::to_string((int)p->maxVal) +
+                                      "\nDefault: " + std::to_string((int)p->defaultVal);
+                            } else { // Float
+                                tip = "Range: " + doubleToConfigString(p->minVal) + " to " + doubleToConfigString(p->maxVal) +
+                                      "\nDefault: " + doubleToConfigString(p->defaultVal);
+                            }
+                            ImGui::SetTooltip("%s", tip.c_str());
+                        }
+                    }
+
                     ImGui::PopID();
                 }
                 ImGui::Unindent(8.0f);

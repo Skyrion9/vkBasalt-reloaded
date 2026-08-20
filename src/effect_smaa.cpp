@@ -41,7 +41,7 @@ namespace vkBasalt
         int32_t disableDiagDetection;
     };
 
-    #define SPEC(id, field) id, offsetof(SmaaOptions, field), sizeof(((SmaaOptions*)0)->field)
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(SmaaOptions, field), .specSize = sizeof(((SmaaOptions*)0)->field)
 
     SmaaEffect::SmaaEffect(LogicalDevice*       pLogicalDevice,
                            VkFormat             format,
@@ -371,13 +371,40 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& SmaaEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"smaaPreset",              "Preset",                 ParamType::Combo, 0.0,   0.0,   0.0,   0.0,   {"", "low", "medium", "high", "ultra"},  "Preset", -1, 0, 0},
-            {"smaaEdgeDetection",       "Edge Detection",         ParamType::Combo, 0.0,   0.0,   0.0,   0.0,   {"luma", "color"},                       "Edge Detection", -1, 0, 0},
-            {"smaaThreshold",           "Threshold",              ParamType::Float, 0.05,  0.01,  0.5,   0.01,  {},                                      "Edge Detection", SPEC(4, threshold)},
-            {"smaaMaxSearchSteps",      "Max Search Steps",       ParamType::Int,   32.0,  0.0,   112.0, 1.0,   {},                                      "Search", SPEC(5, maxSearchSteps)},
-            {"smaaMaxSearchStepsDiag",  "Max Diag Steps",         ParamType::Int,   16.0,  0.0,   20.0,  1.0,   {},                                      "Search", SPEC(6, maxSearchStepsDiag)},
-            {"smaaCornerRounding",      "Corner Rounding",        ParamType::Int,   25.0,  0.0,   100.0, 1.0,   {},                                      "Anti-Aliasing", SPEC(7, cornerRounding)},
-            {"smaaDisableDiagDetection","Disable Diag Detection", ParamType::Bool,  0.0,   0.0,   1.0,   1.0,   {},                                      "Search", SPEC(8, disableDiagDetection)},
+            {.key = "smaaPreset", .label = "Preset", .type = ParamType::Combo,
+             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 0.0, .step = 0.0,
+             .comboOptions = {"", "low", "medium", "high", "ultra"},
+             .category = "Preset",
+             .tooltip = "SMAA quality preset. Sets threshold, search steps, and diagonal detection defaults.\n"
+                        "(empty): manual.\nlow: fast, minimal AA.\nmedium: balanced.\n"
+                        "high: strong AA.\nultra: maximum quality, most expensive."},
+
+            {.key = "smaaEdgeDetection", .label = "Edge Detection", .type = ParamType::Combo,
+             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 0.0, .step = 0.0,
+             .comboOptions = {"luma", "color"},
+             .category = "Edge Detection",
+             .tooltip = "Edge detection method.\nluma: luminance-only (faster, may miss chroma-only edges).\n"
+                        "color: per-channel detection (catches more edges, slightly slower)."},
+
+            {.key = "smaaThreshold", .label = "Threshold", .type = ParamType::Float,
+             .defaultVal = 0.05, .minVal = 0.01, .maxVal = 0.5, .step = 0.01,
+             .category = "Edge Detection", SPEC(4, threshold)},
+
+            {.key = "smaaMaxSearchSteps", .label = "Max Search Steps", .type = ParamType::Int,
+             .defaultVal = 32.0, .minVal = 0.0, .maxVal = 112.0, .step = 1.0,
+             .category = "Search", SPEC(5, maxSearchSteps)},
+
+            {.key = "smaaMaxSearchStepsDiag", .label = "Max Diag Steps", .type = ParamType::Int,
+             .defaultVal = 16.0, .minVal = 0.0, .maxVal = 20.0, .step = 1.0,
+             .category = "Search", SPEC(6, maxSearchStepsDiag)},
+
+            {.key = "smaaCornerRounding", .label = "Corner Rounding", .type = ParamType::Int,
+             .defaultVal = 25.0, .minVal = 0.0, .maxVal = 100.0, .step = 1.0,
+             .category = "Anti-Aliasing", SPEC(7, cornerRounding)},
+
+            {.key = "smaaDisableDiagDetection", .label = "Disable Diag Detection", .type = ParamType::Bool,
+             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+             .category = "Search", SPEC(8, disableDiagDetection)},
         };
         return params;
     }

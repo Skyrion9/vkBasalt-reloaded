@@ -20,7 +20,7 @@ namespace vkBasalt
         int32_t hdrMode;
     };
 
-    #define SPEC(id, field) id, offsetof(CasSpecData, field), sizeof(((CasSpecData*)0)->field)
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(CasSpecData, field), .specSize = sizeof(((CasSpecData*)0)->field)
 
     CasEffect::CasEffect(LogicalDevice*       pLogicalDevice,
                          VkFormat             format,
@@ -87,8 +87,13 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& CasEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"casSharpness",     "Sharpness",      ParamType::Float, 0.4, 0.0, 1.0, 0.01, {}, "Sharpening", SPEC(0, sharpness)},
-            {"casContrastLimit", "Contrast Limit", ParamType::Float, 0.0, 0.0, 1.0, 0.01, {}, "Sharpening", SPEC(1, contrastLimit)},
+            {.key = "casSharpness", .label = "Sharpness", .type = ParamType::Float,
+             .defaultVal = 0.4, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Sharpening", SPEC(0, sharpness)},
+
+            {.key = "casContrastLimit", .label = "Contrast Limit", .type = ParamType::Float,
+             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Sharpening", SPEC(1, contrastLimit)},
         };
         return params;
     }

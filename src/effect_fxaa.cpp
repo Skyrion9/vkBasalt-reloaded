@@ -25,7 +25,7 @@ namespace vkBasalt
         float screenHeight;
     };
 
-    #define SPEC(id, field) id, offsetof(FxaaSpecData, field), sizeof(((FxaaSpecData*)0)->field)
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(FxaaSpecData, field), .specSize = sizeof(((FxaaSpecData*)0)->field)
 
     FxaaEffect::FxaaEffect(LogicalDevice*       pLogicalDevice,
                            VkFormat             format,
@@ -92,9 +92,17 @@ namespace vkBasalt
 
     const std::vector<EffectParamDesc>& FxaaEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
-            {"fxaaQualitySubpix",           "Subpixel Smoothing", ParamType::Float, 0.75,   0.0, 1.0, 0.01,  {}, "Anti-Aliasing", SPEC(0, subpix)},
-            {"fxaaQualityEdgeThreshold",    "Edge Threshold",     ParamType::Float, 0.125,  0.0, 1.0, 0.001, {}, "Anti-Aliasing", SPEC(1, edgeThreshold)},
-            {"fxaaQualityEdgeThresholdMin", "Edge Threshold Min", ParamType::Float, 0.0312, 0.0, 1.0, 0.001, {}, "Anti-Aliasing", SPEC(2, edgeThresholdMin)},
+            {.key = "fxaaQualitySubpix", .label = "Subpixel Smoothing", .type = ParamType::Float,
+             .defaultVal = 0.75, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .category = "Anti-Aliasing", SPEC(0, subpix)},
+
+            {.key = "fxaaQualityEdgeThreshold", .label = "Edge Threshold", .type = ParamType::Float,
+             .defaultVal = 0.125, .minVal = 0.0, .maxVal = 1.0, .step = 0.001,
+             .category = "Anti-Aliasing", SPEC(1, edgeThreshold)},
+
+            {.key = "fxaaQualityEdgeThresholdMin", .label = "Edge Threshold Min", .type = ParamType::Float,
+             .defaultVal = 0.0312, .minVal = 0.0, .maxVal = 1.0, .step = 0.001,
+             .category = "Anti-Aliasing", SPEC(2, edgeThresholdMin)},
         };
         return params;
     }
