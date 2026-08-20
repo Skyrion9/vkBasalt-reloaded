@@ -18,7 +18,6 @@
 
 namespace vkBasalt
 {
-
     struct DebandSpecData {
         float   screenWidth;
         float   screenHeight;
@@ -51,42 +50,57 @@ namespace vkBasalt
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
+        const auto& params = getParamDescs();
         DebandSpecData specData = {};
+        std::vector<VkSpecializationMapEntry> mapEntries;
+        mapEntries.reserve(params.size());
+
+        for (const auto& p : params) {
+            if (p.specId < 0) continue;
+
+            double val;
+            if (p.type == ParamType::Combo) {
+                std::string strVal = pConfig->getOption<std::string>(p.key, "");
+                int idx = 0;
+                for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
+                    if (p.comboOptions[ci] == strVal) { idx = (int)ci; break; }
+                }
+                val = (double)idx;
+            } else if (p.type == ParamType::Float) {
+                val = (double)pConfig->getOption<float>(p.key, (float)p.defaultVal);
+            } else {
+                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)p.defaultVal);
+            }
+
+            val = std::clamp(val, p.minVal, p.maxVal);
+            m_paramValues[p.key] = val;
+
+            if (p.type == ParamType::Float) {
+                float f = (float)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+            } else {
+                int32_t i = (int32_t)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+            }
+
+            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+        }
 
         specData.screenWidth         = (float)imageExtent.width;
         specData.screenHeight        = (float)imageExtent.height;
         specData.reverseScreenWidth  = 1.0f / imageExtent.width;
         specData.reverseScreenHeight = 1.0f / imageExtent.height;
-        specData.debandAvgdiff       = std::clamp(pConfig->getOption<float>("debandAvgdiff", 3.4f), 0.0f, 20.0f);
-        specData.debandMaxdiff       = std::clamp(pConfig->getOption<float>("debandMaxdiff", 6.8f), 0.0f, 40.0f);
-        specData.debandMiddiff       = std::clamp(pConfig->getOption<float>("debandMiddiff", 3.3f), 0.0f, 20.0f);
-        specData.range               = std::clamp(pConfig->getOption<float>("debandRange", 16.0f), 1.0f, 64.0f);
-        specData.iterations          = std::clamp(pConfig->getOption<int32_t>("debandIterations", 4), 1, 8);
         specData.hdrMode             = isHDR ? 1 : 0;
 
-        m_paramValues["debandAvgdiff"]    = specData.debandAvgdiff;
-        m_paramValues["debandMaxdiff"]    = specData.debandMaxdiff;
-        m_paramValues["debandMiddiff"]    = specData.debandMiddiff;
-        m_paramValues["debandRange"]      = specData.range;
-        m_paramValues["debandIterations"] = specData.iterations;
-
-        // mapEntries must be a stack allocated C-array. std::vector causes GPU hangs on AMD RADV when specialization constants are used as shader iteration/loop bounds.
-        VkSpecializationMapEntry mapEntries[] = {
-            {0, offsetof(DebandSpecData, screenWidth),         sizeof(float)},
-            {1, offsetof(DebandSpecData, screenHeight),        sizeof(float)},
-            {2, offsetof(DebandSpecData, reverseScreenWidth),  sizeof(float)},
-            {3, offsetof(DebandSpecData, reverseScreenHeight), sizeof(float)},
-            {4, offsetof(DebandSpecData, debandAvgdiff),       sizeof(float)},
-            {5, offsetof(DebandSpecData, debandMaxdiff),       sizeof(float)},
-            {6, offsetof(DebandSpecData, debandMiddiff),       sizeof(float)},
-            {7, offsetof(DebandSpecData, range),               sizeof(float)},
-            {8, offsetof(DebandSpecData, iterations),          sizeof(int32_t)},
-            {9, offsetof(DebandSpecData, hdrMode),             sizeof(int32_t)}
-        };
+        mapEntries.push_back({0, offsetof(DebandSpecData, screenWidth),         sizeof(float)});
+        mapEntries.push_back({1, offsetof(DebandSpecData, screenHeight),        sizeof(float)});
+        mapEntries.push_back({2, offsetof(DebandSpecData, reverseScreenWidth),  sizeof(float)});
+        mapEntries.push_back({3, offsetof(DebandSpecData, reverseScreenHeight), sizeof(float)});
+        mapEntries.push_back({9, offsetof(DebandSpecData, hdrMode),             sizeof(int32_t)});
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = sizeof(mapEntries) / sizeof(mapEntries[0]);
-        specializationInfo.pMapEntries   = mapEntries;
+        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(DebandSpecData);
         specializationInfo.pData         = &specData;
 
@@ -108,5 +122,4 @@ namespace vkBasalt
         };
         return params;
     }
-
 } // namespace vkBasalt
