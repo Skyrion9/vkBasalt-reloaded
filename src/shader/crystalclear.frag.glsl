@@ -412,7 +412,7 @@ void main() {
 
         vec2 posM = textureCoord;
         vec2 posB = posM;
-        vec2 offNP = isHorizontal ? vec2(pc.pixelSize.x, 0.0) : vec2(0.0, pc.pixelSize.y);
+        vec2 offNP = isHorizontal ? vec2(pc.pixelSize.x * fxaaSearchScale, 0.0) : vec2(0.0, pc.pixelSize.y * fxaaSearchScale);
 
         if (isHorizontal) posB.y += lengthSign * 0.5 * pc.pixelSize.y;
         else posB.x += lengthSign * 0.5 * pc.pixelSize.x;
