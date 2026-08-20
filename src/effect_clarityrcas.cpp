@@ -21,7 +21,6 @@
 
 namespace vkBasalt
 {
-
     struct ClarityRcasSpecData {
         float radius;
         float offset;
@@ -53,7 +52,6 @@ namespace vkBasalt
                                          VkColorSpaceKHR      colorSpace)
     {
         Logger::debug("in creating ClarityRcasEffect");
-
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = clarityrcas_frag;
         this->pushConstantSize = sizeof(ClarityRcasPushConstants);
@@ -84,10 +82,10 @@ namespace vkBasalt
             val = std::clamp(val, p.minVal, p.maxVal);
             m_paramValues[p.key] = val;
 
-            if (p.specSize == sizeof(float)) {
+            if (p.type == ParamType::Float) {
                 float f = (float)val;
                 std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
-            } else if (p.specSize == sizeof(int32_t)) {
+            } else {
                 int32_t i = (int32_t)val;
                 std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
             }
@@ -100,10 +98,12 @@ namespace vkBasalt
 
         this->radius = specData.radius;
         this->offset = specData.offset;
+
         float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
         float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
         float rawOffset  = 1.5f * radius * offset;
         float baseOffset = std::floor(rawOffset) + 0.5f;
+
         pushConstants.step1.x = baseOffset * texelSizeX;
         pushConstants.step1.y = baseOffset * texelSizeY;
         pushConstants.step2.x = pushConstants.step1.x * 3.0f;
@@ -195,7 +195,7 @@ namespace vkBasalt
             thirdBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
             thirdBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             thirdBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            thirdBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // Left by render pass
+            thirdBarrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             thirdBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;

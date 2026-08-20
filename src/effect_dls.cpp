@@ -17,7 +17,6 @@
 
 namespace vkBasalt
 {
-
     struct DlsSpecData {
         float sharpen;
         float denoise;
@@ -61,10 +60,10 @@ namespace vkBasalt
             val = std::clamp(val, p.minVal, p.maxVal);
             m_paramValues[p.key] = val;
 
-            if (p.specSize == sizeof(float)) {
+            if (p.type == ParamType::Float) {
                 float f = (float)val;
                 std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
-            } else if (p.specSize == sizeof(int32_t)) {
+            } else {
                 int32_t i = (int32_t)val;
                 std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
             }
@@ -96,6 +95,4 @@ namespace vkBasalt
         };
         return params;
     }
-
-
 } // namespace vkBasalt
