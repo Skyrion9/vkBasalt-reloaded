@@ -750,8 +750,7 @@ void main() {
             float vMin = min(edgeV_rgb.r, min(edgeV_rgb.g, edgeV_rgb.b));
             float fringe = max(hMax - hMin, vMax - vMin);
             // Gate 1: skip saturated pixels (intentional color, not CA)
-            float satHere = maxCenterRGB - minCenterRGB;
-            float satGate = 1.0 - smoothstep(0.15 * hdrNorm, 0.4 * hdrNorm, satHere);
+            float satGate = 1.0 - smoothstep(0.15 * hdrNorm, 0.4 * hdrNorm, localSaturation);
             // Gate 2: skip strong edges (text, UI, game art boundaries)
             // Gate 3: bandPassMask skips macro-structure
             float fringeMask = smoothstep(0.1 * hdrNorm, 0.3 * hdrNorm, fringe)
