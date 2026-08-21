@@ -100,19 +100,19 @@ layout(constant_id = 30) const float guardStrength = 0.6;
 layout(constant_id = 31) const float bandPassWidth = 0.8;
 layout(constant_id = 32) const float extremeProtection = 0.5;
 layout(constant_id = 33) const float shimmerReduction = 0.5;
-layout(constant_id = 34) const float vibrance = 0.0; // -1.0 to 1.0
+layout(constant_id = 34) const float vibrance = 0.0;              // -1.0 to 1.0
 layout(constant_id = 35) const int enableDeband = 0;
 layout(constant_id = 36) const float debandStrength = 0.5;
-layout(constant_id = 37) const float toneCurve = 0.0; // filmic highlight rolloff, 0.0 = off
+layout(constant_id = 37) const float toneCurve = 0.0;             // filmic highlight rolloff, 0.0 = off
 layout(constant_id = 38) const int enableChromaSmooth = 0;
 layout(constant_id = 39) const float chromaSmoothStrength = 0.5;
-layout(constant_id = 40) const float specularDesat = 0.0; // 0.0 = off, 0.4 = subtle, 1.0 = max
+layout(constant_id = 40) const float specularDesat = 0.0;         // 0.0 = off, 0.4 = subtle, 1.0 = max
 layout(constant_id = 41) const float localContrastStrength = 0.0; // Clarity local contrast knob
 layout(constant_id = 42) const int enableDespeckle = 0;
 layout(constant_id = 43) const float despeckleThreshold = 0.15;
 layout(constant_id = 44) const int enableFringeFix = 0;
 layout(constant_id = 45) const float fringeStrength = 0.5;
-layout(constant_id = 46) const float saturation = 0.0; // -1.0 (grayscale) to 1.0 (double), 0.0 = off
+layout(constant_id = 46) const float saturation = 0.0;            // -1.0 (grayscale) to 1.0 (double), 0.0 = off
 layout(constant_id = 47) const int enableCDL = 0;
 layout(constant_id = 48) const float cdlSlopeR = 1.0;
 layout(constant_id = 49) const float cdlSlopeG = 1.0;
@@ -131,14 +131,14 @@ layout(constant_id = 61) const float stHighR = 0.5;
 layout(constant_id = 62) const float stHighG = 0.3;
 layout(constant_id = 63) const float stHighB = 0.0;
 layout(constant_id = 64) const float splitToneStrength = 0.0;
-layout(constant_id = 65) const float temperature = 0.0; // -1.0 (cool/blue) to 1.0 (warm/amber), 0 = neutral
-layout(constant_id = 66) const float tint = 0.0;        // -1.0 (magenta) to 1.0 (green), 0 = neutral
-layout(constant_id = 67) const float gammaAdjust = 0.0;  // -0.9 to 0.9, 0 = off
-layout(constant_id = 68) const float blackLift = 0.0;    // 0.0 to 0.5, raises black floor (faded film)
-layout(constant_id = 69) const float whiteClip = 0.0;    // 0.0 to 0.5, lowers white ceiling
-layout(constant_id = 70) const int enableCheckerboardFix = 0;   // removes checker board transparency effect used for camera obstruction
+layout(constant_id = 65) const float temperature = 0.0;            // -1.0 (cool/blue) to 1.0 (warm/amber), 0 = neutral
+layout(constant_id = 66) const float tint = 0.0;                   // -1.0 (magenta) to 1.0 (green), 0 = neutral
+layout(constant_id = 67) const float gammaAdjust = 0.0;            // -0.9 to 0.9, 0 = off
+layout(constant_id = 68) const float blackLift = 0.0;              // 0.0 to 0.5, raises black floor (faded film)
+layout(constant_id = 69) const float whiteClip = 0.0;              // 0.0 to 0.5, lowers white ceiling
+layout(constant_id = 70) const int enableCheckerboardFix = 0;      // removes checker board transparency effect used for camera obstruction
 layout(constant_id = 71) const float checkerboardStrength = 0.5;
-layout(constant_id = 72) const int qualityLevel = 0; // 0=Perfect, 1=Ultra, 2=High, 3=Medium, 4=iGPU
+layout(constant_id = 72) const int qualityLevel = 0;               // 0=Perfect, 1=Ultra, 2=High, 3=Medium, 4=iGPU
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
