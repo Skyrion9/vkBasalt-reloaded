@@ -122,98 +122,329 @@ namespace vkBasalt
         std::string preset = pConfig->getOption<std::string>("crystalclearPreset", "devfav");
         Logger::debug("CrystalClear Preset: " + preset);
         {
-            static const char* opts[] = {"devfav","esports","artifactless","maxsharp","vibrantsharp","devfxaa","cinematic","film","vivid","noir"};
             int idx = 0;
-            for (int ci = 0; ci < 10; ci++) { if (preset == opts[ci]) { idx = ci; break; } }
+            for (const auto& p : getParamDescs()) {
+                if (p.key == "crystalclearPreset") {
+                    for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
+                        if (preset == p.comboOptions[ci]) { idx = (int)ci; break; }
+                    }
+                    break;
+                }
+            }
             m_paramValues["crystalclearPreset"] = (double)idx;
         }
 
         using PresetMap = std::unordered_map<std::string, double>;
         static const std::unordered_map<std::string, PresetMap> presetTable = {
+
             {"esports", {
-                {"crystalclearSharpStrength", 2.0}, {"crystalclearCasStrength", 2.5},
-                {"crystalclearGuardStrength", 0.6}, {"crystalclearExtremeProtection", 0.5},
-                {"crystalclearShimmerReduction", 0.6}, {"crystalclearFilmGrainStrength", 0.8},
-                {"crystalclearEnableFilmGrain", 0}, {"crystalclearToneCurve", 0.2},
-                {"crystalclearVibrance", 0.0}, {"crystalclearBlendIfDark", 15},
-                {"crystalclearBlendIfLight", 240}
+                // Sharpening
+                {"crystalclearSharpStrength",         2.0},
+                {"crystalclearCasStrength",           2.5},
+                {"crystalclearLocalContrastStrength", 2.0},
+                // Protection
+                {"crystalclearQualityLevel",          1},
+                {"crystalclearGuardStrength",         0.6},
+                {"crystalclearExtremeProtection",     0.5},
+                {"crystalclearShimmerReduction",      0.6},
+                {"crystalclearEnableDespeckle",       1},
+                {"crystalclearDespeckleThreshold",    0.18},
+                {"crystalclearEnableChromaSmooth",    1},
+                {"crystalclearChromaSmoothStrength",  0.3},
+                // Color & Tone
+                {"crystalclearVibrance",              0.0},
+                {"crystalclearSaturation",            0.1},
+                {"crystalclearToneCurve",             0.2},
+                // Grain (off for competitive clarity)
+                {"crystalclearEnableFilmGrain",       0},
+                {"crystalclearFilmGrainStrength",     0.8},
+                // Blend range
+                {"crystalclearBlendIfDark",           15},
+                {"crystalclearBlendIfLight",          240},
             }},
+
+            {"antitaa", {
+                // Sharpening (maximum to counter TAA blur)
+                {"crystalclearSharpStrength",            3.0},
+                {"crystalclearCasStrength",              3.5},
+                {"crystalclearCasSharpness",             1.0},
+                {"crystalclearLocalContrastStrength",    1.0},
+                // Protection (targeted against TAA artifacts)
+                {"crystalclearQualityLevel",             0},
+                {"crystalclearGuardStrength",            0.6},
+                {"crystalclearExtremeProtection",        0.3},
+                {"crystalclearShimmerReduction",         0.8},
+                {"crystalclearBandPassWidth",            0.9},
+                {"crystalclearEdgeThreshLow",            0.02},
+                {"crystalclearEdgeThreshHigh",           0.20},
+                {"crystalclearClarityTextureProtection", 0.2},
+                {"crystalclearEnableRGBEdgeDetection",   1},
+                // TAA ghost cleanup suite
+                {"crystalclearEnableDespeckle",          1},
+                {"crystalclearDespeckleThreshold",       0.12},
+                {"crystalclearEnableChromaSmooth",       1},
+                {"crystalclearChromaSmoothStrength",     0.5},
+                // TAA compression banding
+                {"crystalclearEnableDeband",             1},
+                {"crystalclearDebandStrength",           0.4},
+                {"crystalclearEnableDithering",          1},
+                // Color (TAA slightly desaturates)
+                {"crystalclearVibrance",                 0.1},
+                // Grain off (pure sharpness, grain interferes with deblur)
+                {"crystalclearEnableFilmGrain",          0},
+            }},
+
             {"artifactless", {
-                {"crystalclearSharpStrength", 1.2}, {"crystalclearCasStrength", 1.5},
-                {"crystalclearGuardStrength", 0.9}, {"crystalclearExtremeProtection", 0.8},
-                {"crystalclearShimmerReduction", 0.8}, {"crystalclearBandPassWidth", 0.6},
-                {"crystalclearEdgeThreshLow", 0.05}, {"crystalclearEdgeThreshHigh", 0.35},
+                // Sharpening (soft)
+                {"crystalclearSharpStrength",            1.2},
+                {"crystalclearCasStrength",              1.5},
+                {"crystalclearLocalContrastStrength",    0.0},
+                // Protection (maximum)
+                {"crystalclearQualityLevel",             0},
+                {"crystalclearGuardStrength",            0.9},
+                {"crystalclearExtremeProtection",        0.8},
+                {"crystalclearShimmerReduction",         0.8},
+                {"crystalclearBandPassWidth",            0.6},
+                {"crystalclearEdgeThreshLow",            0.05},
+                {"crystalclearEdgeThreshHigh",           0.35},
                 {"crystalclearClarityTextureProtection", 0.6},
-                {"crystalclearEnableFilmGrain", 0}, {"crystalclearEnableDeband", 1},
-                {"crystalclearDebandStrength", 0.4}, {"crystalclearEnableChromaSmooth", 1},
-                {"crystalclearChromaSmoothStrength", 0.4}, {"crystalclearSpecularDesat", 0.2}
+                // Artifact cleanup suite
+                {"crystalclearEnableDespeckle",          1},
+                {"crystalclearDespeckleThreshold",       0.15},
+                {"crystalclearEnableFringeFix",          1},
+                {"crystalclearFringeStrength",           0.4},
+                {"crystalclearEnableCheckerboardFix",    1},
+                {"crystalclearCheckerboardStrength",     0.4},
+                {"crystalclearEnableChromaSmooth",       1},
+                {"crystalclearChromaSmoothStrength",     0.4},
+                {"crystalclearEnableDeband",             1},
+                {"crystalclearDebandStrength",           0.4},
+                // Color & Grain
+                {"crystalclearSpecularDesat",            0.2},
+                {"crystalclearEnableFilmGrain",          0},
             }},
+
             {"maxsharp", {
-                {"crystalclearSharpStrength", 3.5}, {"crystalclearCasStrength", 4.0},
-                {"crystalclearCasSharpness", 1.0}, {"crystalclearGuardStrength", 0.2},
-                {"crystalclearExtremeProtection", 0.1}, {"crystalclearShimmerReduction", 0.2},
-                {"crystalclearBandPassWidth", 1.2}, {"crystalclearEdgeThreshLow", 0.02},
-                {"crystalclearEdgeThreshHigh", 0.20}, {"crystalclearClarityTextureProtection", 0.1},
-                {"crystalclearFilmGrainStrength", 0.8}
+                // Sharpening (aggressive)
+                {"crystalclearSharpStrength",            3.5},
+                {"crystalclearCasStrength",              4.0},
+                {"crystalclearCasSharpness",             1.0},
+                {"crystalclearLocalContrastStrength",    1.5},
+                // Protection (minimal)
+                {"crystalclearQualityLevel",             0},
+                {"crystalclearGuardStrength",            0.2},
+                {"crystalclearExtremeProtection",        0.1},
+                {"crystalclearShimmerReduction",         0.2},
+                {"crystalclearBandPassWidth",            1.2},
+                {"crystalclearEdgeThreshLow",            0.02},
+                {"crystalclearEdgeThreshHigh",           0.20},
+                {"crystalclearClarityTextureProtection", 0.1},
+                {"crystalclearEnableRGBEdgeDetection",   1},
+                // Pre-sharpen cleanup
+                {"crystalclearEnableDespeckle",          1},
+                {"crystalclearDespeckleThreshold",       0.1},
+                {"crystalclearEnableChromaSmooth",       1},
+                {"crystalclearChromaSmoothStrength",     0.3},
+                // Grain
+                {"crystalclearFilmGrainStrength",        0.8},
             }},
+
             {"vibrantsharp", {
-                {"crystalclearSharpStrength", 2.5}, {"crystalclearCasStrength", 2.5},
-                {"crystalclearGuardStrength", 0.5}, {"crystalclearExtremeProtection", 0.4},
-                {"crystalclearShimmerReduction", 0.5}, {"crystalclearFilmGrainStrength", 0.6},
-                {"crystalclearEnableDeband", 1}, {"crystalclearDebandStrength", 0.6},
-                {"crystalclearToneCurve", 0.2}, {"crystalclearVibrance", 0.6},
-                {"crystalclearSpecularDesat", 0.1}
+                // Sharpening
+                {"crystalclearSharpStrength",        2.5},
+                {"crystalclearCasStrength",          2.5},
+                // Protection
+                {"crystalclearQualityLevel",         1},
+                {"crystalclearGuardStrength",        0.5},
+                {"crystalclearExtremeProtection",    0.4},
+                {"crystalclearShimmerReduction",     0.5},
+                {"crystalclearEnableDespeckle",      1},
+                {"crystalclearDespeckleThreshold",   0.15},
+                {"crystalclearEnableChromaSmooth",   1},
+                {"crystalclearChromaSmoothStrength", 0.4},
+                {"crystalclearEnableDeband",         1},
+                {"crystalclearDebandStrength",       0.6},
+                // Color & Tone
+                {"crystalclearVibrance",             0.6},
+                {"crystalclearSpecularDesat",        0.2},
+                {"crystalclearTemperature",          0.05},
+                {"crystalclearToneCurve",            0.2},
+                // Grain
+                {"crystalclearFilmGrainStrength",    0.6},
             }},
+
             {"devfxaa", {
-                {"crystalclearSharpStrength", 2.0}, {"crystalclearCasStrength", 2.5},
-                {"crystalclearGuardStrength", 0.6}, {"crystalclearEnableAA", 1},
-                {"crystalclearFxaaEdgeThreshold", 0.04}, {"crystalclearFxaaSubpixAmount", 0.8},
-                {"crystalclearFilmGrainStrength", 0.8}
+                // Sharpening
+                {"crystalclearSharpStrength",         2.0},
+                {"crystalclearCasStrength",           2.5},
+                // FXAA
+                {"crystalclearQualityLevel",          1},
+                {"crystalclearEnableAA",              1},
+                {"crystalclearFxaaEdgeThreshold",     0.04},
+                {"crystalclearFxaaSubpixAmount",      0.8},
+                {"crystalclearFxaaSearchScale",       1.5},
+                {"crystalclearFxaaHardEdgeThreshold", 0.06},
+                // Protection
+                {"crystalclearGuardStrength",         0.6},
+                {"crystalclearShimmerReduction",      0.5},
+                {"crystalclearEnableDespeckle",       1},
+                {"crystalclearDespeckleThreshold",    0.15},
+                {"crystalclearEnableChromaSmooth",    1},
+                {"crystalclearChromaSmoothStrength",  0.3},
+                // Grain
+                {"crystalclearFilmGrainStrength",     0.8},
             }},
+
             {"cinematic", {
-                {"crystalclearSharpStrength", 1.8}, {"crystalclearCasStrength", 1.5},
-                {"crystalclearGuardStrength", 0.7}, {"crystalclearExtremeProtection", 0.6},
-                {"crystalclearShimmerReduction", 0.5}, {"crystalclearBandPassWidth", 0.7},
-                {"crystalclearFilmGrainStrength", 1.2}, {"crystalclearFilmGrainMinimum", 0.1},
-                {"crystalclearCoarseGrainWeight", 0.9}, {"crystalclearEnableDeband", 1},
-                {"crystalclearDebandStrength", 0.5}, {"crystalclearToneCurve", 0.5},
-                {"crystalclearVibrance", -0.1}, {"crystalclearEnableChromaSmooth", 1},
-                {"crystalclearChromaSmoothStrength", 0.6}, {"crystalclearSpecularDesat", 0.4},
-                {"crystalclearBlendIfDark", 20}, {"crystalclearBlendIfLight", 230},
-                {"crystalclearEnableSplitTone", 1}, {"crystalclearSplitToneStrength", 0.3},
-                {"crystalclearSTShadowR", 0.0}, {"crystalclearSTShadowG", 0.4},
-                {"crystalclearSTShadowB", 0.5}, {"crystalclearSTHighR", 0.5},
-                {"crystalclearSTHighG", 0.3}, {"crystalclearSTHighB", 0.0},
-                {"crystalclearTemperature", 0.1}
+                // Sharpening (soft)
+                {"crystalclearSharpStrength",        1.8},
+                {"crystalclearCasStrength",          1.5},
+                // Protection
+                {"crystalclearQualityLevel",         0},
+                {"crystalclearGuardStrength",        0.7},
+                {"crystalclearExtremeProtection",    0.6},
+                {"crystalclearShimmerReduction",     0.5},
+                {"crystalclearBandPassWidth",        0.7},
+                // Cleanup
+                {"crystalclearEnableDespeckle",      1},
+                {"crystalclearDespeckleThreshold",   0.15},
+                {"crystalclearEnableChromaSmooth",   1},
+                {"crystalclearChromaSmoothStrength", 0.6},
+                // Film grain (warm, coarse)
+                {"crystalclearFilmGrainStrength",    1.2},
+                {"crystalclearFilmGrainMinimum",     0.1},
+                {"crystalclearFineGrainWeight",      0.5},
+                {"crystalclearCoarseGrainWeight",    0.9},
+                // Lens simulation
+                {"crystalclearEnableFringeFix",      1},
+                {"crystalclearFringeStrength",       0.3},
+                {"crystalclearSpecularDesat",        0.4},
+                // Tone shaping
+                {"crystalclearToneCurve",            0.5},
+                {"crystalclearGammaAdjust",         -0.05},
+                {"crystalclearBlackLift",            0.08},
+                {"crystalclearWhiteClip",            0.05},
+                // Color grading (warm shadows, amber highlights)
+                {"crystalclearVibrance",            -0.1},
+                {"crystalclearTemperature",          0.1},
+                {"crystalclearEnableSplitTone",      1},
+                {"crystalclearSplitToneStrength",    0.3},
+                {"crystalclearSTShadowR",            0.0},
+                {"crystalclearSTShadowG",            0.4},
+                {"crystalclearSTShadowB",            0.5},
+                {"crystalclearSTHighR",              0.5},
+                {"crystalclearSTHighG",              0.3},
+                {"crystalclearSTHighB",              0.0},
+                // Deband & blend range
+                {"crystalclearEnableDeband",         1},
+                {"crystalclearDebandStrength",       0.5},
+                {"crystalclearBlendIfDark",          20},
+                {"crystalclearBlendIfLight",         230},
             }},
+
             {"film", {
-                {"crystalclearSharpStrength", 1.5}, {"crystalclearCasStrength", 1.5},
-                {"crystalclearGuardStrength", 0.7}, {"crystalclearExtremeProtection", 0.7},
-                {"crystalclearShimmerReduction", 0.6}, {"crystalclearFilmGrainStrength", 1.5},
-                {"crystalclearFilmGrainMinimum", 0.2}, {"crystalclearCoarseGrainWeight", 0.9},
-                {"crystalclearEnableDeband", 1}, {"crystalclearDebandStrength", 0.5},
-                {"crystalclearToneCurve", 0.4}, {"crystalclearSaturation", -0.2},
-                {"crystalclearEnableSplitTone", 1}, {"crystalclearSplitToneStrength", 0.25},
-                {"crystalclearSTShadowR", 0.0}, {"crystalclearSTShadowG", 0.3},
-                {"crystalclearSTShadowB", 0.4}, {"crystalclearSTHighR", 0.4},
-                {"crystalclearSTHighG", 0.25}, {"crystalclearSTHighB", 0.0},
-                {"crystalclearTemperature", 0.05}, {"crystalclearGammaAdjust", -0.1},
-                {"crystalclearBlackLift", 0.15}, {"crystalclearWhiteClip", 0.1}
+                // Sharpening (soft)
+                {"crystalclearSharpStrength",        1.5},
+                {"crystalclearCasStrength",          1.5},
+                // Protection
+                {"crystalclearQualityLevel",         0},
+                {"crystalclearGuardStrength",        0.7},
+                {"crystalclearExtremeProtection",    0.7},
+                {"crystalclearShimmerReduction",     0.6},
+                // Cleanup
+                {"crystalclearEnableDespeckle",      1},
+                {"crystalclearDespeckleThreshold",   0.15},
+                {"crystalclearEnableChromaSmooth",   1},
+                {"crystalclearChromaSmoothStrength", 0.5},
+                // Film grain (heavy, textured)
+                {"crystalclearFilmGrainStrength",    1.5},
+                {"crystalclearFilmGrainMinimum",     0.2},
+                {"crystalclearFineGrainWeight",      0.6},
+                {"crystalclearCoarseGrainWeight",    0.9},
+                // Lens simulation
+                {"crystalclearEnableFringeFix",      1},
+                {"crystalclearFringeStrength",       0.25},
+                {"crystalclearSpecularDesat",        0.3},
+                // Tone shaping (faded, muted)
+                {"crystalclearToneCurve",            0.4},
+                {"crystalclearGammaAdjust",         -0.1},
+                {"crystalclearBlackLift",            0.15},
+                {"crystalclearWhiteClip",            0.1},
+                // Color grading (desaturated, cool shadows)
+                {"crystalclearSaturation",          -0.2},
+                {"crystalclearTemperature",          0.05},
+                {"crystalclearEnableSplitTone",      1},
+                {"crystalclearSplitToneStrength",    0.25},
+                {"crystalclearSTShadowR",            0.0},
+                {"crystalclearSTShadowG",            0.3},
+                {"crystalclearSTShadowB",            0.4},
+                {"crystalclearSTHighR",              0.4},
+                {"crystalclearSTHighG",              0.25},
+                {"crystalclearSTHighB",              0.0},
+                // Deband
+                {"crystalclearEnableDeband",         1},
+                {"crystalclearDebandStrength",       0.5},
             }},
+
             {"vivid", {
-                {"crystalclearSharpStrength", 2.5}, {"crystalclearCasStrength", 3.0},
-                {"crystalclearGuardStrength", 0.4}, {"crystalclearFilmGrainStrength", 0.6},
-                {"crystalclearVibrance", 0.3}, {"crystalclearSaturation", 0.4},
-                {"crystalclearTemperature", 0.05}, {"crystalclearEnableCDL", 1},
-                {"crystalclearCDLSlopeR", 1.1}, {"crystalclearCDLSlopeG", 1.05},
-                {"crystalclearCDLSlopeB", 1.0}
+                // Sharpening
+                {"crystalclearSharpStrength",        2.5},
+                {"crystalclearCasStrength",          3.0},
+                // Protection
+                {"crystalclearQualityLevel",         1},
+                {"crystalclearGuardStrength",        0.4},
+                {"crystalclearShimmerReduction",     0.5},
+                {"crystalclearEnableDespeckle",      1},
+                {"crystalclearDespeckleThreshold",   0.15},
+                {"crystalclearEnableChromaSmooth",   1},
+                {"crystalclearChromaSmoothStrength", 0.3},
+                {"crystalclearEnableDeband",         1},
+                {"crystalclearDebandStrength",       0.4},
+                // Color pop
+                {"crystalclearVibrance",             0.3},
+                {"crystalclearSaturation",           0.4},
+                {"crystalclearTemperature",          0.05},
+                {"crystalclearSpecularDesat",        0.2},
+                {"crystalclearToneCurve",            0.15},
+                // CDL grade (warm reds, lifted greens)
+                {"crystalclearEnableCDL",            1},
+                {"crystalclearCDLSlopeR",            1.1},
+                {"crystalclearCDLSlopeG",            1.05},
+                {"crystalclearCDLSlopeB",            1.0},
+                // Grain
+                {"crystalclearFilmGrainStrength",    0.6},
             }},
+
             {"noir", {
-                {"crystalclearSharpStrength", 3.0}, {"crystalclearCasStrength", 3.5},
-                {"crystalclearGuardStrength", 0.3}, {"crystalclearExtremeProtection", 0.2},
-                {"crystalclearShimmerReduction", 0.3}, {"crystalclearFilmGrainStrength", 1.0},
-                {"crystalclearToneCurve", 0.3}, {"crystalclearSaturation", -1.0},
-                {"crystalclearGammaAdjust", 0.2}, {"crystalclearBlackLift", 0.05}
+                // Sharpening (high contrast)
+                {"crystalclearSharpStrength",        3.0},
+                {"crystalclearCasStrength",          3.5},
+                // Protection (minimal)
+                {"crystalclearQualityLevel",         1},
+                {"crystalclearGuardStrength",        0.3},
+                {"crystalclearExtremeProtection",    0.2},
+                {"crystalclearShimmerReduction",     0.3},
+                // Cleanup
+                {"crystalclearEnableDespeckle",      1},
+                {"crystalclearDespeckleThreshold",   0.15},
+                {"crystalclearEnableChromaSmooth",   1},
+                {"crystalclearChromaSmoothStrength", 0.3},
+                // B&W conversion
+                {"crystalclearSaturation",          -1.0},
+                // Tone shaping (crushed, contrasty)
+                {"crystalclearToneCurve",            0.3},
+                {"crystalclearGammaAdjust",          0.2},
+                {"crystalclearBlackLift",            0.05},
+                {"crystalclearWhiteClip",            0.15},
+                // Grain (visible, filmic)
+                {"crystalclearFilmGrainStrength",    1.0},
+                {"crystalclearFilmGrainMinimum",     0.3},
+                {"crystalclearFineGrainWeight",      0.5},
+                {"crystalclearCoarseGrainWeight",    0.7},
+                // Banding protection
+                {"crystalclearEnableDeband",         1},
+                {"crystalclearDebandStrength",       0.5},
+                {"crystalclearEnableDithering",      1},
             }},
         };
 
@@ -454,10 +685,11 @@ namespace vkBasalt
             // Presets & Performance
             {.key = "crystalclearPreset", .label = "Preset", .type = ParamType::Combo,
              .defaultVal = 0.0, .minVal = 0.0, .maxVal = 0.0, .step = 0.0,
-             .comboOptions = {"devfav", "esports", "artifactless", "maxsharp", "vibrantsharp", "devfxaa", "cinematic", "film", "vivid", "noir"},
+             .comboOptions = {"devfav", "esports", "artifactless", "maxsharp", "antitaa", "vibrantsharp", "devfxaa", "cinematic", "film", "vivid", "noir"},
              .category = "Presets & Performance",
              .tooltip = "Curated starting points. Adjust individual sliders after selecting.\n"
                         "devfav: balanced sharpen+grain.\nesports: high clarity, low grain.\n"
+                        "antitaa: maximum TAA deblur + ghost cleanup.\n"
                         "artifactless: soft, maximum protection.\nmaxsharp: aggressive sharpen.\n"
                         "vibrantsharp: sharp + color boost.\ndevfxaa: balanced + FXAA.\n"
                         "cinematic: warm tones, split toning, deband.\nfilm: strong grain, muted colors.\n"
@@ -577,9 +809,9 @@ namespace vkBasalt
 
             // Artifact Protection
             {.key = "crystalclearGuardStrength", .label = "Guard Strength", .type = ParamType::Float,
-             .defaultVal = 0.4, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .defaultVal = 0.5, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
              .category = "Artifact Protection",
-             .tooltip = "Master multiplier for all protective masks (band pass, edge mask, silhouette, saturation, dark smear, texture protection). 0 = all guards bypassed (maximum sharpening, more artifacts). 1 = full protection (conservative). Default 0.4.",
+             .tooltip = "Master multiplier for all protective masks (band pass, edge mask, silhouette, saturation, dark smear, texture protection). 0 = all guards bypassed (maximum sharpening, more artifacts). 1 = full protection (conservative). Default 0.5.",
              SPEC(30, guardStrength)},
 
             {.key = "crystalclearBandPassWidth", .label = "Band Pass Width", .type = ParamType::Float,
@@ -589,9 +821,9 @@ namespace vkBasalt
              SPEC(31, bandPassWidth)},
 
             {.key = "crystalclearExtremeProtection", .label = "Extreme Protection", .type = ParamType::Float,
-             .defaultVal = 0.3, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .defaultVal = 0.4, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
              .category = "Artifact Protection",
-             .tooltip = "Reduces sharpening at luminance extremes (very dark shadows, very bright highlights) where artifacts are most visible. 0 = no penalty, 1 = full protection. Default 0.3.",
+             .tooltip = "Reduces sharpening at luminance extremes (very dark shadows, very bright highlights) where artifacts are most visible. 0 = no penalty, 1 = full protection. Default 0.4.",
              SPEC(32, extremeProtection)},
 
             {.key = "crystalclearShimmerReduction", .label = "Shimmer Reduction", .type = ParamType::Float,
@@ -607,9 +839,9 @@ namespace vkBasalt
              SPEC(8, edgeThreshLow)},
 
             {.key = "crystalclearEdgeThreshHigh", .label = "Edge Thresh High", .type = ParamType::Float,
-             .defaultVal = 0.28, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .defaultVal = 0.25, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
              .category = "Artifact Protection",
-             .tooltip = "Upper threshold of the bilateral edge smoothstep. Contrast differences above this are fully passed through. The range between Low and High is the smooth transition zone. Default 0.28.",
+             .tooltip = "Upper threshold of the bilateral edge smoothstep. Contrast differences above this are fully passed through. The range between Low and High is the smooth transition zone. Default 0.25.",
              SPEC(9, edgeThreshHigh)},
 
             {.key = "crystalclearEnableRGBEdgeDetection", .label = "RGB Edge Detection", .type = ParamType::Bool,
@@ -625,21 +857,21 @@ namespace vkBasalt
              SPEC(17, clarityTextureProtection)},
 
             {.key = "crystalclearEnableChromaSmooth", .label = "Chroma Smooth", .type = ParamType::Bool,
-             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
              .category = "Artifact Protection",
-             .tooltip = "Edge-aware chroma denoiser. Blurs color channels in flat areas to kill color noise (common from TAA and compression) without softening luma detail. Default off.",
+             .tooltip = "Edge-aware chroma denoiser. Blurs color channels in flat areas to kill color noise (common from TAA and compression) without softening luma detail. Default on.",
              SPEC(38, enableChromaSmooth)},
 
             {.key = "crystalclearChromaSmoothStrength", .label = "Chroma Strength", .type = ParamType::Float,
-             .defaultVal = 0.5, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+             .defaultVal = 0.4, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
              .category = "Artifact Protection",
-             .tooltip = "Strength of the chroma smoothing pass. Higher = more aggressive color noise removal. Default 0.5.",
+             .tooltip = "Strength of the chroma smoothing pass. Higher = more aggressive color noise removal. Default 0.4.",
              SPEC(39, chromaSmoothStrength)},
 
             {.key = "crystalclearEnableDespeckle", .label = "Enable Despeckle", .type = ParamType::Bool,
-             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
              .category = "Artifact Protection",
-             .tooltip = "Removes isolated impulse noise (random bright/dark outlier pixels). Gated by Despeckle Threshold. Disabled on Medium and below. Default off.",
+             .tooltip = "Removes isolated impulse noise (random bright/dark outlier pixels) that causes the antsy micro-shimmer look. Gated by Despeckle Threshold. Disabled on Medium and below. Default on.",
              SPEC(42, enableDespeckle)},
 
             {.key = "crystalclearDespeckleThreshold", .label = "Despeckle Threshold", .type = ParamType::Float,
@@ -655,9 +887,9 @@ namespace vkBasalt
              SPEC(44, enableFringeFix)},
 
             {.key = "crystalclearFringeStrength", .label = "Fringe Strength", .type = ParamType::Float,
-             .defaultVal = 0.5, .minVal = 0.0, .maxVal = 1.0, .step = 0.05,
+             .defaultVal = 0.4, .minVal = 0.0, .maxVal = 1.0, .step = 0.05,
              .category = "Artifact Protection",
-             .tooltip = "Strength of the fringe desaturation. Higher = more aggressive CA removal. Perfect quality only. Default 0.5.",
+             .tooltip = "Strength of the fringe desaturation. Higher = more aggressive CA removal. Perfect quality only. Default 0.4.",
              SPEC(45, fringeStrength)},
 
             {.key = "crystalclearEnableCheckerboardFix", .label = "Checkerboard Fix", .type = ParamType::Bool,
