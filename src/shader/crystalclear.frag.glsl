@@ -139,6 +139,8 @@ layout(constant_id = 69) const float whiteClip = 0.0;              // 0.0 to 0.5
 layout(constant_id = 70) const int enableCheckerboardFix = 0;      // removes checker board transparency effect used for camera obstruction
 layout(constant_id = 71) const float checkerboardStrength = 0.5;
 layout(constant_id = 72) const int qualityLevel = 0;               // 0=Perfect, 1=Ultra, 2=High, 3=Medium, 4=iGPU
+layout(constant_id = 73) const int enableBC1Fix = 0;               // BC1/DXT1 green/magenta artifact suppression
+layout(constant_id = 74) const float bc1FixStrength = 0.3;         // 0.0 = off, 1.0 = maximum correction
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -245,6 +247,24 @@ void main() {
             float targetLuma    = mix(lE, crossAvg, outlierMask);
             e  = e * (targetLuma / max(lE, 0.0001));
             lE = targetLuma;
+        }
+    }
+
+    // phase 1.6: BC1/DXT1 green/magenta bias correction on the source. BC1 encodes green with 6 bits vs 5 bits for R/B.
+    // creating green/magenta bias in low-saturation regions. Gated by saturation + neighbor agreement to avoid touching intentional green content.
+    if (enableBC1Fix == 1 && qualityLevel <= 2) {
+        float bc1Sat = max(max(e.r, e.g), e.b) - min(min(e.r, e.g), e.b);
+        if (bc1Sat < 0.2 * hdrNorm) {
+            float bc1SatGate      = 1.0 - smoothstep(0.06 * hdrNorm, 0.2 * hdrNorm, bc1Sat);
+            float bc1NeighborSpread = max(max(lB, lH), max(lD, lF)) - min(min(lB, lH), min(lD, lF));
+            float bc1NeighborAgree  = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, bc1NeighborSpread);
+            float rbAvg      = (e.r + e.b) * 0.5;
+            float greenBias  = e.g - rbAvg;
+            float correction = clamp(greenBias,
+                -bc1FixStrength * 0.15 * hdrNorm,
+                 bc1FixStrength * 0.15 * hdrNorm);
+            e.g -= correction * bc1SatGate * bc1NeighborAgree * mix(1.0, bc1SatGate, guardStrength);
+            lE = getLuma(e);
         }
     }
 
@@ -528,6 +548,15 @@ void main() {
         wideAvg = clamp(wideAvg, localMinLuma, localMaxLuma);
         float lcRatio = lumaAA / max(wideAvg, 0.0001 * hdrNorm);
         float lcBoost = pow(clamp(lcRatio, 0.25, 4.0), localContrastStrength) - 1.0;
+        // BC1 fix: local contrast is the biggest amplifier of BC1 block-boundary luma steps.
+        // Suppress it at 4px block edges in low-detail regions where the artifacts are visible.
+        if (enableBC1Fix == 1 && qualityLevel <= 2) {
+            vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
+            float blockEdge = 1.0 - smoothstep(0.0, 1.5,
+                min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
+            float lowDetail = 1.0 - smoothstep(0.06 * hdrNorm, 0.2 * hdrNorm, localContrast);
+            lcBoost *= mix(1.0, 1.0 - blockEdge * lowDetail, bc1FixStrength * guardStrength);
+        }
         diff += lcBoost * 0.08 * hdrNorm * edgeMask;
     }
 
@@ -638,6 +667,7 @@ void main() {
 
         // phase 9: Edge-Aware Chroma Smoothing (Color Denoise)
         // Blurs the chroma channels using the 4-tap cross, gated by a flatness mask, kills color noise (common from TAA/compression) without softening luma detail.
+        // BC1 fix: additional boost at 4px block boundaries where BC1 chroma discontinuities are sharpest.
         if (enableChromaSmooth == 1) {
             vec3 cross_avg = (b + d + f + h) * 0.25;
             float cross_luma = getNeutralLuma(cross_avg);
@@ -646,6 +676,15 @@ void main() {
             // Gate: smooth in flat, non-edge areas where color noise is visible
             float flatMask = 1.0 - smoothstep(0.05 * hdrNorm, 0.25 * hdrNorm, localContrast);
             float smoothAmount = flatMask * edgeMask * chromaSmoothStrength;
+
+            // BC1/DXT1 blocks are always 4x4 aligned to gl_FragCoord. Chroma discontinuities
+            // are sharpest at block boundaries, so boost chroma smoothing there.
+            if (enableBC1Fix == 1 && qualityLevel <= 2) {
+                vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
+                float blockEdge = 1.0 - smoothstep(0.0, 1.5,
+                    min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
+                smoothAmount *= mix(1.0, 1.5, blockEdge * bc1FixStrength);
+            }
 
             // Mix the current color toward the cross average, but preserve the center luma.
             finalColor = mix(finalColor, cross_avg + vec3(center_luma - cross_luma), smoothAmount);

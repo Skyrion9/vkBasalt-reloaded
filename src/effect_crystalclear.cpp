@@ -97,6 +97,8 @@ namespace vkBasalt
         int32_t enableCheckerboardFix;
         float   checkerboardStrength;
         int32_t qualityLevel;
+        int32_t enableBC1Fix;
+        float   bc1FixStrength;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(CrystalClearSpecData, field), .specSize = sizeof(((CrystalClearSpecData*)0)->field)
@@ -665,6 +667,8 @@ namespace vkBasalt
             {"crystalclearCheckerboardStrength",   2},
             {"crystalclearEnableDespeckle",        2},
             {"crystalclearDespeckleThreshold",     2},
+            {"crystalclearEnableBC1Fix",           2},
+            {"crystalclearBC1FixStrength",         2},
             // Medium+ (qualityLevel <= 3)
             {"crystalclearShimmerReduction",       3},
             {"crystalclearEnableFilmGrain",        3},
@@ -903,6 +907,18 @@ namespace vkBasalt
              .category = "Artifact Protection",
              .tooltip = "Strength of the checkerboard correction blend. Higher = more aggressive removal. Disabled on Medium and below. Default 0.5.",
              SPEC(71, checkerboardStrength)},
+
+            {.key = "crystalclearEnableBC1Fix", .label = "BC1 Artifact Fix", .type = ParamType::Bool,
+             .defaultVal = 1.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+             .category = "Artifact Protection",
+             .tooltip = "Suppresses green/magenta color fringing from BC1/DXT1 texture compression. Detects the 6-bit green vs 5-bit R/B quantization bias in low-saturation regions and corrects it. Also boosts chroma smoothing at 4px block boundaries. Disabled on Medium and below. Default on.",
+             SPEC(73, enableBC1Fix)},
+
+            {.key = "crystalclearBC1FixStrength", .label = "BC1 Fix Strength", .type = ParamType::Float,
+             .defaultVal = 0.3, .minVal = 0.0, .maxVal = 1.0, .step = 0.05,
+             .category = "Artifact Protection",
+             .tooltip = "Strength of BC1/DXT1 artifact correction. Higher = more aggressive green/magenta removal and block-edge chroma smoothing. Default 0.3.",
+             SPEC(74, bc1FixStrength)},
 
             // Film Grain & Dither
             {.key = "crystalclearEnableFilmGrain", .label = "Enable Film Grain", .type = ParamType::Bool,
