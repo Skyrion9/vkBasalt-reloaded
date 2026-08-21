@@ -220,9 +220,88 @@ void main() {
 
     float crossAvg = (lB + lH + lD + lF) * 0.25;
 
-    // phase 1.5 Checkerboard correction and anti speckle, combined as they share spread math and despeckle interacts with checkerboard patterns.
+    // phase 1.1: min/max, local contrast, and band-pass mask (moved from phase 3)
+    vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
+    vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
+    vec3 trueMnRGB = mnRGB2;
+    mnRGB += mnRGB2;
+    vec3 mxRGB  = max(max(max(d,e),max(f,b)),h);
+    vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
+    vec3 trueMxRGB = mxRGB2;
+    mxRGB += mxRGB2;
+    float localMaxLuma = getLuma(trueMxRGB);
+    float localMinLuma = getLuma(trueMnRGB);
+    float localContrast = localMaxLuma - localMinLuma;
+    float bpLow = 0.01 * hdrNorm;
+    float bpFadeIn = 0.04 * hdrNorm;
+    float bpHigh = bandPassWidth * hdrNorm;
+    float bpFadeOut = 0.3 * hdrNorm;
+    float lowFreqFade = smoothstep(bpLow, bpLow + bpFadeIn, localContrast);
+    float highFreqFade = 1.0 - smoothstep(bpHigh, bpHigh + bpFadeOut, localContrast);
+    float bandPassMask = lowFreqFade * highFreqFade;
+
+    // phase 1.2: full edge detection, edge mask, and micro texture mask (moved from phase 4)
+    float crossMaxSM = max(lH, lE);
+    float crossMinSM = min(lH, lE);
+    float crossMaxESM = max(lF, crossMaxSM);
+    float crossMinESM = min(lF, crossMinSM);
+    float crossMaxWN = max(lB, lD);
+    float crossMinWN = min(lB, lD);
+    float crossRangeMax = max(crossMaxWN, crossMaxESM);
+    float crossRangeMin = min(crossMinWN, crossMinESM);
+    float crossRange = crossRangeMax - crossRangeMin;
+    float fxaaThreshMin = fxaaEdgeThresholdMin * hdrNorm;
+    float rangeMaxClamped = max(fxaaThreshMin, crossRangeMax * fxaaEdgeThreshold);
+    bool earlyExit = crossRange < rangeMaxClamped;
+    float lumaEdgeD1 = abs(lA + lI - 2.0 * lE);
+    float lumaEdgeD2 = abs(lC + lG - 2.0 * lE);
+    float edgeHorz1 = (lB + lH) - 2.0 * lE;
+    float edgeVert1 = (lD + lF) - 2.0 * lE;
+    float pureLumaEdgeH = abs(edgeHorz1);
+    float pureLumaEdgeV = abs(edgeVert1);
+    float lumaDiagRatio = min(pureLumaEdgeH, pureLumaEdgeV) / max(max(pureLumaEdgeH, pureLumaEdgeV), 0.0001);
+    float edgeHorz2 = (-2.0 * lF) + (lC + lI);
+    float edgeVert2 = (-2.0 * lB) + (lA + lC);
+    float edgeHorz3 = (-2.0 * lD) + (lA + lG);
+    float edgeVert3 = (-2.0 * lH) + (lG + lI);
+    float edgeHorz4 = (abs(edgeHorz1) * 2.0) + abs(edgeHorz2);
+    float edgeVert4 = (abs(edgeVert1) * 2.0) + abs(edgeVert2);
+    float edgeH = abs(edgeHorz3) + edgeHorz4;
+    float edgeV = abs(edgeVert3) + edgeVert4;
+    vec3 edgeH_rgb = vec3(0.0);
+    vec3 edgeV_rgb = vec3(0.0);
+    if ((enableRGBEdgeDetection == 1 || enableFringeFix == 1) && qualityLevel == 0) {
+        edgeH_rgb = abs(b + h - 2.0 * e);
+        edgeV_rgb = abs(d + f - 2.0 * e);
+        edgeH = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
+        edgeV = max(edgeV_rgb.r, max(edgeV_rgb.g, edgeV_rgb.b));
+        vec3 edgeD1_rgb = abs(a + i - 2.0 * e);
+        vec3 edgeD2_rgb = abs(c + g - 2.0 * e);
+        lumaEdgeD1 = max(edgeD1_rgb.r, max(edgeD1_rgb.g, edgeD1_rgb.b));
+        lumaEdgeD2 = max(edgeD2_rgb.r, max(edgeD2_rgb.g, edgeD2_rgb.b));
+    }
+    float maxOrthoEdge = max(edgeH, edgeV);
+    float maxDiag = max(lumaEdgeD1, lumaEdgeD2);
+    float maxCombinedEdge = max(maxOrthoEdge, maxDiag);
+    float edgeMask = 1.0 - smoothstep(rangeMaxClamped, rangeMaxClamped * 2.0, maxCombinedEdge);
+    float isDiagonalEdge = smoothstep(0.6, 0.85, lumaDiagRatio);
+    float totalEdgeEnergy = edgeH + edgeV + lumaEdgeD1 + lumaEdgeD2;
+    float directionalPurity = maxCombinedEdge / max(totalEdgeEnergy, 0.0001);
+    float effectivePurity = max(directionalPurity, isDiagonalEdge);
+    float microTextureMask = smoothstep(0.25, 0.55, effectivePurity);
+    bool isEdge = !earlyExit && (maxCombinedEdge > (fxaaEdgeThreshold * 0.5 * hdrNorm));
+
+    // phase 1.3: local saturation from source center pixel (moved from phase 7)
+    float localSaturation = max(max(e.r, e.g), e.b) - min(min(e.r, e.g), e.b);
+
+    // phase 1.4: shared values for source corrections
+    float maxNeighborLuma = max(max(lB, lH), max(lD, lF));
+    float minNeighborLuma = min(min(lB, lH), min(lD, lF));
+    float neighborSpread = maxNeighborLuma - minNeighborLuma;
+    vec3 crossAvgRGB = (b + d + f + h) * 0.25;
+
+    // phase 1.5 Checkerboard correction and anti speckle
     if ((enableDespeckle == 1 || enableCheckerboardFix == 1) && qualityLevel <= 2) {
-        float neighborSpread = max(max(lB, lH), max(lD, lF)) - min(min(lB, lH), min(lD, lF));
 
         // Checkerboard transparency correction (structured alternating pattern)
         if (enableCheckerboardFix == 1) {
@@ -234,8 +313,7 @@ void main() {
             float crossMismatch = smoothstep(0.04 * hdrNorm, 0.15 * hdrNorm, isolation);
 
             float checkerMask = diagAgree * crossMismatch * crossUniform;
-            vec3 bgEstimate   = (b + d + f + h) * 0.25;
-            e  = mix(e, bgEstimate, checkerMask * checkerboardStrength);
+            e  = mix(e, crossAvgRGB, checkerMask * checkerboardStrength);
             lE = getLuma(e);
         }
 
@@ -256,8 +334,7 @@ void main() {
         float bc1Sat = max(max(e.r, e.g), e.b) - min(min(e.r, e.g), e.b);
         if (bc1Sat < 0.2 * hdrNorm) {
             float bc1SatGate      = 1.0 - smoothstep(0.06 * hdrNorm, 0.2 * hdrNorm, bc1Sat);
-            float bc1NeighborSpread = max(max(lB, lH), max(lD, lF)) - min(min(lB, lH), min(lD, lF));
-            float bc1NeighborAgree  = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, bc1NeighborSpread);
+            float bc1NeighborAgree  = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, neighborSpread);
             float rbAvg      = (e.r + e.b) * 0.5;
             float greenBias  = e.g - rbAvg;
             float correction = clamp(greenBias,
@@ -265,6 +342,58 @@ void main() {
                  bc1FixStrength * 0.15 * hdrNorm);
             e.g -= correction * bc1SatGate * bc1NeighborAgree * mix(1.0, bc1SatGate, guardStrength);
             lE = getLuma(e);
+        }
+    }
+
+    // phase 1.7: Edge-Aware Chroma Smoothing on source (color denoise).
+    // Kills TAA/compression color noise BEFORE sharpening amplifies it.
+    if (enableChromaSmooth == 1) {
+        float cross_luma = getNeutralLuma(crossAvgRGB);
+        float center_luma = getNeutralLuma(e);
+        float flatMask = 1.0 - smoothstep(0.05 * hdrNorm, 0.25 * hdrNorm, localContrast);
+        float smoothAmount = flatMask * edgeMask * chromaSmoothStrength;
+        // BC1/DXT1 blocks are always 4x4 aligned to gl_FragCoord. Chroma discontinuities
+        // are sharpest at block boundaries, so boost chroma smoothing there.
+        if (enableBC1Fix == 1 && qualityLevel <= 2) {
+            vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
+            float blockEdge = 1.0 - smoothstep(0.0, 1.5,
+                min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
+            smoothAmount *= mix(1.0, 1.5, blockEdge * bc1FixStrength);
+        }
+        e = mix(e, crossAvgRGB + vec3(center_luma - cross_luma), smoothAmount);
+        lE = getLuma(e);
+    }
+
+    // phase 1.8: Chromatic Aberration (fringe) correction on source.
+    // Detects per-channel edge disagreement and desaturates fringing zones BEFORE
+    // sharpening amplifies them.
+    if (enableFringeFix == 1 && qualityLevel == 0) {
+        float hMax = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
+        float hMin = min(edgeH_rgb.r, min(edgeH_rgb.g, edgeH_rgb.b));
+        float vMax = max(edgeV_rgb.r, max(edgeV_rgb.g, edgeV_rgb.b));
+        float vMin = min(edgeV_rgb.r, min(edgeV_rgb.g, edgeV_rgb.b));
+        float fringe = max(hMax - hMin, vMax - vMin);
+        float satGate = 1.0 - smoothstep(0.15 * hdrNorm, 0.4 * hdrNorm, localSaturation);
+        float fringeMask = smoothstep(0.1 * hdrNorm, 0.3 * hdrNorm, fringe)
+                        * fringeStrength * bandPassMask * satGate * edgeMask;
+        float lumaHere = getNeutralLuma(e);
+        e = mix(e, vec3(lumaHere), fringeMask);
+        lE = getLuma(e);
+    }
+
+    // phase 1.9: Shimmer reduction on source (stabilizes isolated pixels).
+    // Removes isolated flicker pixels BEFORE sharpening amplifies them.
+    if (qualityLevel <= 3 && shimmerReduction > 0.0) {
+        float isolation = abs(lE - crossAvg);
+        float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
+        float shimmerMask = smoothstep(0.08 * hdrNorm, 0.2 * hdrNorm, isolation)
+                        * microTextureMask * edgeMask
+                        * shimmerChoke * shimmerReduction;
+        if (shimmerMask > 0.0) {
+            float clampedLuma = mix(lE, crossAvg, shimmerMask * 0.5);
+            float shimmerScale = clampedLuma / max(lE, 0.0001);
+            e *= shimmerScale;
+            lE = clampedLuma;
         }
     }
 
@@ -281,18 +410,7 @@ void main() {
         v4_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb);
     }
 
-    // phase 3: "lantern" data, cas math and band-pass mask
-    vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
-    vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
-    vec3 trueMnRGB = mnRGB2;
-    mnRGB += mnRGB2;
-
-    vec3 mxRGB  = max(max(max(d,e),max(f,b)),h);
-    vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
-    vec3 trueMxRGB = mxRGB2;
-    mxRGB += mxRGB2;
-
-    // SDR formula uses absolute headroom (2.0 - mxRGB) which collapses to 0 when mxRGB > 2.0. Use a scale-invariant local-contrast ratio for HDR.
+    // phase 3: CAS math (min/max, localContrast, bandPassMask moved to phase 1.1)
     vec3 ampRGB;
     if (hdrMode == 1) {
         ampRGB = clamp(mnRGB / max(mxRGB, 0.0001), 0.0, 1.0);
@@ -301,17 +419,10 @@ void main() {
     }
     float peak = 8.0 - 3.0 * casSharpness;
     vec3 invAmp = inversesqrt(max(ampRGB, 0.0001));
-    // Clamp invAmp so P cannot explode when the local contrast ratio (ampRGB) approaches zero on HDR highlights.
     invAmp = min(invAmp, vec3(4.0));
     vec3 P = invAmp * peak;
     vec3 tightWindow = (b + d) + (f + h);
     vec3 casDeltaRGB = (4.0 * e - tightWindow) / (P - 4.0);
-
-    // Perceptual: local contrast for edge/texture detection
-    float localMaxLuma = getLuma(trueMxRGB);
-    float localMinLuma = getLuma(trueMnRGB);
-    float localContrast = localMaxLuma - localMinLuma;
-
     // Phase 3.5: directional coherence gate to suppress amplification of compression artifacts (DCT ringing, oiliness etc.)
     float oilinessGate = 1.0;
     if (qualityLevel <= 2) {
@@ -319,83 +430,10 @@ void main() {
         float sobelX = ((lC + lF + lF + lI) - (lA + lD + lD + lG)) * invCenterLuma;
         float sobelY = ((lG + lH + lH + lI) - (lA + lB + lB + lC)) * invCenterLuma;
         float gradMagSq = sobelX * sobelX + sobelY * sobelY;
-
         float edgeThresholdSq = 0.04;
         float isDirectional = smoothstep(edgeThresholdSq, edgeThresholdSq * 4.0, gradMagSq);
         oilinessGate = mix(1.0, isDirectional, guardStrength);
     }
-
-    float bpLow = 0.01 * hdrNorm;
-    float bpFadeIn = 0.04 * hdrNorm;
-    float bpHigh = bandPassWidth * hdrNorm;
-    float bpFadeOut = 0.3 * hdrNorm;
-    float lowFreqFade = smoothstep(bpLow, bpLow + bpFadeIn, localContrast);
-    float highFreqFade = 1.0 - smoothstep(bpHigh, bpHigh + bpFadeOut, localContrast);
-    float bandPassMask = lowFreqFade * highFreqFade;
-
-    // phase 4: edge detection and relative early exit
-    float crossMaxSM = max(lH, lE);
-    float crossMinSM = min(lH, lE);
-    float crossMaxESM = max(lF, crossMaxSM);
-    float crossMinESM = min(lF, crossMinSM);
-    float crossMaxWN = max(lB, lD);
-    float crossMinWN = min(lB, lD);
-    float crossRangeMax = max(crossMaxWN, crossMaxESM);
-    float crossRangeMin = min(crossMinWN, crossMinESM);
-    float crossRange = crossRangeMax - crossRangeMin;
-
-    float fxaaThreshMin = fxaaEdgeThresholdMin * hdrNorm;
-    float rangeMaxClamped = max(fxaaThreshMin, crossRangeMax * fxaaEdgeThreshold);
-    bool earlyExit = crossRange < rangeMaxClamped;
-
-    float lumaEdgeD1 = abs(lA + lI - 2.0 * lE);
-    float lumaEdgeD2 = abs(lC + lG - 2.0 * lE);
-
-    float edgeHorz1 = (lB + lH) - 2.0 * lE;
-    float edgeVert1 = (lD + lF) - 2.0 * lE;
-    float pureLumaEdgeH = abs(edgeHorz1);
-    float pureLumaEdgeV = abs(edgeVert1);
-    float lumaDiagRatio = min(pureLumaEdgeH, pureLumaEdgeV) / max(max(pureLumaEdgeH, pureLumaEdgeV), 0.0001);
-
-    float edgeHorz2 = (-2.0 * lF) + (lC + lI);
-    float edgeVert2 = (-2.0 * lB) + (lA + lC);
-    float edgeHorz3 = (-2.0 * lD) + (lA + lG);
-    float edgeVert3 = (-2.0 * lH) + (lG + lI);
-    float edgeHorz4 = (abs(edgeHorz1) * 2.0) + abs(edgeHorz2);
-    float edgeVert4 = (abs(edgeVert1) * 2.0) + abs(edgeVert2);
-
-    float edgeH = abs(edgeHorz3) + edgeHorz4;
-    float edgeV = abs(edgeVert3) + edgeVert4;
-
-    vec3 edgeH_rgb = vec3(0.0);
-    vec3 edgeV_rgb = vec3(0.0);
-    if (enableRGBEdgeDetection == 1 && qualityLevel == 0) {
-        edgeH_rgb = abs(b + h - 2.0 * e);
-        edgeV_rgb = abs(d + f - 2.0 * e);
-        edgeH = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
-        edgeV = max(edgeV_rgb.r, max(edgeV_rgb.g, edgeV_rgb.b));
-
-        vec3 edgeD1_rgb = abs(a + i - 2.0 * e);
-        vec3 edgeD2_rgb = abs(c + g - 2.0 * e);
-        lumaEdgeD1 = max(edgeD1_rgb.r, max(edgeD1_rgb.g, edgeD1_rgb.b));
-        lumaEdgeD2 = max(edgeD2_rgb.r, max(edgeD2_rgb.g, edgeD2_rgb.b));
-    }
-
-    float maxOrthoEdge = max(edgeH, edgeV);
-    float maxDiag = max(lumaEdgeD1, lumaEdgeD2);
-    float maxCombinedEdge = max(maxOrthoEdge, maxDiag);
-
-    float edgeMask = 1.0 - smoothstep(rangeMaxClamped, rangeMaxClamped * 2.0, maxCombinedEdge);
-
-    float isDiagonalEdge = smoothstep(0.6, 0.85, lumaDiagRatio);
-
-    float totalEdgeEnergy = edgeH + edgeV + lumaEdgeD1 + lumaEdgeD2;
-    float directionalPurity = maxCombinedEdge / max(totalEdgeEnergy, 0.0001);
-    float effectivePurity = max(directionalPurity, isDiagonalEdge);
-
-    float microTextureMask = smoothstep(0.25, 0.55, effectivePurity);
-
-    bool isEdge = !earlyExit && (maxCombinedEdge > (fxaaEdgeThreshold * 0.5 * hdrNorm));
 
     // phase 5: FXAA Preset 39 and some extras.
     vec3 aaColor = e;
@@ -565,10 +603,7 @@ void main() {
     diff *= mix(1.0, mix(1.0 - clarityTextureProtection, 1.0, microTextureMask), guardStrength);
     diff *= mix(1.0, edgeMask, guardStrength);
 
-    float maxCenterRGB = max(max(aaColor.r, aaColor.g), aaColor.b);
-    float minCenterRGB = min(min(aaColor.r, aaColor.g), aaColor.b);
-    float localSaturation = maxCenterRGB - minCenterRGB;
-
+    // localSaturation already computed in phase 1.3 from source center pixel
     if (qualityLevel <= 3) {
         float saturationGuard = 1.0 - smoothstep(0.4 * hdrNorm, 0.9 * hdrNorm, localSaturation);
         diff *= mix(1.0, saturationGuard, guardStrength);
@@ -579,8 +614,7 @@ void main() {
         float darkSmearGuard = (hdrMode == 1)
             ? (1.0 - smoothstep(0.0, 0.18, lumaAA))
             : (1.0 - min(lumaAA, 1.0));
-        float maxNeighborLuma = max(max(lB, lH), max(lD, lF));
-        float brightnessContrast = maxNeighborLuma - lumaAA;
+        float brightnessContrast = maxNeighborLuma - lumaAA;    
         float edgeProximityGuard = 1.0 - smoothstep(0.0, 0.15 * hdrNorm, brightnessContrast);
         float combinedGuard = min(darkSmearGuard, edgeProximityGuard);
         adjustedGuard = mix(1.0, combinedGuard, guardStrength);
@@ -664,31 +698,6 @@ void main() {
         float overshootBoost = 1.0 + (1.0 - guardStrength) * 0.5;
         vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost), max(vec3(0.03 * hdrNorm * overshootBoost), rgbRange * 0.15));
         finalColor = clamp(finalColor, trueMnRGB - overshoot, trueMxRGB + overshoot);
-
-        // phase 9: Edge-Aware Chroma Smoothing (Color Denoise)
-        // Blurs the chroma channels using the 4-tap cross, gated by a flatness mask, kills color noise (common from TAA/compression) without softening luma detail.
-        // BC1 fix: additional boost at 4px block boundaries where BC1 chroma discontinuities are sharpest.
-        if (enableChromaSmooth == 1) {
-            vec3 cross_avg = (b + d + f + h) * 0.25;
-            float cross_luma = getNeutralLuma(cross_avg);
-            float center_luma = getNeutralLuma(finalColor);
-
-            // Gate: smooth in flat, non-edge areas where color noise is visible
-            float flatMask = 1.0 - smoothstep(0.05 * hdrNorm, 0.25 * hdrNorm, localContrast);
-            float smoothAmount = flatMask * edgeMask * chromaSmoothStrength;
-
-            // BC1/DXT1 blocks are always 4x4 aligned to gl_FragCoord. Chroma discontinuities
-            // are sharpest at block boundaries, so boost chroma smoothing there.
-            if (enableBC1Fix == 1 && qualityLevel <= 2) {
-                vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
-                float blockEdge = 1.0 - smoothstep(0.0, 1.5,
-                    min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
-                smoothAmount *= mix(1.0, 1.5, blockEdge * bc1FixStrength);
-            }
-
-            // Mix the current color toward the cross average, but preserve the center luma.
-            finalColor = mix(finalColor, cross_avg + vec3(center_luma - cross_luma), smoothAmount);
-        }
 
         // phase 10: Vibrance + Saturation (merged chroma pass)
         if (vibrance != 0.0 || saturation != 0.0) {
@@ -779,45 +788,7 @@ void main() {
             }
         }
 
-        // phase 11.5: Fringing suppression detects chromatic aberration by measuring per channel edge disagreement (spread).
-        // edgeMask (skip strong edges like text/UI), satGate (skip saturated pixels), bandPassMask (skip macro structure). 
-        // CA fringing is mostly visible in flat, low saturation transition zones away from strong edges.
-        if (enableFringeFix == 1 && qualityLevel == 0) {
-            float hMax = max(edgeH_rgb.r, max(edgeH_rgb.g, edgeH_rgb.b));
-            float hMin = min(edgeH_rgb.r, min(edgeH_rgb.g, edgeH_rgb.b));
-            float vMax = max(edgeV_rgb.r, max(edgeV_rgb.g, edgeV_rgb.b));
-            float vMin = min(edgeV_rgb.r, min(edgeV_rgb.g, edgeV_rgb.b));
-            float fringe = max(hMax - hMin, vMax - vMin);
-            // Gate 1: skip saturated pixels (intentional color, not CA)
-            float satGate = 1.0 - smoothstep(0.15 * hdrNorm, 0.4 * hdrNorm, localSaturation);
-            // Gate 2: skip strong edges (text, UI, game art boundaries)
-            // Gate 3: bandPassMask skips macro-structure
-            float fringeMask = smoothstep(0.1 * hdrNorm, 0.3 * hdrNorm, fringe)
-                            * fringeStrength * bandPassMask * satGate * edgeMask;
-            float lumaHere = getNeutralLuma(finalColor);
-            finalColor = mix(finalColor, vec3(lumaHere), fringeMask);
-        }
-
-        // phase 12: shimmer reduction (stabilizes isolated pixels)
         float finalLuma = getLuma(finalColor);
-
-        if (qualityLevel <= 3) {
-            float isolation = abs(lumaAA - crossAvg);
-            float shimmerChoke = 1.0 - smoothstep(0.2 * hdrNorm, 0.4 * hdrNorm, localContrast);
-            float fxaaActivity = 0.0;
-            if (enableAA == 1) {
-                fxaaActivity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
-            }
-            float shimmerMask = smoothstep(0.08 * hdrNorm, 0.2 * hdrNorm, isolation)
-                            * microTextureMask * edgeMask * (1.0 - fxaaActivity * 0.5)
-                            * shimmerChoke * shimmerReduction;
-            if (shimmerMask > 0.0) {
-                float clampedLuma = mix(finalLuma, crossAvg, shimmerMask * 0.5);
-                float shimmerScale = clampedLuma / max(finalLuma, 0.0001);
-                finalColor *= shimmerScale;
-                finalLuma *= shimmerScale;
-            }
-        }
 
         // phase 13: Filmic tone curve / highlight rolloff
         if (toneCurve != 0.0) {
