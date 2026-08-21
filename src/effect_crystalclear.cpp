@@ -118,9 +118,15 @@ namespace vkBasalt
         needsUniformBuffer = true;
         uniformSize = sizeof(FrameData);
 
+        // devfav falls back to raw defaults by design
         std::string preset = pConfig->getOption<std::string>("crystalclearPreset", "devfav");
         Logger::debug("CrystalClear Preset: " + preset);
-        m_paramValues["crystalclearPreset"] = 0.0; // Combo type, value unused by getParam
+        {
+            static const char* opts[] = {"devfav","esports","artifactless","maxsharp","vibrantsharp","devfxaa","cinematic","film","vivid","noir"};
+            int idx = 0;
+            for (int ci = 0; ci < 10; ci++) { if (preset == opts[ci]) { idx = ci; break; } }
+            m_paramValues["crystalclearPreset"] = (double)idx;
+        }
 
         using PresetMap = std::unordered_map<std::string, double>;
         static const std::unordered_map<std::string, PresetMap> presetTable = {
@@ -211,11 +217,7 @@ namespace vkBasalt
             }},
         };
 
-        PresetMap activePreset;
         auto presetIt = presetTable.find(preset);
-        if (presetIt != presetTable.end()) {
-            activePreset = presetIt->second;
-        }
 
         bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
                       colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
@@ -223,8 +225,47 @@ namespace vkBasalt
                       colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
                       isExtendedRangeFormat(format));
 
-        // read config, apply presets, clamp, write to specData by offset, and build mapEntries
+        // Read config, apply presets once, clamp, write to specData by offset, and build mapEntries
         const auto& params = getParamDescs();
+
+        const std::string appliedPresetKey = "crystalclearPresetApplied";
+        const std::string lastAppliedPreset = pConfig->getOption<std::string>(appliedPresetKey, "");
+
+        if (preset != lastAppliedPreset) {
+            Logger::debug("Applying CrystalClear preset baseline: " + preset);
+
+            for (const auto& p : params) {
+                if (p.key == "crystalclearPreset") continue;
+
+                double val = p.defaultVal;
+                if (presetIt != presetTable.end()) {
+                    auto overrideIt = presetIt->second.find(p.key);
+                    if (overrideIt != presetIt->second.end()) {
+                        val = std::clamp(overrideIt->second, p.minVal, p.maxVal);
+                    }
+                }
+
+                if (p.type == ParamType::Combo) {
+                    size_t idx = std::min(
+                        static_cast<size_t>(val),
+                        p.comboOptions.empty() ? 0 : p.comboOptions.size() - 1
+                    );
+
+                    if (!p.comboOptions.empty()) {
+                        pConfig->setOption(p.key, p.comboOptions[idx]);
+                    }
+                } else if (p.type == ParamType::Int || p.type == ParamType::Bool) {
+                    pConfig->setOption(p.key, std::to_string(static_cast<int32_t>(val)));
+                } else {
+                    std::string s = std::to_string(val);
+                    std::replace(s.begin(), s.end(), ',', '.');
+                    pConfig->setOption(p.key, s);
+                }
+            }
+
+            pConfig->setOption(appliedPresetKey, preset);
+        }
+    
         CrystalClearSpecData specData = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
         mapEntries.reserve(params.size());
@@ -233,24 +274,22 @@ namespace vkBasalt
             if (p.specId < 0) continue;
 
             double def = p.defaultVal;
-            auto overrideIt = activePreset.find(p.key);
-            if (overrideIt != activePreset.end()) {
-                def = overrideIt->second;
-            }
-
             double val;
 
             if (p.type == ParamType::Combo) {
                 std::string strVal = pConfig->getOption<std::string>(p.key, "");
                 int idx = 0;
                 for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
-                    if (p.comboOptions[ci] == strVal) { idx = (int)ci; break; }
+                    if (p.comboOptions[ci] == strVal) {
+                        idx = static_cast<int>(ci);
+                        break;
+                    }
                 }
-                val = (double)idx;
+                val = static_cast<double>(idx);
             } else if (p.type == ParamType::Float) {
-                val = (double)pConfig->getOption<float>(p.key, (float)def);
+                val = static_cast<double>(pConfig->getOption<float>(p.key, static_cast<float>(def)));
             } else {
-                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)def);
+                val = static_cast<double>(pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(def)));
             }
 
             val = std::clamp(val, p.minVal, p.maxVal);
