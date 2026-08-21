@@ -509,12 +509,17 @@ void main() {
 
     // Step2 wide diffs (Perfect/Ultra only)
     if (qualityLevel <= 1) {
+        // suppress step2 when wide samples form a smooth monotonic gradient to reduce long range banding artifacts.
+        float hSpan = abs(h4_raw - h3_raw);
+        float vSpan = abs(v4_raw - v3_raw);
+        float gradientCoherence = smoothstep(0.01 * hdrNorm, 0.06 * hdrNorm, max(hSpan, vSpan));
+
         diff += (
             bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, invThreshRange) +
             bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, invThreshRange) +
             bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, invThreshRange) +
             bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, invThreshRange)
-        ) * 0.0625;
+        ) * 0.0625 * mix(1.0, gradientCoherence, guardStrength);
     }
 
     if (localContrastStrength > 0.0 && qualityLevel <= 1) {
