@@ -514,6 +514,13 @@ namespace vkBasalt {
                 if (!open) continue;
                 ImGui::Indent(8.0f);
                 for (const auto* p : cat.items) {
+                    // Hide child params when their parent toggle is disabled. Quality gated params remain visible (grayed out) as UIX choice.
+                    if (!p->parentKey.empty()) {
+                        if (selectedEffect->getParam(p->parentKey) <= 0.5) {
+                            continue;
+                        }
+                    }
+
                     ImGui::PushID(p->key.c_str());
                     if (m_justOpened && !focusedFirst) { ImGui::SetKeyboardFocusHere(); focusedFirst = true; }
 

@@ -21,8 +21,9 @@ namespace vkBasalt
         double      maxVal;
         double      step;
         std::vector<std::string> comboOptions;
-        std::string category; // optional, empty auto-detects.
+        std::string category;      // optional, empty auto-detects.
         std::string tooltip = "";  // optional, empty auto-generates, shown on hover.
+        std::string parentKey;     // if not empty, used to hide this param when the parent toggle is off
         int32_t specId = -1;
         size_t  specOffset = 0;
         size_t  specSize = 0;
