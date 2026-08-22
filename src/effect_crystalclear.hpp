@@ -87,6 +87,10 @@ namespace vkBasalt
         int32_t qualityLevel;
         int32_t enableBC1Fix;
         float   bc1FixStrength;
+        float   exposure;
+        float   brightness;
+        float   contrast;
+        float   sCurveStrength;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(CrystalClearSpecData, field), .specSize = sizeof(((CrystalClearSpecData*)0)->field)

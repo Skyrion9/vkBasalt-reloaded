@@ -327,6 +327,31 @@ const std::vector<EffectParamDesc>& CrystalClearEffect::getParamDescs() const
          .tooltip = "Contrast-adaptive dithering to break up color banding in gradients. Boosted in flat areas where banding is visible, reduced in textured areas. Always available at all quality levels. Default on.",
          SPEC(10, enableDithering)},
 
+        // Exposure & Contrast
+        {.key = "crystalclearExposure", .label = "Exposure", .type = ParamType::Float,
+         .defaultVal = 0.0, .minVal = -2.0, .maxVal = 2.0, .step = 0.05,
+         .category = "Exposure & Contrast",
+         .tooltip = "Multiplicative gain measured in photographic stops. +1 stop doubles brightness, -1 stop halves it. Scales the entire image proportionally. Default 0.0.",
+         SPEC(75, exposure)},
+
+        {.key = "crystalclearBrightness", .label = "Brightness", .type = ParamType::Float,
+         .defaultVal = 0.0, .minVal = -0.5, .maxVal = 0.5, .step = 0.01,
+         .category = "Exposure & Contrast",
+         .tooltip = "Additive lift applied to the entire image including blacks. Positive values raise the black floor, negative values crush it. Default 0.0.",
+         SPEC(76, brightness)},
+
+        {.key = "crystalclearContrast", .label = "Contrast", .type = ParamType::Float,
+         .defaultVal = 0.0, .minVal = -1.0, .maxVal = 1.0, .step = 0.01,
+         .category = "Exposure & Contrast",
+         .tooltip = "Linear contrast scaling around the midpoint. Positive values increase contrast, negative values decrease it. Soft-clipped at extremes to preserve detail. Default 0.0.",
+         SPEC(77, contrast)},
+
+        {.key = "crystalclearSCurveStrength", .label = "S-Curve", .type = ParamType::Float,
+         .defaultVal = 0.0, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+         .category = "Exposure & Contrast",
+         .tooltip = "Hermite S-curve midtone shaping. Pushes midtones toward the extremes more aggressively than values already near black/white, creating a natural filmic contrast roll-off. Default 0.0.",
+         SPEC(78, sCurveStrength)},
+
         // Color & Tone
         {.key = "crystalclearVibrance", .label = "Vibrance", .type = ParamType::Float,
          .defaultVal = 0.3, .minVal = -1.0, .maxVal = 1.0, .step = 0.05,

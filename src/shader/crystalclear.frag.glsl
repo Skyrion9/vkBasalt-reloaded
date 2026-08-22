@@ -141,6 +141,10 @@ layout(constant_id = 71) const float checkerboardStrength = 0.5;
 layout(constant_id = 72) const int qualityLevel = 0;               // 0=Perfect, 1=Ultra, 2=High, 3=Medium, 4=iGPU
 layout(constant_id = 73) const int enableBC1Fix = 0;               // BC1/DXT1 green/magenta artifact suppression
 layout(constant_id = 74) const float bc1FixStrength = 0.3;         // 0.0 = off, 1.0 = maximum correction
+layout(constant_id = 75) const float exposure = 0.0;               // -2.0 to 2.0 stops
+layout(constant_id = 76) const float brightness = 0.0;             // -0.5 to 0.5 additive lift
+layout(constant_id = 77) const float contrast = 0.0;               // -1.0 to 1.0 linear scale
+layout(constant_id = 78) const float sCurveStrength = 0.0;         // 0.0 to 1.0 hermite midtone push
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -708,7 +712,44 @@ void main() {
         vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost), max(vec3(0.03 * hdrNorm * overshootBoost), rgbRange * 0.15));
         finalColor = clamp(finalColor, trueMnRGB - overshoot, trueMxRGB + overshoot);
 
-        // phase 10: Gamma / B/W tone response shaping. HDR aware.
+        // phase 10: Exposure (multiplicative gain in stops) + Brightness (additive lift)
+        if (exposure != 0.0 || brightness != 0.0) {
+            if (exposure != 0.0) {
+                finalColor *= exp2(exposure);
+            }
+            if (brightness != 0.0) {
+                finalColor += vec3(brightness * hdrNorm);
+            }
+        }
+
+        // phase 10.2: Contrast (linear scale around mid) + S-Curve (hermite midtone push)
+        if (contrast != 0.0 || sCurveStrength > 0.0) {
+            vec3 t = finalColor / hdrNorm;
+            vec3 shaped = t;
+            
+            vec3 inRange = step(0.0, t) * step(t, vec3(1.0));
+            
+            // S-Curve: built-in smoothstep handles the hermite polynomial and clamping internally. Only apply to [0, 1] range to preserve HDR highlights > 1.0.
+            if (sCurveStrength > 0.0) {
+                vec3 sCurve = smoothstep(0.0, 1.0, t);
+                shaped = mix(shaped, mix(shaped, sCurve, sCurveStrength), inRange);
+            }
+            
+            // Contrast: scale around 0.5
+            if (contrast != 0.0) {
+                shaped = (shaped - 0.5) * (1.0 + contrast) + 0.5;
+            }
+            
+            // Soft clip: blend into hard clip at extremes for filmic shoulder. Reuses the invariant inRange mask to avoid crushing HDR highlights.
+            vec3 hardClipped = clamp(shaped, 0.0, 1.0);
+            vec3 softMask = smoothstep(0.8, 1.0, abs(shaped - 0.5) * 2.0);
+            vec3 softClipped = mix(shaped, hardClipped, softMask);
+            shaped = mix(shaped, softClipped, inRange);
+            
+            finalColor = max(shaped, 0.0) * hdrNorm;
+        }
+
+        // phase 10.4: Gamma / B/W tone response shaping. HDR aware.
         if (gammaAdjust != 0.0 || blackLift != 0.0 || whiteClip != 0.0) {
             vec3 graded = finalColor / hdrNorm;
             if (blackLift > 0.0) {
@@ -723,15 +764,14 @@ void main() {
             finalColor = graded * hdrNorm;
         }
 
-        // phase 10.2: Temperature / Tint (white balance). Warm (+) adds red and removes blue,
-        // cool (-) does the reverse. Tint shifts along the green-magenta axis. Luminance-preserving
-        // normalization prevents overall brightness shift from the tint component.
+        // phase 10.6: Temperature / Tint (white balance).
         if (temperature != 0.0 || tint != 0.0) {
             vec3 wb = vec3(1.0 + temperature, 1.0 + tint, 1.0 - temperature);
-            wb /= getNeutralLuma(wb); // normalize: (3 + tint) / 3, prevents brightness drift
+            wb /= getNeutralLuma(wb);
             finalColor *= wb;
         }
 
+        // phase 10.8: CDL (per channel grade)
         if (enableCDL == 1) {
             vec3 cdlSlope  = vec3(cdlSlopeR, cdlSlopeG, cdlSlopeB);
             vec3 cdlOffset = vec3(cdlOffsetR, cdlOffsetG, cdlOffsetB);
@@ -743,7 +783,7 @@ void main() {
             finalColor = cdl * hdrNorm;
         }
 
-        // phase 10.6: Vibrance + Saturation (merged chroma pass)
+        // phase 10.9: Vibrance + Saturation (merged chroma pass)
         if (vibrance != 0.0 || saturation != 0.0) {
             float max_c = max(finalColor.r, max(finalColor.g, finalColor.b));
             float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
@@ -765,22 +805,20 @@ void main() {
             }
         }
 
-        // phase 10.8: Split toning cinematic shadow/highlight tint. Shift hue without changing brightness. 
-        // Shadows pull toward shadowTint, highlights toward highlightTint.
-        // Applied LAST as a creative stylistic touch on the fully graded image.
+        // phase 11: Split toning cinematic shadow/highlight tint.
         if (enableSplitTone == 1) {
             float stLuma = getNeutralLuma(finalColor) / hdrNorm;
             float shadowWeight    = 1.0 - smoothstep(0.0, 0.5, stLuma);
             float highlightWeight = smoothstep(0.5, 1.0, stLuma);
             vec3 shadowTint = vec3(stShadowR, stShadowG, stShadowB);
-            shadowTint -= getNeutralLuma(shadowTint);   // zero-sum: pure chroma shift
+            shadowTint -= getNeutralLuma(shadowTint);
             vec3 highlightTint = vec3(stHighR, stHighG, stHighB);
             highlightTint -= getNeutralLuma(highlightTint);
             vec3 tint = shadowTint * shadowWeight + highlightTint * highlightWeight;
             finalColor += tint * splitToneStrength * hdrNorm;
         }
 
-        // phase 11: Specular Highlight Desaturation. White specular reflections lose saturation, Gate on both brightness and localization.
+        // phase 11.5: Specular Highlight Desaturation.
         if (specularDesat != 0.0) {
             float max_spec = max(finalColor.r, max(finalColor.g, finalColor.b));
             float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));

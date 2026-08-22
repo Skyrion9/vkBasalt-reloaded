@@ -451,13 +451,14 @@ namespace vkBasalt {
 
             auto getCategorySortOrder = [](const std::string& name) -> int {
                 if (name == "Presets & Performance") return 0;
-                if (name == "Sharpening & Contrast" || name == "Sharpening") return 1;
-                if (name == "Anti-Aliasing (FXAA)" || name == "Anti-Aliasing") return 2;
-                if (name == "Artifact Protection" || name == "Protection") return 3;
-                if (name == "Film Grain & Dither" || name == "Film Grain") return 4;
-                if (name == "Color & Tone") return 5;
-                if (name == "Color Grading" || name == "Color Grade") return 6;
-                if (name == "Blending") return 7;
+                if (name == "Exposure & Contrast") return 1;
+                if (name == "Sharpening & Contrast" || name == "Sharpening") return 2;
+                if (name == "Anti-Aliasing (FXAA)" || name == "Anti-Aliasing") return 3;
+                if (name == "Artifact Protection" || name == "Protection") return 4;
+                if (name == "Film Grain & Dither" || name == "Film Grain") return 5;
+                if (name == "Color & Tone") return 6;
+                if (name == "Color Grading" || name == "Color Grade") return 7;
+                if (name == "Blending") return 8;
                 if (name == "Debug") return 99;
                 return 50; // General / Unknown
             };
