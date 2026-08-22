@@ -330,17 +330,26 @@ void main() {
 
     // phase 1.6: BC1/DXT1 green/magenta bias correction on the source. BC1 encodes green with 6 bits vs 5 bits for R/B.
     // creating green/magenta bias in low-saturation regions. Gated by saturation + neighbor agreement to avoid touching intentional green content.
+    // Detects artifacts by measuring green bias disagreement between center and neighbors as BC1 artifacts cause inconsistent bias within 4x4 block
     if (enableBC1Fix == 1 && qualityLevel <= 2) {
         float bc1Sat = max(max(e.r, e.g), e.b) - min(min(e.r, e.g), e.b);
-        if (bc1Sat < 0.2 * hdrNorm) {
-            float bc1SatGate      = 1.0 - smoothstep(0.06 * hdrNorm, 0.2 * hdrNorm, bc1Sat);
-            float bc1NeighborAgree  = 1.0 - smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, neighborSpread);
-            float rbAvg      = (e.r + e.b) * 0.5;
-            float greenBias  = e.g - rbAvg;
+        if (bc1Sat < 0.08 * hdrNorm) {
+            float bc1SatGate = 1.0 - smoothstep(0.02 * hdrNorm, 0.08 * hdrNorm, bc1Sat);
+
+            // Bias disagreement: BC1 artifacts cause the center pixel's green bias to
+            // differ from its neighbors. Intentional color has uniform bias across the area.
+            float centerBias = e.g - (e.r + e.b) * 0.5;
+            float neighborBias = ((b.g + d.g + f.g + h.g)
+                - (b.r + d.r + f.r + h.r + b.b + d.b + f.b + h.b) * 0.5) * 0.25;
+            float biasDiff = abs(centerBias - neighborBias);
+            float bc1ArtifactMask = smoothstep(0.003 * hdrNorm, 0.015 * hdrNorm, biasDiff);
+
+            float rbAvg = (e.r + e.b) * 0.5;
+            float greenBias = e.g - rbAvg;
             float correction = clamp(greenBias,
-                -bc1FixStrength * 0.15 * hdrNorm,
-                 bc1FixStrength * 0.15 * hdrNorm);
-            e.g -= correction * bc1SatGate * bc1NeighborAgree * mix(1.0, bc1SatGate, guardStrength);
+                -bc1FixStrength * 0.03 * hdrNorm,
+                 bc1FixStrength * 0.03 * hdrNorm);
+            e.g -= correction * bc1SatGate * bc1ArtifactMask * guardStrength;
             lE = getLuma(e);
         }
     }
@@ -358,7 +367,7 @@ void main() {
             vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
             float blockEdge = 1.0 - smoothstep(0.0, 1.5,
                 min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
-            smoothAmount *= mix(1.0, 1.5, blockEdge * bc1FixStrength);
+            smoothAmount *= mix(1.0, 1.2, blockEdge * bc1FixStrength);
         }
         e = mix(e, crossAvgRGB + vec3(center_luma - cross_luma), smoothAmount);
         lE = getLuma(e);
