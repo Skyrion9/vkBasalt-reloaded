@@ -149,22 +149,19 @@ namespace vkBasalt {
             case ParamType::Combo: {
                 int currentIdx = (int)selectedEffect->getParam(p->key);
                 currentIdx = std::clamp(currentIdx, 0, (int)p->comboOptions.size() - 1);
-                
                 const char* preview = p->comboOptions.empty() ? "" : p->comboOptions[currentIdx].c_str();
-                
                 if (ImGui::BeginCombo(p->label.c_str(), preview)) {
+                    bool justOpened = ImGui::IsWindowAppearing();
                     for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
                         bool is_sel = (currentIdx == (int)ci);
-                        if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
+                        if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel, ImGuiSelectableFlags_NoAutoClosePopups)) {
                             selectedEffect->setParam(p->key, static_cast<double>(ci));
-                            
                             if (p->key == "crystalclearPreset") {
                                 m_pConfig->setOption("crystalclearPresetApplied", "");
                             }
-                            
                             setParamImmediate(p->key, p->comboOptions[ci]);
                         }
-                        if (is_sel) ImGui::SetItemDefaultFocus();
+                        if (is_sel && justOpened) ImGui::SetItemDefaultFocus();
                     }
                     ImGui::EndCombo();
                 }
