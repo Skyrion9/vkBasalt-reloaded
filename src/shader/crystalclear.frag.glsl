@@ -708,7 +708,42 @@ void main() {
         vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost), max(vec3(0.03 * hdrNorm * overshootBoost), rgbRange * 0.15));
         finalColor = clamp(finalColor, trueMnRGB - overshoot, trueMxRGB + overshoot);
 
-        // phase 10: Vibrance + Saturation (merged chroma pass)
+        // phase 10: Gamma / B/W tone response shaping. HDR aware.
+        if (gammaAdjust != 0.0 || blackLift != 0.0 || whiteClip != 0.0) {
+            vec3 graded = finalColor / hdrNorm;
+            if (blackLift > 0.0) {
+                graded = graded * (1.0 - blackLift) + blackLift;
+            }
+            if (whiteClip > 0.0) {
+                graded = min(graded, vec3(1.0 - whiteClip));
+            }
+            if (gammaAdjust != 0.0) {
+                graded = pow(max(graded, vec3(0.0)), vec3(1.0 / (1.0 + gammaAdjust)));
+            }
+            finalColor = graded * hdrNorm;
+        }
+
+        // phase 10.2: Temperature / Tint (white balance). Warm (+) adds red and removes blue,
+        // cool (-) does the reverse. Tint shifts along the green-magenta axis. Luminance-preserving
+        // normalization prevents overall brightness shift from the tint component.
+        if (temperature != 0.0 || tint != 0.0) {
+            vec3 wb = vec3(1.0 + temperature, 1.0 + tint, 1.0 - temperature);
+            wb /= getNeutralLuma(wb); // normalize: (3 + tint) / 3, prevents brightness drift
+            finalColor *= wb;
+        }
+
+        if (enableCDL == 1) {
+            vec3 cdlSlope  = vec3(cdlSlopeR, cdlSlopeG, cdlSlopeB);
+            vec3 cdlOffset = vec3(cdlOffsetR, cdlOffsetG, cdlOffsetB);
+            vec3 cdlPower  = vec3(cdlPowerR, cdlPowerG, cdlPowerB);
+            vec3 cdl = finalColor / hdrNorm;
+            cdl = cdl * cdlSlope + cdlOffset;
+            cdl = max(cdl, 0.0);
+            cdl = pow(cdl, cdlPower);
+            finalColor = cdl * hdrNorm;
+        }
+
+        // phase 10.6: Vibrance + Saturation (merged chroma pass)
         if (vibrance != 0.0 || saturation != 0.0) {
             float max_c = max(finalColor.r, max(finalColor.g, finalColor.b));
             float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
@@ -730,19 +765,9 @@ void main() {
             }
         }
 
-        if (enableCDL == 1) {
-            vec3 cdlSlope  = vec3(cdlSlopeR, cdlSlopeG, cdlSlopeB);
-            vec3 cdlOffset = vec3(cdlOffsetR, cdlOffsetG, cdlOffsetB);
-            vec3 cdlPower  = vec3(cdlPowerR, cdlPowerG, cdlPowerB);
-            vec3 cdl = finalColor / hdrNorm;
-            cdl = cdl * cdlSlope + cdlOffset;
-            cdl = max(cdl, 0.0);
-            cdl = pow(cdl, cdlPower);
-            finalColor = cdl * hdrNorm;
-        }
-
-        // phase 10.6: Split toning cinematic shadow/highlight tint. Shift hue without changing brightness. 
+        // phase 10.8: Split toning cinematic shadow/highlight tint. Shift hue without changing brightness. 
         // Shadows pull toward shadowTint, highlights toward highlightTint.
+        // Applied LAST as a creative stylistic touch on the fully graded image.
         if (enableSplitTone == 1) {
             float stLuma = getNeutralLuma(finalColor) / hdrNorm;
             float shadowWeight    = 1.0 - smoothstep(0.0, 0.5, stLuma);
@@ -753,30 +778,6 @@ void main() {
             highlightTint -= getNeutralLuma(highlightTint);
             vec3 tint = shadowTint * shadowWeight + highlightTint * highlightWeight;
             finalColor += tint * splitToneStrength * hdrNorm;
-        }
-
-        // phase 10.8: Temperature / Tint (white balance). Warm (+) adds red and removes blue,
-        // cool (-) does the reverse. Tint shifts along the green-magenta axis. Luminance-preserving
-        // normalization prevents overall brightness shift from the tint component.
-        if (temperature != 0.0 || tint != 0.0) {
-            vec3 wb = vec3(1.0 + temperature, 1.0 + tint, 1.0 - temperature);
-            wb /= getNeutralLuma(wb); // normalize: (3 + tint) / 3, prevents brightness drift
-            finalColor *= wb;
-        }
-
-        // phase 10.9: Gamma / B/W tone response shaping. HDR aware.
-        if (gammaAdjust != 0.0 || blackLift != 0.0 || whiteClip != 0.0) {
-            vec3 graded = finalColor / hdrNorm;
-            if (blackLift > 0.0) {
-                graded = graded * (1.0 - blackLift) + blackLift;
-            }
-            if (whiteClip > 0.0) {
-                graded = min(graded, vec3(1.0 - whiteClip));
-            }
-            if (gammaAdjust != 0.0) {
-                graded = pow(max(graded, vec3(0.0)), vec3(1.0 / (1.0 + gammaAdjust)));
-            }
-            finalColor = graded * hdrNorm;
         }
 
         // phase 11: Specular Highlight Desaturation. White specular reflections lose saturation, Gate on both brightness and localization.
