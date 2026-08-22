@@ -779,16 +779,18 @@ void main() {
             finalColor = graded * hdrNorm;
         }
 
-        // phase 11: Specular Highlight Desaturation white specular reflections lose saturation and approach white irl. Prevents colorful highlights.
+        // phase 11: Specular Highlight Desaturation. White specular reflections lose saturation, Gate on both brightness and localization.
         if (specularDesat != 0.0) {
             float max_spec = max(finalColor.r, max(finalColor.g, finalColor.b));
-            float spec_mask = smoothstep(0.85 * hdrNorm, 2.0 * hdrNorm, max_spec);
-            float desat_factor = 1.0 - (spec_mask * specularDesat); // 1.0 = original, 0.0 = fully white
-            
             float min_c = min(finalColor.r, min(finalColor.g, finalColor.b));
             float chroma = max_spec - min_c;
-            
             if (chroma > 0.0001) {
+                // Brightness gate: only very bright pixels (raised from 0.85 to 0.95)
+                float spec_mask = smoothstep(0.95 * hdrNorm, 2.0 * hdrNorm, max_spec);
+                // Localization gate: specular highlights stand out from neighbors (high local contrast). Flat bright surfaces have low local contrast and are skipped.
+                float localization = smoothstep(0.08 * hdrNorm, 0.25 * hdrNorm, localContrast);
+                spec_mask *= localization;
+                float desat_factor = 1.0 - (spec_mask * specularDesat);
                 float new_chroma = chroma * desat_factor;
                 vec3 pure_chroma = finalColor - min_c;
                 pure_chroma *= (new_chroma / chroma);
