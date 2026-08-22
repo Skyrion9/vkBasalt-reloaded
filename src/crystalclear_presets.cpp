@@ -11,8 +11,8 @@ const std::unordered_map<std::string, PresetMap>& getPresetTable()
 
         {"esports", {
             // Sharpening
-            {"crystalclearSharpStrength",         2.0},
-            {"crystalclearCasStrength",           2.5},
+            {"crystalclearSharpStrength",         5.0},
+            {"crystalclearCasStrength",           3.0},
             {"crystalclearLocalContrastStrength", 2.0},
             // Protection
             {"crystalclearQualityLevel",          1},
@@ -37,7 +37,7 @@ const std::unordered_map<std::string, PresetMap>& getPresetTable()
 
         {"antitaa", {
             // Sharpening (maximum to counter TAA blur)
-            {"crystalclearSharpStrength",            3.0},
+            {"crystalclearSharpStrength",            5.0},
             {"crystalclearCasStrength",              3.5},
             {"crystalclearCasSharpness",             1.0},
             {"crystalclearLocalContrastStrength",    1.0},
@@ -68,12 +68,12 @@ const std::unordered_map<std::string, PresetMap>& getPresetTable()
 
         {"artifactless", {
             // Sharpening (soft)
-            {"crystalclearSharpStrength",            1.2},
-            {"crystalclearCasStrength",              1.5},
+            {"crystalclearSharpStrength",            2.5},
+            {"crystalclearCasStrength",              2.0},
             {"crystalclearLocalContrastStrength",    0.0},
             // Protection (maximum)
             {"crystalclearQualityLevel",             0},
-            {"crystalclearGuardStrength",            0.9},
+            {"crystalclearGuardStrength",            0.5},
             {"crystalclearExtremeProtection",        0.8},
             {"crystalclearShimmerReduction",         0.8},
             {"crystalclearBandPassWidth",            0.6},
@@ -98,7 +98,7 @@ const std::unordered_map<std::string, PresetMap>& getPresetTable()
 
         {"maxsharp", {
             // Sharpening (aggressive)
-            {"crystalclearSharpStrength",            3.5},
+            {"crystalclearSharpStrength",            5.0},
             {"crystalclearCasStrength",              4.0},
             {"crystalclearCasSharpness",             1.0},
             {"crystalclearLocalContrastStrength",    1.5},
@@ -123,32 +123,33 @@ const std::unordered_map<std::string, PresetMap>& getPresetTable()
 
         {"vibrantsharp", {
             // Sharpening
-            {"crystalclearSharpStrength",        2.5},
-            {"crystalclearCasStrength",          2.5},
+            {"crystalclearSharpStrength",            5.0},
+            {"crystalclearCasStrength",              2.5},
+            {"crystalclearLocalContrastStrength",    1.5},
             // Protection
-            {"crystalclearQualityLevel",         1},
-            {"crystalclearGuardStrength",        0.5},
-            {"crystalclearExtremeProtection",    0.4},
-            {"crystalclearShimmerReduction",     0.5},
-            {"crystalclearEnableDespeckle",      1},
-            {"crystalclearDespeckleThreshold",   0.15},
-            {"crystalclearEnableChromaSmooth",   1},
-            {"crystalclearChromaSmoothStrength", 0.4},
-            {"crystalclearEnableDeband",         1},
-            {"crystalclearDebandStrength",       0.6},
+            {"crystalclearQualityLevel",             1},
+            {"crystalclearGuardStrength",            0.5},
+            {"crystalclearExtremeProtection",        0.4},
+            {"crystalclearShimmerReduction",         0.5},
+            {"crystalclearEnableDespeckle",          1},
+            {"crystalclearDespeckleThreshold",       0.15},
+            {"crystalclearEnableChromaSmooth",       1},
+            {"crystalclearChromaSmoothStrength",     0.4},
+            {"crystalclearEnableDeband",             1},
+            {"crystalclearDebandStrength",           0.6},
             // Color & Tone
-            {"crystalclearVibrance",             0.6},
-            {"crystalclearSpecularDesat",        0.2},
-            {"crystalclearTemperature",          0.05},
-            {"crystalclearToneCurve",            0.2},
+            {"crystalclearVibrance",                 0.6},
+            {"crystalclearSpecularDesat",            0.2},
+            {"crystalclearTemperature",              0.05},
+            {"crystalclearToneCurve",                0.2},
             // Grain
-            {"crystalclearFilmGrainStrength",    0.6},
+            {"crystalclearFilmGrainStrength",        0.6},
         }},
 
         {"devfxaa", {
             // Sharpening
-            {"crystalclearSharpStrength",         2.0},
-            {"crystalclearCasStrength",           2.5},
+            {"crystalclearSharpStrength",         5.0},
+            {"crystalclearCasStrength",           3.0},
             // FXAA
             {"crystalclearQualityLevel",          1},
             {"crystalclearEnableAA",              1},
@@ -260,7 +261,7 @@ const std::unordered_map<std::string, PresetMap>& getPresetTable()
 
         {"vivid", {
             // Sharpening
-            {"crystalclearSharpStrength",        2.5},
+            {"crystalclearSharpStrength",        4.0},
             {"crystalclearCasStrength",          3.0},
             // Protection
             {"crystalclearQualityLevel",         1},
@@ -289,7 +290,7 @@ const std::unordered_map<std::string, PresetMap>& getPresetTable()
 
         {"noir", {
             // Sharpening (high contrast)
-            {"crystalclearSharpStrength",        3.0},
+            {"crystalclearSharpStrength",        5.0},
             {"crystalclearCasStrength",          3.5},
             // Protection (minimal)
             {"crystalclearQualityLevel",         1},

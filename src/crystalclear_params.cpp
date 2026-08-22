@@ -81,9 +81,9 @@ const std::vector<EffectParamDesc>& CrystalClearEffect::getParamDescs() const
          SPEC(1, offset)},
 
         {.key = "crystalclearSharpStrength", .label = "Sharp Strength", .type = ParamType::Float,
-         .defaultVal = 2.5, .minVal = 0.0, .maxVal = 5.0, .step = 0.1,
+         .defaultVal = 5.0, .minVal = 0.0, .maxVal = 5.0, .step = 0.1,
          .category = "Sharpening & Contrast",
-         .tooltip = "Master strength of the bilateral sharpening (Clarity) pass. Controls how strongly the macro-contrast delta is applied to the image. Default 2.5.",
+         .tooltip = "Master strength of the bilateral sharpening (Clarity) pass. Controls how strongly the macro-contrast delta is applied to the image. Default 5.0.",
          SPEC(2, SharpStrength)},
 
         {.key = "crystalclearBlendMode", .label = "Blend Mode", .type = ParamType::Int,
