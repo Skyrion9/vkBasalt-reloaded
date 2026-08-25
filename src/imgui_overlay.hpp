@@ -9,6 +9,8 @@
 #include <vector>
 #include <algorithm>
 #include <atomic>
+#include <string>
+#include <unordered_map>
 
 namespace vkBasalt {
     struct LogicalDevice;
@@ -30,7 +32,6 @@ namespace vkBasalt {
         bool isOverlayOpen() const { return m_isOpen; }
         bool isBindingKeys() const { return m_bindingField >= 0; }
 
-
     private:
         void updateInput(uint32_t width, uint32_t height);
         void drawUI();
@@ -46,7 +47,9 @@ namespace vkBasalt {
         void resetParamToDefault(Effect* effect, const EffectParamDesc& p);
         void setParamDebounced(const std::string& key, const std::string& value);
         void setParamImmediate(const std::string& key, const std::string& value);
-        
+    
+        double getUIParam(const std::string& key, Effect* effect);
+        void setUIParam(const std::string& key, double val);
 
         LogicalDevice* m_pDevice;
         LogicalSwapchain* m_pSwapchain;
@@ -87,6 +90,19 @@ namespace vkBasalt {
         std::vector<VkImageView> m_imageViews;
         std::vector<std::string> m_cachedChainList;
         std::vector<std::string> m_cachedAllEffects;
+
+        std::unordered_map<std::string, double> m_uiParamCache;
+        float m_windowWidth = 0.0f;
+        std::string m_windowSide = "left";
+        bool m_windowStateInitialized = false;
+
+        struct BrowserEntry {
+            std::string path;
+            std::string name;
+            bool isDir;
+        };
+        std::vector<BrowserEntry> m_browserEntries;
+        std::string m_browserCachedDir;
 
         // Static shared resources across all overlays
         static VkDescriptorPool s_descriptorPool;

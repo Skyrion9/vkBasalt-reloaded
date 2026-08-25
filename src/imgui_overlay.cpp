@@ -38,6 +38,18 @@ namespace vkBasalt {
         s_instanceCount++;
     }
 
+    double ImGuiOverlay::getUIParam(const std::string& key, Effect* effect) {
+        auto it = m_uiParamCache.find(key);
+        if (it != m_uiParamCache.end()) return it->second;
+        double val = effect ? effect->getParam(key) : 0.0;
+        m_uiParamCache[key] = val;
+        return val;
+    }
+
+    void ImGuiOverlay::setUIParam(const std::string& key, double val) {
+        m_uiParamCache[key] = val;
+    }
+
     void ImGuiOverlay::destroyRenderResources() {
         for (auto fb : m_framebuffers) { if (fb) m_pDevice->vkd.DestroyFramebuffer(m_pDevice->device, fb, nullptr); }
         for (auto iv : m_imageViews)   { if (iv) m_pDevice->vkd.DestroyImageView(m_pDevice->device, iv, nullptr); }
@@ -421,15 +433,19 @@ namespace vkBasalt {
         ImGuiIO& io = ImGui::GetIO();
         ImGuiStyle& style = ImGui::GetStyle();
 
+        if (!m_windowStateInitialized) {
+            m_windowWidth = m_pConfig->getOption<float>("overlayWidth", 0.0f);
+            m_windowSide = m_pConfig->getOption<std::string>("overlaySide", "left");
+            m_windowStateInitialized = true;
+        }
+
         // Full height, user-resizable width, draggable with edge snapping
-        float savedWidth = m_pConfig->getOption<float>("overlayWidth", 0.0f);
-        float initWidth = (savedWidth > 300.0f) ? savedWidth : 1080.0f;
+        float initWidth = (m_windowWidth > 300.0f) ? m_windowWidth : 1080.0f;
         ImGui::SetNextWindowSize(ImVec2(initWidth, io.DisplaySize.y), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSizeConstraints(ImVec2(600, io.DisplaySize.y), ImVec2(FLT_MAX, io.DisplaySize.y));
 
         // Initial position based on saved side (only on first use)
-        std::string side = m_pConfig->getOption<std::string>("overlaySide", "left");
-        float initX = (side == "right") ? (io.DisplaySize.x - initWidth) : 0.0f;
+        float initX = (m_windowSide == "right") ? (io.DisplaySize.x - initWidth) : 0.0f;
         ImGui::SetNextWindowPos(ImVec2(initX, 0), ImGuiCond_FirstUseEver);
 
         ImGui::Begin("vkBasalt-reloaded Configuration", nullptr,
@@ -439,6 +455,7 @@ namespace vkBasalt {
         float currentWidth = ImGui::GetWindowWidth();
 
         if (m_lastWidth > 0.0f && std::fabs(currentWidth - m_lastWidth) > 1.0f) {
+            m_windowWidth = currentWidth;
             m_pConfig->setGlobalOption("overlayWidth", doubleToConfigString(currentWidth));
             m_pConfig->saveGlobal();
         }
@@ -464,10 +481,12 @@ namespace vkBasalt {
                 
                 if (inLeftZone) {
                     ImGui::SetWindowPos(ImVec2(0, 0));
+                    m_windowSide = "left";
                     m_pConfig->setGlobalOption("overlaySide", "left");
                     m_pConfig->saveGlobal();
                 } else if (inRightZone) {
                     ImGui::SetWindowPos(ImVec2(io.DisplaySize.x - windowWidth, 0));
+                    m_windowSide = "right";
                     m_pConfig->setGlobalOption("overlaySide", "right");
                     m_pConfig->saveGlobal();
                 }
@@ -571,6 +590,7 @@ namespace vkBasalt {
             ImGui::SameLine();
             ImGui::BeginDisabled(!m_hasUnsavedChanges);
             if (ImGui::Button("Revert Changes")) {
+                m_uiParamCache.clear();
                 m_hasUnsavedChanges = false;
                 m_previewDirty = false;
                 m_showCloseWarning = false;

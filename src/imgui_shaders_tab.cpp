@@ -53,17 +53,20 @@ namespace vkBasalt {
         if (p.type == ParamType::Combo) {
             if (!p.comboOptions.empty()) {
                 m_pConfig->setOption(p.key, p.comboOptions[0]);
+                setUIParam(p.key, 0.0);
             }
         } else if (p.type == ParamType::FilePath) {
             m_pConfig->setOption(p.key, "");
         } else if (p.type == ParamType::Bool || p.type == ParamType::Int) {
             effect->setParam(p.key, p.defaultVal);
             m_pConfig->setOption(p.key, std::to_string((int)p.defaultVal));
+            setUIParam(p.key, p.defaultVal);
         } else {
             effect->setParam(p.key, p.defaultVal);
             std::string vs = std::to_string(p.defaultVal);
             std::replace(vs.begin(), vs.end(), ',', '.');
             m_pConfig->setOption(p.key, vs);
+            setUIParam(p.key, p.defaultVal);
         }
     }
 
@@ -94,7 +97,7 @@ namespace vkBasalt {
 
         switch (p->type) {
             case ParamType::Float: {
-                float val = (float)selectedEffect->getParam(p->key);
+                float val = (float)getUIParam(p->key, selectedEffect);
                 float step = (p->step > 0) ? (float)p->step : 0.01f;
                 float range = (float)(p->maxVal - p->minVal);
                 float dragSpeed = range / 200.0f;
@@ -109,6 +112,7 @@ namespace vkBasalt {
                 ImGui::PopItemWidth();
                 if (changed) {
                     val = std::clamp(val, (float)p->minVal, (float)p->maxVal);
+                    setUIParam(p->key, (double)val);
                     selectedEffect->setParam(p->key, (double)val);
                     setParamDebounced(p->key, doubleToConfigString(val));
                 }
@@ -116,7 +120,7 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::Int: {
-                int val = (int)selectedEffect->getParam(p->key);
+                int val = (int)getUIParam(p->key, selectedEffect);
                 int step = (p->step > 0) ? (int)p->step : 1;
                 float range = (float)(p->maxVal - p->minVal);
                 float dragSpeed = std::max(0.05f, range / 200.0f);
@@ -131,6 +135,7 @@ namespace vkBasalt {
                 ImGui::PopItemWidth();
                 if (changed) {
                     val = std::clamp(val, (int)p->minVal, (int)p->maxVal);
+                    setUIParam(p->key, (double)val);
                     selectedEffect->setParam(p->key, (double)val);
                     setParamDebounced(p->key, std::to_string(val));
                 }
@@ -138,8 +143,9 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::Bool: {
-                bool val = selectedEffect->getParam(p->key) > 0.5;
+                bool val = getUIParam(p->key, selectedEffect) > 0.5;
                 if (ImGui::Checkbox(p->label.c_str(), &val)) {
+                    setUIParam(p->key, val ? 1.0 : 0.0);
                     selectedEffect->setParam(p->key, val ? 1.0 : 0.0);
                     setParamImmediate(p->key, val ? "1" : "0");
                 }
@@ -147,7 +153,7 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::Combo: {
-                int currentIdx = (int)selectedEffect->getParam(p->key);
+                int currentIdx = (int)getUIParam(p->key, selectedEffect);
                 currentIdx = std::clamp(currentIdx, 0, (int)p->comboOptions.size() - 1);
                 const char* preview = p->comboOptions.empty() ? "" : p->comboOptions[currentIdx].c_str();
                 if (ImGui::BeginCombo(p->label.c_str(), preview)) {
@@ -155,6 +161,7 @@ namespace vkBasalt {
                     for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
                         bool is_sel = (currentIdx == (int)ci);
                         if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel, ImGuiSelectableFlags_NoAutoClosePopups)) {
+                            setUIParam(p->key, static_cast<double>(ci));
                             selectedEffect->setParam(p->key, static_cast<double>(ci));
                             if (p->key == "crystalclearPreset") {
                                 m_pConfig->setOption("crystalclearPresetApplied", "");
@@ -187,22 +194,33 @@ namespace vkBasalt {
                     m_showBrowser = !m_showBrowser;
                 }
                 if (m_showBrowser) {
+                    if (m_browserDir != m_browserCachedDir) {
+                        m_browserEntries.clear();
+                        std::error_code ec;
+                        if (std::filesystem::exists(m_browserDir, ec)) {
+                            for (auto& entry : std::filesystem::directory_iterator(m_browserDir, ec)) {
+                                BrowserEntry be;
+                                be.path = entry.path().string();
+                                be.name = entry.path().filename().string();
+                                be.isDir = entry.is_directory();
+                                m_browserEntries.push_back(std::move(be));
+                            }
+                        }
+                        m_browserCachedDir = m_browserDir;
+                    }
+
                     ImGui::BeginChild("##file_browser", ImVec2(0, 200), true);
                     ImGui::Text("Directory: %s", m_browserDir.c_str());
-
-                    std::error_code ec;
-                    if (std::filesystem::exists(m_browserDir, ec)) {
-                        for (auto& entry : std::filesystem::directory_iterator(m_browserDir, ec)) {
-                            std::string name = entry.path().filename().string();
-                            if (entry.is_directory()) {
-                                if (ImGui::Selectable(("[DIR] " + name).c_str())) {
-                                    m_browserDir = entry.path().string();
-                                }
-                            } else if (name.size() > 5 && name.substr(name.size() - 5) == ".cube") {
-                                if (ImGui::Selectable(name.c_str())) {
-                                    setParamImmediate(p->key, entry.path().string());
-                                    m_showBrowser = false;
-                                }
+                    
+                    for (const auto& entry : m_browserEntries) {
+                        if (entry.isDir) {
+                            if (ImGui::Selectable(("[DIR] " + entry.name).c_str())) {
+                                m_browserDir = entry.path;
+                            }
+                        } else if (entry.name.size() > 5 && entry.name.substr(entry.name.size() - 5) == ".cube") {
+                            if (ImGui::Selectable(entry.name.c_str())) {
+                                setParamImmediate(p->key, entry.path);
+                                m_showBrowser = false;
                             }
                         }
                     }
@@ -468,18 +486,19 @@ namespace vkBasalt {
                 return categories.back();
             };
 
-            std::string searchLower(m_searchFilter);
-            std::transform(searchLower.begin(), searchLower.end(), searchLower.begin(), ::tolower);
-            bool hasSearch = !searchLower.empty();
+            std::string searchStr(m_searchFilter);
+            bool hasSearch = !searchStr.empty();
+            
+            auto containsIgnoreCase = [](const std::string& haystack, const std::string& needle) {
+                if (needle.empty()) return true;
+                auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
+                    [](char ch1, char ch2) { return std::tolower((unsigned char)ch1) == std::tolower((unsigned char)ch2); });
+                return it != haystack.end();
+            };
 
             for (const auto& p : params) {
                 if (hasSearch) {
-                    std::string labelLower(p.label);
-                    std::transform(labelLower.begin(), labelLower.end(), labelLower.begin(), ::tolower);
-                    std::string keyLower(p.key);
-                    std::transform(keyLower.begin(), keyLower.end(), keyLower.begin(), ::tolower);
-                    if (labelLower.find(searchLower) == std::string::npos &&
-                        keyLower.find(searchLower) == std::string::npos) continue;
+                    if (!containsIgnoreCase(p.label, searchStr) && !containsIgnoreCase(p.key, searchStr)) continue;
                 }
 
                 const char* cat = "General";
@@ -514,7 +533,7 @@ namespace vkBasalt {
                 for (const auto* p : cat.items) {
                     // Hide child params when their parent toggle is disabled. Quality gated params remain visible (grayed out) as UIX choice.
                     if (!p->parentKey.empty()) {
-                        if (selectedEffect->getParam(p->parentKey) <= 0.5) {
+                        if (getUIParam(p->parentKey, selectedEffect) <= 0.5) {
                             continue;
                         }
                     }
