@@ -1,9 +1,6 @@
 #ifndef LOGICAL_DEVICE_HPP_INCLUDED
 #define LOGICAL_DEVICE_HPP_INCLUDED
-#include <vector>
-#include <fstream>
 #include <string>
-#include <iostream>
 #include <vector>
 
 #include "vulkan_include.hpp"
