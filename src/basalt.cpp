@@ -282,6 +282,7 @@ namespace vkBasalt
         pLogicalDevice->queueFamilyIndex      = 0;
         pLogicalDevice->commandPool           = VK_NULL_HANDLE;
         pLogicalDevice->supportsMutableFormat = supportsMutableFormat;
+        pLogicalDevice->physicalDeviceProperties = deviceProps;
 
         fillDispatchTableDevice(*pDevice, gdpa, &pLogicalDevice->vkd);
 
