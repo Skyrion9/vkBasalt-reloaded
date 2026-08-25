@@ -17,14 +17,10 @@ namespace vkBasalt
     VkFormat convertToSRGB(VkFormat format);
     // Returns a matching UNORM format to a sRGB format if it exist, else returns format
     VkFormat convertToUNORM(VkFormat format);
-    // Returns true if format is SRGB
-    bool isSRGB(VkFormat format);
-    // Returns true if format is UNORM
-    // TODO currently return false if format is UNORM and no matching sRGB format exist
-    bool isUNORM(VkFormat format);
-    
-    // Detects: FP16, FP32, A2B10G10R10 (HDR10), and other extended-range formats
-    bool isExtendedRangeFormat(VkFormat format);
+
+    uint32_t getBytesPerPixel(VkFormat format);
+    float halfToFloat(uint16_t h);
+
 
     VkFormat getSupportedFormat(LogicalDevice*        pLogicalDevice,
                                 std::vector<VkFormat> formats,
@@ -34,8 +30,13 @@ namespace vkBasalt
     VkFormat getStencilFormat(LogicalDevice* pLogicalDevice);
 
     bool isDepthFormat(VkFormat format);
-
     bool isStencilFormat(VkFormat format);
+    bool isSRGB(VkFormat format);
+    bool isUNORM(VkFormat format);
+    bool isExtendedRangeFormat(VkFormat format);
+    bool isBGRFormat(VkFormat format);
+    bool is10BitPackedFormat(VkFormat format);
+    bool isFloatFormat(VkFormat format);
 } // namespace vkBasalt
 
 #endif // FORMAT_HPP_INCLUDED

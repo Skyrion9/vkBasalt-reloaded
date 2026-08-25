@@ -1,7 +1,9 @@
 #include "format.hpp"
 #include "logger.hpp"
 #include "logical_device.hpp"
+
 #include <vector>
+#include <cstring>
 #include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
@@ -100,31 +102,7 @@ namespace vkBasalt
     
     bool isExtendedRangeFormat(VkFormat format)
     {
-        switch (format)
-        {
-            // Floating-point formats (scRGB linear HDR)
-            case VK_FORMAT_R16G16B16A16_SFLOAT:
-            case VK_FORMAT_R16_SFLOAT:
-            case VK_FORMAT_R16G16_SFLOAT:
-            case VK_FORMAT_R16G16B16_SFLOAT:
-            case VK_FORMAT_R32_SFLOAT:
-            case VK_FORMAT_R32G32_SFLOAT:
-            case VK_FORMAT_R32G32B32_SFLOAT:
-            case VK_FORMAT_R32G32B32A32_SFLOAT:
-            case VK_FORMAT_R64_SFLOAT:
-            case VK_FORMAT_R64G64_SFLOAT:
-            case VK_FORMAT_R64G64B64_SFLOAT:
-            case VK_FORMAT_R64G64B64A64_SFLOAT:
-                return true;
-                
-            // Packed 10-bit HDR formats (HDR10)
-            case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
-            case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
-                return true;
-                
-            default:
-                return false;
-        }
+        return isFloatFormat(format) || is10BitPackedFormat(format);
     }
 
     VkFormat getSupportedFormat(LogicalDevice* pLogicalDevice, std::vector<VkFormat> formats, VkFormatFeatureFlags features, VkImageTiling tiling)
@@ -176,5 +154,107 @@ namespace vkBasalt
             case VK_FORMAT_D32_SFLOAT_S8_UINT: return true;
             default: return false;
         }
+    }
+
+    uint32_t getBytesPerPixel(VkFormat format)
+    {
+        switch (format)
+        {
+            case VK_FORMAT_R16G16B16A16_SFLOAT: return 8;
+            case VK_FORMAT_R16G16B16_SFLOAT:    return 6;
+            case VK_FORMAT_R32G32B32A32_SFLOAT: return 16;
+            case VK_FORMAT_R32G32B32_SFLOAT:    return 12;
+            case VK_FORMAT_R64G64B64A64_SFLOAT: return 32;
+            case VK_FORMAT_R64G64B64_SFLOAT:    return 24;
+            default:
+                return 4; // 8-bit RGBA/BGRA and 10-bit packed
+        }
+    }
+
+    bool isBGRFormat(VkFormat format)
+    {
+        switch (format)
+        {
+            case VK_FORMAT_B8G8R8_UNORM:
+            case VK_FORMAT_B8G8R8_SRGB:
+            case VK_FORMAT_B8G8R8_SNORM:
+            case VK_FORMAT_B8G8R8A8_UNORM:
+            case VK_FORMAT_B8G8R8A8_SRGB:
+            case VK_FORMAT_B8G8R8A8_SNORM:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool is10BitPackedFormat(VkFormat format)
+    {
+        switch (format)
+        {
+            case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+            case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool isFloatFormat(VkFormat format)
+    {
+        switch (format)
+        {
+            case VK_FORMAT_R16_SFLOAT:
+            case VK_FORMAT_R16G16_SFLOAT:
+            case VK_FORMAT_R16G16B16_SFLOAT:
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+            case VK_FORMAT_R32_SFLOAT:
+            case VK_FORMAT_R32G32_SFLOAT:
+            case VK_FORMAT_R32G32B32_SFLOAT:
+            case VK_FORMAT_R32G32B32A32_SFLOAT:
+            case VK_FORMAT_R64_SFLOAT:
+            case VK_FORMAT_R64G64_SFLOAT:
+            case VK_FORMAT_R64G64B64_SFLOAT:
+            case VK_FORMAT_R64G64B64A64_SFLOAT:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    float halfToFloat(uint16_t h)
+    {
+        uint32_t sign = (uint32_t)(h & 0x8000) << 16;
+        uint32_t exponent = (h >> 10) & 0x1F;
+        uint32_t mantissa = h & 0x3FF;
+        uint32_t result;
+        if (exponent == 0)
+        {
+            if (mantissa == 0)
+            {
+                result = sign;
+            }
+            else
+            {
+                exponent = 1;
+                while ((mantissa & 0x400) == 0)
+                {
+                    mantissa <<= 1;
+                    exponent--;
+                }
+                mantissa &= 0x3FF;
+                result = sign | ((exponent + 127 - 15) << 23) | (mantissa << 13);
+            }
+        }
+        else if (exponent == 31)
+        {
+            result = sign | 0x7F800000 | (mantissa << 13);
+        }
+        else
+        {
+            result = sign | ((exponent + 127 - 15) << 23) | (mantissa << 13);
+        }
+        float f;
+        memcpy(&f, &result, sizeof(float));
+        return f;
     }
 } // namespace vkBasalt
