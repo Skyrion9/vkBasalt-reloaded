@@ -22,7 +22,7 @@ namespace vkBasalt
         stringVector.push_back(addString);
     }
 
-    void outputInColor(std::string output, Color foreground, Color background)
+    void outputInColor(const std::string& output, Color foreground, Color background)
     {
         std::array<std::string, 2> magicNumbers;
         size_t magicCount = 0;

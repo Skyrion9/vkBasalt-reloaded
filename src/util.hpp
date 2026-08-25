@@ -23,7 +23,7 @@ namespace vkBasalt
         white
     };
 
-    void outputInColor(std::string output, Color foreground = Color::defaultColor, Color background = Color::defaultColor);
+    void outputInColor(const std::string& output, Color foreground = Color::white, Color background = Color::black);
 
     template<typename T>
     std::string convertToString(T object)
