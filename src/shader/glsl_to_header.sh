@@ -16,7 +16,7 @@ trap 'rm -f "$TEMP_SPV" "$OPT_SPV"' EXIT
 
 # 1. Compile GLSL -> SPIR-V binary for the resolved target.
 #    --target-env <env> implies -V (do NOT add -V).
-"$GLSLANG" --target-env "$TARGET_ENV" --lto --nan-clamp -g0 "$INPUT" -o "$TEMP_SPV"
+"$GLSLANG" --target-env "$TARGET_ENV" --lto --nan-clamp -g0 -I"$(dirname "$INPUT")" "$INPUT" -o "$TEMP_SPV"
 
 # 2. Optimize SPIR-V for maximum GPU runtime performance.
 #    spirv-opt uses --flag=value syntax for valued flags.
