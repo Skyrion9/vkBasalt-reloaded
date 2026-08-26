@@ -201,6 +201,7 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
     static void wl_keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard, int32_t rate, int32_t delay);
     static void registry_handle_global(void *data, struct wl_registry* registry, uint32_t name, const char *interface, uint32_t version);
     static void registry_handle_global_remove(void *data, struct wl_registry *registry, uint32_t name);
+    static ImGuiKey keysymToImGuiKey(xkb_keysym_t keysym);
 
     static void wl_pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y);
     static void wl_pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial, struct wl_surface *surface);
@@ -267,7 +268,20 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
 
     static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial, struct wl_surface *surface) {
         wayland_display *wayland = (wayland_display *)data;
-        if (wayland) wayland->wl_pressed_keys.clear();
+        if (wayland) {
+            if (ImGui::GetCurrentContext()) {
+                ImGuiIO& io = ImGui::GetIO();
+                for (auto keysym : wayland->wl_pressed_keys) {
+                    ImGuiKey imguiKey = keysymToImGuiKey(keysym);
+                    if (imguiKey != ImGuiKey_None) {
+                        io.AddKeyEvent(imguiKey, false);
+                    }
+                }
+            }
+            wayland->wl_pressed_keys.clear();
+            wayland->key_events.clear();
+            wayland->typed_chars.clear();
+        }
     }
 
     static void wl_keyboard_key(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state) {
@@ -574,6 +588,23 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
             io.MouseWheel += wayland.mouse_wheel;
             wayland.mouse_wheel = 0.0f;
             break;
+        }
+    }
+
+    void clearWaylandInputQueues() {
+        for (auto& display_pair : displays) {
+            wayland_display& wayland = display_pair.second;
+            wayland.key_events.clear();
+            wayland.typed_chars.clear();
+            for (int i = 0; i < 5; i++) wayland.mouse_down[i] = false;
+            wayland.mouse_wheel = 0.0f;
+        }
+        if (ImGui::GetCurrentContext()) {
+            ImGuiIO& io = ImGui::GetIO();
+            io.ClearInputKeys();
+            io.InputQueueCharacters.resize(0);
+            for (int i = 0; i < 5; i++) io.MouseDown[i] = false;
+            io.MouseWheel = 0.0f;
         }
     }
 
