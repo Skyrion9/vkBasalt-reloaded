@@ -1,3 +1,7 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+#include "color_space.h"
+
 /*
   Image sharpening filter from GeForce Experience. Provided by NVIDIA Corporation.
   
@@ -20,16 +24,15 @@
   ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#version 450
-
 layout(set=0, binding=0) uniform sampler2D img;
 
 layout (constant_id = 0) const float sharpen = 0.5;
 layout (constant_id = 1) const float denoise = 0.17;
-layout (constant_id = 2) const int hdrMode = 0;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
+
+const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
 
 #define textureLod0Offset(img, coord, offset) textureLodOffset(img, coord, 0.0f, offset)
 #define textureLod0(img, coord) textureLod(img, coord, 0.0f)
@@ -38,6 +41,11 @@ float GetLumaComponents(float r, float g, float b)
 {
     // Y from JPEG spec
     return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+float GetLuma(vec3 p)
+{
+    return GetLumaComponents(p.r, p.g, p.b);
 }
 
 float GetLuma(vec4 p)
@@ -65,17 +73,18 @@ void main()
     //  a (x) b
     //  g  c  f
 
-    vec4 x = textureLod0(img, textureCoord);
+    vec4 x_raw = textureLod0(img, textureCoord);
+    vec3 x = decodeToLinear(x_raw.rgb);
 
-    vec4 a = textureLod0Offset(img, textureCoord, ivec2(-1,  0));
-    vec4 b = textureLod0Offset(img, textureCoord, ivec2( 1,  0));
-    vec4 c = textureLod0Offset(img, textureCoord, ivec2( 0,  1));
-    vec4 d = textureLod0Offset(img, textureCoord, ivec2( 0, -1));
+    vec3 a = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2(-1,  0)).rgb);
+    vec3 b = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 1,  0)).rgb);
+    vec3 c = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 0,  1)).rgb);
+    vec3 d = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 0, -1)).rgb);
 
-    vec4 e = textureLod0Offset(img, textureCoord, ivec2(-1, -1));
-    vec4 f = textureLod0Offset(img, textureCoord, ivec2( 1,  1));
-    vec4 g = textureLod0Offset(img, textureCoord, ivec2(-1,  1));
-    vec4 h = textureLod0Offset(img, textureCoord, ivec2( 1, -1));
+    vec3 e = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2(-1, -1)).rgb);
+    vec3 f = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 1,  1)).rgb);
+    vec3 g = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2(-1,  1)).rgb);
+    vec3 h = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 1, -1)).rgb);
 
     float lx = GetLuma(x);
 
@@ -90,7 +99,7 @@ void main()
     float lh = GetLuma(h);
 
     // HDR adaptation luminance: reference level for threshold scaling. SDR -> 1.0 (no-op).
-    float hdrNorm = (hdrMode == 1) ? clamp(lx, 0.18, 16.0) : 1.0;
+    float hdrNorm = isHDR ? clamp(lx, 0.18, 16.0) : 1.0;
     // cross min/max
     const float ncmin = min(min(le, lf), min(lg, lh));
     const float ncmax = max(max(le, lf), max(lg, lh));
@@ -153,7 +162,8 @@ void main()
     x.y += delta;
     x.z += delta;
 
-    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
-    vec3 finalColor = (hdrMode == 1) ? max(x.rgb, 0.0) : clamp(x.rgb, 0.0, 1.0);
-    fragColor = vec4(finalColor, x.a);
+    // Encode back to target color space, then clamp appropriately
+    vec3 encodedColor = encodeFromLinear(x);
+    vec3 finalColor = isHDR ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
+    fragColor = vec4(finalColor, x_raw.a);
 }
