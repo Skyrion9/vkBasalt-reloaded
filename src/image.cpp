@@ -36,7 +36,7 @@ namespace vkBasalt
         VkImageCreateInfo imageCreateInfo;
         imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageCreateInfo.pNext = (unormFormat == srgbFormat) ? nullptr : &imageFormatListCreateInfo;
-        imageCreateInfo.flags = (unormFormat == srgbFormat) ? 0 : VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+        imageCreateInfo.flags = 0;
         if (extent.depth == 1)
         {
             imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;

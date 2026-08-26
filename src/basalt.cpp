@@ -442,20 +442,16 @@ namespace vkBasalt
         VkFormat formats[] = {unormFormat, srgbFormat};
 
         VkImageFormatListCreateInfoKHR imageFormatListCreateInfo;
-        if (pLogicalDevice->supportsMutableFormat)
-        {
-            modifiedCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                             | VK_IMAGE_USAGE_SAMPLED_BIT; // we want to use the swapchain images as output of the graphics pipeline
-            modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
-            // TODO what if the application already uses multiple formats for the swapchain?
 
-            imageFormatListCreateInfo.sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR;
-            imageFormatListCreateInfo.pNext           = modifiedCreateInfo.pNext;
-            imageFormatListCreateInfo.viewFormatCount = (srgbFormat == unormFormat) ? 1 : 2;
-            imageFormatListCreateInfo.pViewFormats    = formats;
-
-            modifiedCreateInfo.pNext = &imageFormatListCreateInfo;
-        }
+        // Injecting VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR flag breaks direct scanout (zero-copy presentation) on Linux compositors.
+        modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+                                       | VK_IMAGE_USAGE_SAMPLED_BIT;
+        
+        imageFormatListCreateInfo.sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR;
+        imageFormatListCreateInfo.pNext           = modifiedCreateInfo.pNext;
+        imageFormatListCreateInfo.viewFormatCount = (srgbFormat == unormFormat) ? 1 : 2;
+        imageFormatListCreateInfo.pViewFormats    = formats;
+        modifiedCreateInfo.pNext = &imageFormatListCreateInfo;
 
         modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
