@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
+#include "color_space.h"
 
 // LICENSE
 // =======
@@ -23,10 +25,11 @@ layout(set=0, binding=0) uniform sampler2D img;
 
 layout(constant_id = 0) const float sharpness = 0.4;
 layout(constant_id = 1) const float contrastLimit = 0.0; // Suppresses sharpening in low contrast/noisy areas
-layout(constant_id = 2) const int hdrMode = 0;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
+
+const int hdrMode = (colorSpaceMode != CSP_SDR_SRGB) ? 1 : 0;
 
 void main()
 {
@@ -35,17 +38,17 @@ void main()
     //  d(e)f
     //  g h i
     vec4 inputColor = textureLod(img, textureCoord, 0.0);
-    vec3 e = inputColor.rgb;
+    vec3 e = decodeToLinear(inputColor.rgb);
 
     // Hardware-accelerated offset fetches
-    vec3 a = textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb;
-    vec3 b = textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb;
-    vec3 c = textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb;
-    vec3 d = textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb;
-    vec3 f = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb;
-    vec3 g = textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb;
-    vec3 h = textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb;
-    vec3 i = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb;
+    vec3 a = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
+    vec3 b = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb);
+    vec3 c = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb);
+    vec3 d = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb);
+    vec3 f = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb);
+    vec3 g = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb);
+    vec3 h = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb);
+    vec3 i = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb);
 
     // AMD's intentional "soft min/max" bias.
     // Soft min and max.
@@ -99,7 +102,8 @@ void main()
 
     vec3 outColor = mix(e, sharpened, limitMask);
 
-    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
-    vec3 finalColor = (hdrMode == 1) ? max(outColor, 0.0) : clamp(outColor, 0.0, 1.0);
+    // Encode back to target color space, then clamp appropriately
+    vec3 encodedColor = encodeFromLinear(outColor);
+    vec3 finalColor = (hdrMode == 1) ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
     fragColor = vec4(finalColor, inputColor.a);
 }

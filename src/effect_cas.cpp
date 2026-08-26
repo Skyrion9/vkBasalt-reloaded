@@ -17,7 +17,7 @@ namespace vkBasalt
     struct CasSpecData {
         float sharpness;
         float contrastLimit;
-        int32_t hdrMode;
+        int32_t colorSpaceMode;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(CasSpecData, field), .specSize = sizeof(((CasSpecData*)0)->field)
@@ -33,16 +33,12 @@ namespace vkBasalt
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = cas_frag;
 
-        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
-                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
-                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
-                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
-                      isExtendedRangeFormat(format));
+        ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
         const auto& params = getParamDescs();
         CasSpecData specData = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
-        mapEntries.reserve(params.size());
+        mapEntries.reserve(params.size() + 1);
 
         for (const auto& p : params) {
             if (p.specId < 0) continue;
@@ -68,8 +64,8 @@ namespace vkBasalt
             mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
         }
 
-        specData.hdrMode = isHDR ? 1 : 0;
-        mapEntries.push_back({2, offsetof(CasSpecData, hdrMode), sizeof(int32_t)});
+        specData.colorSpaceMode = static_cast<int32_t>(csm);
+        mapEntries.push_back({65535, offsetof(CasSpecData, colorSpaceMode), sizeof(int32_t)});
 
         VkSpecializationInfo specializationInfo;
         specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
