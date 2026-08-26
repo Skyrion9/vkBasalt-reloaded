@@ -1,21 +1,22 @@
 #include "game_detect.hpp"
 #include "logger.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <iterator>
 #include <sstream>
-#include <cstring>
-#include <cstdio>
 #include <string>
 #include <sys/types.h>
 #include <system_error>
 #include <unistd.h>
-#include <algorithm>
 #include <vector>
-#include <cstdlib>
 
 namespace vkBasalt {
 
@@ -34,7 +35,38 @@ namespace vkBasalt {
         return collapsed;
     }
 
-    // Steam ACF parsing
+    static std::string getExePath() {
+        char buf[4096] = {0};
+        ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        return (len > 0) ? std::string(buf, (size_t)len) : "";
+    }
+
+    // Extract clean filename from a path. Handles both Unix (/) and Windows (\), strips .exe extension for Wine processes.
+    static std::string getExeName(const std::string& fullPath) {
+        std::string name = fullPath;
+        size_t slash = fullPath.find_last_of("/\\");
+        if (slash != std::string::npos) name = fullPath.substr(slash + 1);
+        if (name.size() > 4) {
+            std::string ext = name.substr(name.size() - 4);
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            if (ext == ".exe") name = name.substr(0, name.size() - 4);
+        }
+        return name.empty() ? "unknown" : name;
+    }
+
+    static bool isWineProcess(const std::string& exeName) {
+        return exeName.find("wine") != std::string::npos;
+    }
+
+    // Validate and return Steam AppID from environment. Filters out empty, "0", and "default" (Lutris placeholder).
+    static std::string getSteamAppId() {
+        const char* steamGameId = std::getenv("SteamGameId");
+        const char* steamAppId  = std::getenv("SteamAppId");
+        std::string appId = steamGameId ? steamGameId : (steamAppId ? steamAppId : "");
+        if (appId.empty() || appId == "0" || appId == "default") return "";
+        return appId;
+    }
+
     static std::string findSteamGameName(const std::string& appId) {
         const char* home = std::getenv("HOME");
         if (!home) return "";
@@ -91,6 +123,106 @@ namespace vkBasalt {
             }
         }
         return "";
+    }
+
+    static std::string findLutrisGameName() {
+        // 1. Direct env var (set by newer Lutris versions)
+        const char* gameName = std::getenv("LUTRIS_GAME_NAME");
+        if (gameName && std::strlen(gameName) > 0) return std::string(gameName);
+
+        // 2. Look up by UUID in Lutris game config YAML
+        const char* uuid = std::getenv("LUTRIS_GAME_UUID");
+        if (uuid && std::strlen(uuid) > 0) {
+            const char* home = std::getenv("HOME");
+            if (!home) return "";
+            std::string ymlPath = std::string(home) + "/.config/lutris/games/" + uuid + ".yml";
+            std::ifstream f(ymlPath);
+            if (!f.good()) return "";
+            std::string line;
+            while (std::getline(f, line)) {
+                // Top level "name:" has no leading whitespace
+                if (line.find("name:") == 0) {
+                    std::string name = line.substr(5);
+                    size_t start = name.find_first_not_of(" \t\r\n");
+                    size_t end = name.find_last_not_of(" \t\r\n");
+                    if (start != std::string::npos && end != std::string::npos) {
+                        return name.substr(start, end - start + 1);
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    // Parse /proc/self/cmdline to find the actual game .exe path. Wine processes (wine64-preloader, wine-preloader) receive the game executable as a cmdline argument.
+    static std::string findWineGameExe() {
+        std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
+        if (!cmdline.good()) return "";
+
+        std::string content((std::istreambuf_iterator<char>(cmdline)),
+                            std::istreambuf_iterator<char>());
+
+        // cmdline is null separated
+        std::vector<std::string> args;
+        size_t start = 0;
+        for (size_t i = 0; i < content.size(); i++) {
+            if (content[i] == '\0') {
+                if (i > start) args.push_back(content.substr(start, i - start));
+                start = i + 1;
+            }
+        }
+
+        // Find the first argument ending in .exe (case insensitive)
+        for (const auto& arg : args) {
+            if (arg.size() > 4) {
+                std::string ext = arg.substr(arg.size() - 4);
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext == ".exe") return arg;
+            }
+        }
+        return "";
+    }
+
+    struct GameIdentity {
+        std::string steamAppId;
+        std::string steamName;
+        std::string lutrisName;
+        std::string exePath;
+        std::string exeName;
+        bool isSteam  = false;
+        bool isLutris = false;
+        bool isWine   = false;
+    };
+
+    static GameIdentity resolveGameIdentity() {
+        GameIdentity id;
+
+        id.steamAppId = getSteamAppId();
+        id.isSteam = !id.steamAppId.empty();
+        if (id.isSteam) {
+            id.steamName = findSteamGameName(id.steamAppId);
+        }
+
+        id.lutrisName = findLutrisGameName();
+        id.isLutris = !id.lutrisName.empty();
+
+        id.exePath = getExePath();
+        id.exeName = getExeName(id.exePath);
+        id.isWine  = isWineProcess(id.exeName);
+
+        if (id.isWine) {
+            std::string wineGameExe = findWineGameExe();
+            if (!wineGameExe.empty()) {
+                id.exeName = getExeName(wineGameExe);
+            }
+        }
+
+        return id;
+    }
+
+    static const GameIdentity& getGameIdentity() {
+        static GameIdentity identity = resolveGameIdentity();
+        return identity;
     }
 
     // MD5 (RFC 1321)
@@ -201,7 +333,6 @@ namespace vkBasalt {
         std::string line;
         while (std::getline(f, line)) {
             if (line.empty() || line[0] == '#') continue;
-            // Format: id|exe_name|path|binary_md5
             std::stringstream ss(line);
             GameEntry e;
             if (std::getline(ss, e.id, '|') &&
@@ -231,38 +362,35 @@ namespace vkBasalt {
 
     // Public API
     std::string computeGameId() {
-        // 1. Steam environment variables
-        const char* steamGameId = std::getenv("SteamGameId");
-        const char* steamAppId  = std::getenv("SteamAppId");
-        std::string appId = steamGameId ? steamGameId : (steamAppId ? steamAppId : "");
+        static std::string cachedId;
+        static bool computed = false;
+        if (computed) return cachedId;
+        computed = true;
 
-        if (!appId.empty() && appId != "0") {
-            std::string gameName = findSteamGameName(appId);
-            if (!gameName.empty()) {
-                Logger::debug("Steam game detected: " + appId + " (" + gameName + ")");
-                return "steam_" + appId + "_" + gameName;
+        const GameIdentity& id = getGameIdentity();
+
+        if (id.isSteam) {
+            if (!id.steamName.empty()) {
+                Logger::debug("Steam game detected: " + id.steamAppId + " (" + id.steamName + ")");
+                cachedId = "steam_" + id.steamAppId + "_" + id.steamName;
+            } else {
+                Logger::debug("Steam game detected: " + id.steamAppId + " (name not found)");
+                cachedId = "steam_" + id.steamAppId;
             }
-            Logger::debug("Steam game detected: " + appId + " (name not found)");
-            return "steam_" + appId;
+            return cachedId;
         }
 
-        // 2. Non-Steam: registry-based identification
-        char exePath[4096] = {0};
-        ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
-        std::string fullPath = (len > 0) ? std::string(exePath, (size_t)len) : std::string("unknown");
-
-        std::string exeName = fullPath;
-        size_t slash = fullPath.find_last_of('/');
-        if (slash != std::string::npos) exeName = fullPath.substr(slash + 1);
-        if (exeName.empty()) exeName = "unknown";
-
-        std::string cleanName = exeName;
-        if (cleanName.size() >= 4) {
-            std::string ext = cleanName.substr(cleanName.size() - 4);
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            if (ext == ".exe") cleanName = cleanName.substr(0, cleanName.size() - 4);
+        if (id.isLutris) {
+            Logger::debug("Lutris game detected: " + id.lutrisName);
+            cachedId = "lutris_" + sanitizeName(id.lutrisName);
+            return cachedId;
         }
 
+        // Non-Steam / Non-Lutris: registry based identification
+        std::string fullPath = id.exePath.empty() ? "unknown" : id.exePath;
+        std::string cleanName = id.exeName;
+
+        // Hash binary for update/move detection
         std::string binaryMd5 = hashBinaryContent(fullPath);
 
         auto entries = loadRegistry();
@@ -279,7 +407,8 @@ namespace vkBasalt {
                     Logger::debug("Game matched by path: " + e.id);
                 }
                 if (registryDirty) saveRegistry(entries);
-                return e.id;
+                cachedId = e.id;
+                return cachedId;
             }
         }
 
@@ -291,7 +420,8 @@ namespace vkBasalt {
                     e.path = fullPath;
                     saveRegistry(entries);
                     Logger::debug("Game matched by binary (moved from " + oldPath + "): " + e.id);
-                    return e.id;
+                    cachedId = e.id;
+                    return cachedId;
                 }
             }
         }
@@ -316,7 +446,32 @@ namespace vkBasalt {
         saveRegistry(entries);
 
         Logger::debug("New game registered: " + newId + " (" + fullPath + ")");
-        return newId;
+        cachedId = newId;
+        return cachedId;
+    }
+
+    std::string getGameDisplayName() {
+        static std::string cachedName;
+        static bool computed = false;
+        if (computed) return cachedName;
+        computed = true;
+
+        const GameIdentity& id = getGameIdentity();
+
+        if (id.isSteam && !id.steamName.empty()) {
+            std::string readable = id.steamName;
+            std::replace(readable.begin(), readable.end(), '_', ' ');
+            cachedName = readable;
+            return cachedName;
+        }
+
+        if (id.isLutris) {
+            cachedName = id.lutrisName;
+            return cachedName;
+        }
+
+        cachedName = id.exeName;
+        return cachedName;
     }
 
 } // namespace vkBasalt
