@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
+#include "color_space.h"
 
 // clarity inspired optimized single-pass cross-convolution contrast
 // pure 9-tap architecture with gaussian bilateral weights and  smooth transitions
@@ -14,7 +16,6 @@ layout(constant_id = 5) const int blendIfLight = 220;
 layout(constant_id = 6) const float edgeThreshLow = 0.05;
 layout(constant_id = 7) const float edgeThreshHigh = 0.25;
 layout(constant_id = 8) const int enableDithering = 1;
-layout(constant_id = 9) const int hdrMode = 0;
 
 layout(push_constant) uniform PushConstants {
     vec2 step1;     
@@ -24,6 +25,8 @@ layout(push_constant) uniform PushConstants {
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
+const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
+
 #define BILATERAL_WEIGHT(diff) (1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(diff)))
 #define BILATERAL_DIFF(neighbor, weight) ((lE - neighbor) * BILATERAL_WEIGHT(lE - neighbor) * weight)
 
@@ -31,19 +34,22 @@ float getLuma(vec3 rgb) {
     return dot(rgb, vec3(0.32786885, 0.655737705, 0.0163934436));
 }
 
-float applyBlendMode(float luma, float sharp) {
-    if (blendMode == 0) return mix(2.0 * luma * sharp + luma * luma * (1.0 - 2.0 * sharp), 2.0 * luma * (1.0 - sharp) + sqrt(luma) * (2.0 * sharp - 1.0), step(0.49, sharp));
-    else if (blendMode == 1) return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, luma));
-    else if (blendMode == 2) return mix(2.0 * luma * sharp, 1.0 - 2.0 * (1.0 - luma) * (1.0 - sharp), step(0.50, sharp));
-    else if (blendMode == 3) return clamp(2.0 * luma * sharp, 0.0, 1.0);
-    else if (blendMode == 4) return mix(2.0 * luma * sharp, luma / max(2.0 * (1.0 - sharp), 0.0001), step(0.50, sharp));
-    else if (blendMode == 5) return luma + 2.0 * sharp - 1.0;
-    else return clamp(luma + (sharp - 0.5), 0.0, 1.0);
+float applyBlendMode(float luma, float sharp, float norm) {
+    if (blendMode == 5) return luma + (sharp - 0.5) * norm;
+    float nl = isHDR ? luma / norm : luma;
+    float r;
+    if (blendMode == 0) r = mix(2.0 * nl * sharp + nl * nl * (1.0 - 2.0 * sharp), 2.0 * nl * (1.0 - sharp) + sqrt(max(nl, 0.0)) * (2.0 * sharp - 1.0), step(0.49, sharp));
+    else if (blendMode == 1) r = mix(2.0 * nl * sharp, 1.0 - 2.0 * (1.0 - nl) * (1.0 - sharp), step(0.50, nl));
+    else if (blendMode == 2) r = mix(2.0 * nl * sharp, 1.0 - 2.0 * (1.0 - nl) * (1.0 - sharp), step(0.50, sharp));
+    else if (blendMode == 3) r = clamp(2.0 * nl * sharp, 0.0, 1.0);
+    else if (blendMode == 4) r = mix(2.0 * nl * sharp, nl / max(2.0 * (1.0 - sharp), 0.0001), step(0.50, sharp));
+    else r = clamp(nl + (sharp - 0.5), 0.0, 1.0);
+    return isHDR ? r * norm : r;
 }
 
 void main() {
     vec4 centerColor = textureLod(img, textureCoord, 0.0);
-    vec3 e = centerColor.rgb;
+    vec3 e = decodeToLinear(centerColor.rgb);
     float lE = getLuma(e);
 
     if (lE <= 0.0001) {
@@ -51,16 +57,18 @@ void main() {
         return;
     }
 
+    float hdrNorm = isHDR ? clamp(lE, 0.18, 16.0) : 1.0;
+
     // phase 1: clarity wide fetches (8 taps)
-    float h1_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb);
-    float h2_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb);
-    float h3_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb);
-    float h4_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb);
+    float h1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float h2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float h3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
+    float h4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
     
-    float v1_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb);
-    float v2_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb);
-    float v3_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb);
-    float v4_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb);
+    float v1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
+    float v2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
+    float v3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
+    float v4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
 
     // phase 2: bilateral delta accumulation
     float diff = (
@@ -69,20 +77,27 @@ void main() {
     );
 
     // phase 3: clarity gates and s-curve
-    diff *= smoothstep(0.006, 0.018, abs(diff));
+    diff *= smoothstep(0.006 * hdrNorm, 0.018 * hdrNorm, abs(diff));
 
-    float distFromMidSq = (lE - 0.5) * (lE - 0.5);
+    float distFromMidSq;
+    if (isHDR) {
+        float shadowProtect = smoothstep(0.0, 0.18, lE);
+        diff *= shadowProtect;
+        distFromMidSq = 0.0;
+    } else {
+        distFromMidSq = (lE - 0.5) * (lE - 0.5);
+    }
     float extremesMask = clamp(1.0 - distFromMidSq * 4.0, 0.0, 1.0); 
     diff *= extremesMask;
 
-    diff = clamp(diff, -0.02, 0.15);
+    diff = clamp(diff, -0.02 * hdrNorm, 0.15 * hdrNorm);
 
-    float blendMask = clamp(0.5 + diff, 0.0, 1.0); 
-    float sharpLuma = applyBlendMode(lE, blendMask);
+    float blendMask = clamp(0.5 + diff / hdrNorm, 0.0, 1.0); 
+    float sharpLuma = applyBlendMode(lE, blendMask, hdrNorm);
 
     if (blendIfDark > 0 || blendIfLight < 255) {
-        float blendIfD = (float(blendIfDark) / 255.0) + 0.0001;
-        float blendIfL = (float(blendIfLight) / 255.0) - 0.0001;
+        float blendIfD = ((float(blendIfDark) / 255.0) + 0.0001) * hdrNorm;
+        float blendIfL = ((float(blendIfLight) / 255.0) - 0.0001) * hdrNorm;
         
         float mixVal = lE; 
         float mask = 1.0;
@@ -100,10 +115,12 @@ void main() {
         hash = (hash ^ (hash >> 16)) * 2654435769u;
         
         float dither = float(hash & 255u) * 0.0039215686; 
-        finalColor += (dither - 0.5) * 0.0039215686;
+        float ditherScale = isHDR ? 0.15 : 1.0;
+        finalColor += (dither - 0.5) * 0.0039215686 * min(hdrNorm, 1.0) * ditherScale;
     }
 
-    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
-    vec3 outColor = (hdrMode == 1) ? max(finalColor, 0.0) : clamp(finalColor, 0.0, 1.0);
+    // Encode back to target color space, then clamp appropriately
+    vec3 encodedColor = encodeFromLinear(finalColor);
+    vec3 outColor = isHDR ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
     fragColor = vec4(outColor, centerColor.a);
 }

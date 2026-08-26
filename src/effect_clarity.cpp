@@ -30,7 +30,7 @@ namespace vkBasalt
         float edgeThreshLow;
         float edgeThreshHigh;
         int32_t enableDithering;
-        int32_t hdrMode;
+        int32_t colorSpaceMode;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClaritySpecData, field), .specSize = sizeof(((ClaritySpecData*)0)->field)
@@ -48,16 +48,12 @@ namespace vkBasalt
         fragmentCode = clarity_frag;
         this->pushConstantSize = sizeof(ClarityPushConstants);
 
-        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
-                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
-                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
-                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
-                      isExtendedRangeFormat(format));
+        ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
         const auto& params = getParamDescs();
         ClaritySpecData specData = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
-        mapEntries.reserve(params.size());
+        mapEntries.reserve(params.size() + 1);
 
         for (const auto& p : params) {
             if (p.specId < 0) continue;
@@ -83,8 +79,8 @@ namespace vkBasalt
             mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
         }
 
-        specData.hdrMode = isHDR ? 1 : 0;
-        mapEntries.push_back({9, offsetof(ClaritySpecData, hdrMode), sizeof(int32_t)});
+        specData.colorSpaceMode = static_cast<int32_t>(csm);
+        mapEntries.push_back({65535, offsetof(ClaritySpecData, colorSpaceMode), sizeof(int32_t)});
 
         this->radius = specData.radius;
         this->offset = specData.offset;
