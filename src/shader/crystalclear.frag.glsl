@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
+#include "color_space.h"
+
 // ===============================================================================
 // crystalclear: All-in-one spatial filter combining bilateral macro-contrast,
 // CAS micro-sharpening, FXAA anti-aliasing, film grain, and artifact guards.
@@ -95,7 +98,6 @@ layout(constant_id = 25) const float filmGrainMinimum = 0.4;
 layout(constant_id = 26) const int enableDebugGrain = 0;
 layout(constant_id = 27) const float fineGrainWeight = 0.6;
 layout(constant_id = 28) const float coarseGrainWeight = 0.4;
-layout(constant_id = 29) const int hdrMode = 0;
 layout(constant_id = 30) const float guardStrength = 0.6;
 layout(constant_id = 31) const float bandPassWidth = 0.8;
 layout(constant_id = 32) const float extremeProtection = 0.5;
@@ -161,6 +163,8 @@ layout(set = 0, binding = 1) uniform FrameData {
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
+const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
+
 // perceptual green heavy luma for edge detection, sharpening masks, and FXAA.
 float getLuma(vec3 rgb) {
     return dot(rgb, vec3(0.32786885, 0.655737705, 0.0163934436));
@@ -179,9 +183,9 @@ float bilateralDiff(float d, float weight, float threshLow, float invThreshRange
 // HDR: 'norm' is the adaptation factor (hdrNorm). Mode 5 (Linear Light) is additive, self-normalizing via the downstream luma ratio, so it stays on raw values.
 // The other modes are evaluated on normalized NEUTRAL luma in HDR so their 1.0/clamp/step reference points remain valid above SDR white.
 float applyBlendMode(float luma, float sharp, float norm) {
-    if (blendMode == 5) return luma + 2.0 * sharp - 1.0;
+    if (blendMode == 5) return luma + (sharp - 0.5) * norm;
 
-    float nl = (hdrMode == 1) ? luma / norm : luma;
+    float nl = (isHDR) ? luma / norm : luma;
     float r;
     if (blendMode == 0) r = mix(2.0 * nl * sharp + nl * nl * (1.0 - 2.0 * sharp), 2.0 * nl * (1.0 - sharp) + sqrt(max(nl, 0.0)) * (2.0 * sharp - 1.0), step(0.49, sharp));
     else if (blendMode == 1) r = mix(2.0 * nl * sharp, 1.0 - 2.0 * (1.0 - nl) * (1.0 - sharp), step(0.50, nl));
@@ -189,12 +193,12 @@ float applyBlendMode(float luma, float sharp, float norm) {
     else if (blendMode == 3) r = clamp(2.0 * nl * sharp, 0.0, 1.0);
     else if (blendMode == 4) r = mix(2.0 * nl * sharp, nl / max(2.0 * (1.0 - sharp), 0.0001), step(0.50, sharp));
     else r = clamp(nl + (sharp - 0.5), 0.0, 1.0);
-    return (hdrMode == 1) ? r * norm : r;
+    return (isHDR) ? r * norm : r;
 }
 
 void main() {
     vec4 centerColor = textureLod(img, textureCoord, 0.0);
-    vec3 e = centerColor.rgb;
+    vec3 e = decodeToLinear(centerColor.rgb);
     float lE = getLuma(e);
 
     if (lE <= 0.0001) {
@@ -204,23 +208,23 @@ void main() {
 
     // HDR adaptation luminance: reference level for relative threshold scaling. SDR -> 1.0 (no-op). HDR -> tracks local luminance.
     // Floor avoids division blowup in shadows; ceiling avoids absurd thresholds in extreme highlights.
-    float hdrNorm = (hdrMode == 1) ? clamp(lE, 0.18, 16.0) : 1.0;
+    float hdrNorm = (isHDR) ? clamp(lE, 0.18, 16.0) : 1.0;
 
     // phase 1: shared 3x3 grid fetch
-    vec3 a = textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb;
-    vec3 b = textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb;
-    vec3 c = textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb;
-    vec3 d = textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb;
-    vec3 f = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb;
-    vec3 g = textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb;
-    vec3 h = textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb;
-    vec3 i = textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb;
+    vec3 a = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
+    vec3 b = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb);
+    vec3 c = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb);
+    vec3 d = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb);
+    vec3 f = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb);
+    vec3 g = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb);
+    vec3 h = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb);
+    vec3 i = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb);
 
     float lA = getLuma(a); float lB = getLuma(b); float lC = getLuma(c);
     float lD = getLuma(d); float lF = getLuma(f);
     float lG = getLuma(g); float lH = getLuma(h); float lI = getLuma(i);
 
-    vec3 eRaw = e;
+    vec3 eCenter = e;
 
     float crossAvg = (lB + lH + lD + lF) * 0.25;
 
@@ -411,21 +415,21 @@ void main() {
     }
 
     // phase 2: clarity wide fetches for latency hiding
-    float h1_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb);
-    float h2_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb);
-    float v1_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb);
-    float v2_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb);
+    float h1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float h2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float v1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
+    float v2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
     float h3_raw = 0.0; float h4_raw = 0.0; float v3_raw = 0.0; float v4_raw = 0.0;
     if (qualityLevel <= 1) {
-        h3_raw = getLuma(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb);
-        h4_raw = getLuma(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb);
-        v3_raw = getLuma(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb);
-        v4_raw = getLuma(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb);
+        h3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
+        h4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
+        v3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
+        v4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
     }
 
     // phase 3: CAS math (min/max, localContrast, bandPassMask moved to phase 1.1)
     vec3 ampRGB;
-    if (hdrMode == 1) {
+    if (isHDR) {
         ampRGB = clamp(mnRGB / max(mxRGB, 0.0001), 0.0, 1.0);
     } else {
         ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, 0.0001), 0.0, 1.0);
@@ -492,8 +496,8 @@ void main() {
         vec2 posP = posB + offNP * 1.0;
 
         float halfLumaNN = lumaNN * 0.5;
-        float lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - halfLumaNN;
-        float lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - halfLumaNN;
+        float lumaEndN = getLuma(decodeToLinear(textureLod(img, posN, 0.0).rgb)) - halfLumaNN;
+        float lumaEndP = getLuma(decodeToLinear(textureLod(img, posP, 0.0).rgb)) - halfLumaNN;
 
         bool doneN = abs(lumaEndN) >= gradientScaled;
         bool doneP = abs(lumaEndP) >= gradientScaled;
@@ -506,12 +510,12 @@ void main() {
             vec2 step = offNP * stepSize;
             if (!doneN) {
                 posN -= step;
-                lumaEndN = getLuma(textureLod(img, posN, 0.0).rgb) - halfLumaNN;
+                lumaEndN = getLuma(decodeToLinear(textureLod(img, posN, 0.0).rgb)) - halfLumaNN;
                 doneN = abs(lumaEndN) >= gradientScaled;
             }
             if (!doneP) {
                 posP += step;
-                lumaEndP = getLuma(textureLod(img, posP, 0.0).rgb) - halfLumaNN;
+                lumaEndP = getLuma(decodeToLinear(textureLod(img, posP, 0.0).rgb)) - halfLumaNN;
                 doneP = abs(lumaEndP) >= gradientScaled;
             }
         }
@@ -544,7 +548,7 @@ void main() {
         vec2 perpOffset = isHorizontal ? vec2(0.0, pc.pixelSize.y) : vec2(pc.pixelSize.x, 0.0);
         vec2 finalUV = posM + finalShift * perpOffset;
 
-        aaColor = textureLod(img, finalUV, 0.0).rgb;
+        aaColor = decodeToLinear(textureLod(img, finalUV, 0.0).rgb);
     }
 
     // phase 6: clarity bilateral deltas and weights with 3x3 anchor
@@ -570,7 +574,7 @@ void main() {
         bilateralDiff(lumaAA - lI, 1.0, bilateralThreshLow, invThreshRange)
     ) * (qualityLevel >= 2 ? 0.0714 : 0.0625);
 
-    // Step1 wide diffs (always active — this IS Clarity)
+    // Step1 wide diffs
     diff += (
         bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, invThreshRange) +
         bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, invThreshRange) +
@@ -624,7 +628,7 @@ void main() {
 
     float adjustedGuard = 1.0;
     if (qualityLevel <= 3) {
-        float darkSmearGuard = (hdrMode == 1)
+        float darkSmearGuard = (isHDR)
             ? (1.0 - smoothstep(0.0, 0.18, lumaAA))
             : (1.0 - min(lumaAA, 1.0));
         float brightnessContrast = maxNeighborLuma - lumaAA;    
@@ -647,7 +651,7 @@ void main() {
 
     // Extreme protection: At 0: no penalty at brightness extremes (sharpen everything equally).
     // At 1: full protection (old behavior). Default 0.5 is a middle ground.
-    if (hdrMode == 1) {
+    if (isHDR) {
         float shadowProtect = smoothstep(0.0, 0.18, lumaAA);
         diff *= mix(1.0, shadowProtect, extremeProtection);
     } else {
@@ -661,7 +665,7 @@ void main() {
     float maxDiffClamp = 0.15 * hdrNorm;
     diff = clamp(diff, -maxDiffClamp, maxDiffClamp);
 
-    float blendMask = clamp(0.5 + diff, 0.0, 1.0);
+    float blendMask = clamp(0.5 + diff / hdrNorm, 0.0, 1.0);
     // NEUTRAL luma for blend modes: preserves hue during saturation scaling
     float neutralLumaAA = getNeutralLuma(aaColor);
     float sharpLuma = applyBlendMode(neutralLumaAA, blendMask, hdrNorm);
@@ -682,7 +686,7 @@ void main() {
         finalColor = aaColor;
 
         if (enableAA == 1 && enableDebugAA == 1) {
-            float intensity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
+            float intensity = clamp(length(aaColor - eCenter) * 8.0 / hdrNorm, 0.0, 1.0);
             finalColor = mix(finalColor, vec3(1.0, 0.2, 0.2) * hdrNorm, intensity);
         }
     } else {
@@ -706,10 +710,13 @@ void main() {
                     
         vec3 casDeltaFinal = casDeltaRGB * casMask;
 
-        finalColor = clarityColor + (casDeltaFinal * casStrength);
-
+        float casScale = (isHDR) ? 0.5 : 1.0;
+        finalColor = clarityColor + (casDeltaFinal * casStrength * casScale);
         float overshootBoost = 1.0 + (1.0 - guardStrength) * 0.5;
-        vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost), max(vec3(0.03 * hdrNorm * overshootBoost), rgbRange * 0.15));
+
+        float overshootScale = (isHDR) ? 0.5 : 1.0;
+        vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost * overshootScale), max(vec3(0.03 * hdrNorm * overshootBoost * overshootScale), rgbRange * 0.15));
+
         finalColor = clamp(finalColor, trueMnRGB - overshoot, trueMxRGB + overshoot);
 
         // phase 10: Exposure (multiplicative gain in stops) + Brightness (additive lift)
@@ -842,7 +849,7 @@ void main() {
 
         // phase 13: Filmic tone curve / highlight rolloff
         if (toneCurve != 0.0) {
-            float knee = (hdrMode == 1) ? hdrNorm : 0.9;
+            float knee = (isHDR) ? hdrNorm : 0.9;
             if (finalLuma > knee) {
                 float excess = finalLuma - knee;
                 // Rational soft-clip: smoothly compresses the excess above the knee
@@ -890,8 +897,8 @@ void main() {
             // Direction aware debanding, when one edge axis dominates, boost amplitude we know where bands run. In ambiguity back off.
             float edgeTotal  = edgeH + edgeV;
             float dirClarity = max(edgeH, edgeV) / max(edgeTotal, 0.0001);
-            // Amplitude sized near a quantization step to effectively break bands
-            finalColor += vec3(noise) * debandMask * debandStrength * 0.004 * hdrNorm * mix(0.7, 1.3, dirClarity);
+            // Amplitude sized near a quantization step to effectively break bands, deband step is calibrated for 8-bit SDR quantization. Cap at SDR white to prevent massive noise in HDR highlights.
+            finalColor += vec3(noise) * debandMask * debandStrength * 0.004 * min(hdrNorm, 1.0) * mix(0.7, 1.3, dirClarity);
         }
 
         // phase 16: perceptual film grain
@@ -899,8 +906,9 @@ void main() {
         float finalGrainIntensity = 0.0;
     
         if (enableFilmGrain == 1 && qualityLevel <= 3) {
-            // HDR: Clamp luma for grain weight calculation so it doesn't invert on values > 1.0
-            float lumaForGrain = (hdrMode == 1) ? clamp(finalLuma, 0.0, 1.0) : finalLuma;
+            // HDR: Normalize by hdrNorm so SDR white maps to 0.5 (peak of HVS curve), or scRGB SDR white at 1.0 hits the zero-crossing of 4*luma*(1-luma).
+            float normalizedLuma = (isHDR) ? finalLuma / max(hdrNorm, 0.0001) : finalLuma;
+            float lumaForGrain = clamp(normalizedLuma * 0.5, 0.0, 1.0);
             float hvsLumaWeight = 4.0 * lumaForGrain * (1.0 - lumaForGrain);
 
             float baseFloor = 0.15;
@@ -920,7 +928,7 @@ void main() {
 
             float finalMask = max(perceptualMask, filmGrainMinimum * hvsLumaWeight);
 
-            float grain = noise * finalMask * filmGrainStrength * 0.06 * hdrNorm;
+            float grain = noise * finalMask * filmGrainStrength * 0.06 * min(hdrNorm, 1.0);
             finalColor += vec3(grain);
             finalGrainIntensity = abs(grain);
         }
@@ -928,7 +936,9 @@ void main() {
         // phase 17: Contrast-adaptive dithering boosted in flat/low-contrast areas where banding is visible and reduced in textured areas where it's imperceptible. Reuses localContrast and shared noise.
         if (enableDithering == 1) {
             float flatBoost = 1.0 - smoothstep(0.01 * hdrNorm, 0.08 * hdrNorm, localContrast);
-            float ditherAmp = 0.0019607843 * hdrNorm * mix(0.6, 1.6, flatBoost);
+            float ditherScale = (isHDR) ? 0.15 : 1.0;
+            float ditherAmp = 0.0019607843 * min(hdrNorm, 1.0) * mix(0.6, 1.6, flatBoost) * ditherScale;
+
             if (enableFilmGrain == 1) {
                 float grainAmplitude = finalGrainIntensity;
                 float ditherThreshold = 0.003 * hdrNorm;
@@ -941,7 +951,7 @@ void main() {
 
         // phase18: debug overlays
         if (enableAA == 1 && enableDebugAA == 1) {
-            float intensity = clamp(length(aaColor - eRaw) * 8.0 / hdrNorm, 0.0, 1.0);
+            float intensity = clamp(length(aaColor - eCenter) * 8.0 / hdrNorm, 0.0, 1.0);
             finalColor = mix(finalColor, vec3(1.0, 0.2, 0.2) * hdrNorm, intensity);
         }
 
@@ -970,7 +980,8 @@ void main() {
         }
     }
 
-    // HDR: Preserve values > 1.0 for scRGB/HDR10, clamp for SDR
-    vec3 outColor = (hdrMode == 1) ? max(finalColor, 0.0) : clamp(finalColor, 0.0, 1.0);
+    // Encode back to target color space, then clamp appropriately
+    vec3 encodedColor = encodeFromLinear(finalColor);
+    vec3 outColor = (isHDR) ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
     fragColor = vec4(outColor, centerColor.a);
 }

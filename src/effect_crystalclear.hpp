@@ -41,7 +41,6 @@ namespace vkBasalt
         int32_t enableDebugGrain;
         float   fineGrainWeight;
         float   coarseGrainWeight;
-        int32_t hdrMode;
         float   guardStrength;
         float   bandPassWidth;
         float   extremeProtection;
@@ -91,6 +90,7 @@ namespace vkBasalt
         float   brightness;
         float   contrast;
         float   sCurveStrength;
+        int32_t colorSpaceMode;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(CrystalClearSpecData, field), .specSize = sizeof(((CrystalClearSpecData*)0)->field)

@@ -55,11 +55,7 @@ namespace vkBasalt
         const auto& presetTable = getPresetTable();
         auto presetIt = presetTable.find(preset);
 
-        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
-                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
-                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
-                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
-                      isExtendedRangeFormat(format));
+        ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
         // Read config, apply presets once, clamp, write to specData by offset, and build mapEntries
         const auto& params = getParamDescs();
@@ -142,8 +138,8 @@ namespace vkBasalt
             mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
         }
 
-        specData.hdrMode = isHDR ? 1 : 0;
-        mapEntries.push_back({29, offsetof(CrystalClearSpecData, hdrMode), sizeof(int32_t)});
+        specData.colorSpaceMode = static_cast<int32_t>(csm);
+        mapEntries.push_back({65535, offsetof(CrystalClearSpecData, colorSpaceMode), sizeof(int32_t)});
 
         this->radius = specData.radius;
         this->offset = specData.offset;
