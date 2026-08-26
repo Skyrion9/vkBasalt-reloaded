@@ -1,26 +1,31 @@
+#include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
-#include <vulkan/vulkan_core.h>
+
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"
 #include "logger.hpp"
 #include "keyboard_input_x11.hpp"
-#include "effect.hpp" // Required for Effect class and ParamType
-#ifdef VK_USE_PLATFORM_WAYLAND_KHR
-#include "keyboard_input_wayland.hpp"
-#endif
-#include "imgui.h"
-#include "imgui_impl_vulkan.h"
+#include "effect.hpp"
 #include "imgui_overlay.hpp"
 #include "imgui_theme.hpp"
 #include "overlay_manager.hpp"
-#include <algorithm>
-#include <cmath>
+
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+#include "keyboard_input_wayland.hpp"
+#endif
+
+#include <vulkan/vulkan_core.h>
+#include <unistd.h>
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
 
 namespace vkBasalt {
 
@@ -517,9 +522,10 @@ namespace vkBasalt {
 
         // Shift + Left/Right to cycle tabs pendingTab is only set for 1 frame SetSelected shouldn't persist
         int pendingTab = -1;
+
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 3 : m_activeTab - 1;
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 3) ? 0 : m_activeTab + 1;
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 4 : m_activeTab - 1;
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 4) ? 0 : m_activeTab + 1;
         }
 
         // Footer height = separator + single button row + 2 legend lines.
@@ -553,6 +559,11 @@ namespace vkBasalt {
             if (ImGui::BeginTabItem("Style", nullptr, (pendingTab == 3) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 3;
                 drawStyleTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Stats", nullptr, (pendingTab == 4) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 4;
+                drawStatsTab();
                 ImGui::EndTabItem();
             }
             ImGui::PopStyleColor();
@@ -645,6 +656,11 @@ namespace vkBasalt {
         m_isOpen = !m_isOpen;
         if (m_isOpen) {
             m_justOpened = true;
+    #ifdef VK_USE_PLATFORM_WAYLAND_KHR
+            if (getenv("WAYLAND_DISPLAY") && isWaylandInputActive()) {
+                clearWaylandInputQueues();
+            }
+    #endif
         }
         // MouseDrawCursor is enforced per-frame in processFrame(). When closing, explicitly disable so the game regains normal cursor behavior.
         if (!m_isOpen && ImGui::GetCurrentContext()) {
