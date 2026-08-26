@@ -37,6 +37,15 @@ namespace vkBasalt
     bool isBGRFormat(VkFormat format);
     bool is10BitPackedFormat(VkFormat format);
     bool isFloatFormat(VkFormat format);
+
+    enum class ColorSpaceMode : int32_t {
+        SDR_SRGB  = 0, // sRGB transfer function (ALU decode/encode)
+        HDR10_PQ  = 1, // ST 2084 (PQ) - Includes HDR10, HDR12, Dolby Vision Profile 8
+        HDR_HLG   = 2, // Hybrid Log/Gamma (Broadcast HDR)
+        HDR_SCRGB = 3  // Linear Float (1.0 = 80 nits SDR white)
+    };
+
+    ColorSpaceMode getColorSpaceMode(VkFormat format, VkColorSpaceKHR colorSpace);
 } // namespace vkBasalt
 
 #endif // FORMAT_HPP_INCLUDED

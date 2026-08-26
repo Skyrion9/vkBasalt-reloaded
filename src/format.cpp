@@ -257,4 +257,27 @@ namespace vkBasalt
         memcpy(&f, &result, sizeof(float));
         return f;
     }
+
+    ColorSpaceMode getColorSpaceMode(VkFormat format, VkColorSpaceKHR colorSpace)
+    {
+        // HDR10 / PQ (ST 2084) - Covers HDR10, HDR12, and Dolby Vision base layers
+        if (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT || 
+            colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT) {
+            return ColorSpaceMode::HDR10_PQ;
+        }
+        // HLG (Hybrid Log-Gamma)
+        if (colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT) {
+            return ColorSpaceMode::HDR_HLG;
+        }
+        // scRGB / Extended Linear Float
+        if (colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
+            format == VK_FORMAT_R16G16B16A16_SFLOAT ||
+            format == VK_FORMAT_R32G32B32A32_SFLOAT ||
+            format == VK_FORMAT_R16G16B16_SFLOAT ||
+            format == VK_FORMAT_R32G32B32_SFLOAT) {
+            return ColorSpaceMode::HDR_SCRGB;
+        }
+        // Fallback: SDR sRGB
+        return ColorSpaceMode::SDR_SRGB;
+    }
 } // namespace vkBasalt
