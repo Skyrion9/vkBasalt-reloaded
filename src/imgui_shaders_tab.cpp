@@ -50,23 +50,30 @@ namespace vkBasalt {
     }
 
     void ImGuiOverlay::resetParamToDefault(Effect* effect, const EffectParamDesc& p) {
-        if (p.type == ParamType::Combo) {
-            if (!p.comboOptions.empty()) {
-                m_pConfig->setOption(p.key, p.comboOptions[0]);
-                setUIParam(p.key, 0.0);
-            }
-        } else if (p.type == ParamType::FilePath) {
-            m_pConfig->setOption(p.key, "");
-        } else if (p.type == ParamType::Bool || p.type == ParamType::Int) {
-            effect->setParam(p.key, p.defaultVal);
-            m_pConfig->setOption(p.key, std::to_string((int)p.defaultVal));
-            setUIParam(p.key, p.defaultVal);
-        } else {
-            effect->setParam(p.key, p.defaultVal);
-            std::string vs = std::to_string(p.defaultVal);
-            std::replace(vs.begin(), vs.end(), ',', '.');
-            m_pConfig->setOption(p.key, vs);
-            setUIParam(p.key, p.defaultVal);
+        switch (p.type) {
+            case ParamType::Combo:
+                if (!p.comboOptions.empty()) {
+                    m_pConfig->setOption(p.key, p.comboOptions[0]);
+                    setUIParam(p.key, 0.0);
+                }
+                break;
+            case ParamType::FilePath:
+                m_pConfig->setOption(p.key, "");
+                break;
+            case ParamType::Bool:
+            case ParamType::Int:
+                effect->setParam(p.key, p.defaultVal);
+                m_pConfig->setOption(p.key, std::to_string((int)p.defaultVal));
+                setUIParam(p.key, p.defaultVal);
+                break;
+            case ParamType::Float:
+            default:
+                effect->setParam(p.key, p.defaultVal);
+                std::string vs = std::to_string(p.defaultVal);
+                std::replace(vs.begin(), vs.end(), ',', '.');
+                m_pConfig->setOption(p.key, vs);
+                setUIParam(p.key, p.defaultVal);
+                break;
         }
     }
 
@@ -552,18 +559,26 @@ namespace vkBasalt {
                             ImGui::SetTooltip("%s", p->tooltip.c_str());
                         } else {
                             std::string tip;
-                            if (p->type == ParamType::Bool) {
-                                tip = "Toggle\nDefault: " + std::string(p->defaultVal > 0.5 ? "On" : "Off");
-                            } else if (p->type == ParamType::Combo) {
-                                size_t defIdx = std::min((size_t)p->defaultVal, p->comboOptions.empty() ? 0 : p->comboOptions.size() - 1);
-                                const char* def = p->comboOptions.empty() ? "None" : p->comboOptions[defIdx].c_str();
-                                tip = "Options: " + std::to_string(p->comboOptions.size()) + "\nDefault: " + def;
-                            } else if (p->type == ParamType::Int) {
-                                tip = "Range: " + std::to_string((int)p->minVal) + " to " + std::to_string((int)p->maxVal) +
-                                      "\nDefault: " + std::to_string((int)p->defaultVal);
-                            } else { // Float
-                                tip = "Range: " + doubleToConfigString(p->minVal) + " to " + doubleToConfigString(p->maxVal) +
-                                      "\nDefault: " + doubleToConfigString(p->defaultVal);
+                            switch (p->type) {
+                                case ParamType::Bool:
+                                    tip = "Toggle\nDefault: " + std::string(p->defaultVal > 0.5 ? "On" : "Off");
+                                    break;
+                                case ParamType::Combo: {
+                                    size_t defIdx = std::min((size_t)p->defaultVal, p->comboOptions.empty() ? 0 : p->comboOptions.size() - 1);
+                                    const char* def = p->comboOptions.empty() ? "None" : p->comboOptions[defIdx].c_str();
+                                    tip = "Options: " + std::to_string(p->comboOptions.size()) + "\nDefault: " + def;
+                                    break;
+                                }
+                                case ParamType::Int:
+                                    tip = "Range: " + std::to_string((int)p->minVal) + " to " + std::to_string((int)p->maxVal) +
+                                        "\nDefault: " + std::to_string((int)p->defaultVal);
+                                    break;
+                                case ParamType::Float:
+                                case ParamType::FilePath:
+                                default:
+                                    tip = "Range: " + doubleToConfigString(p->minVal) + " to " + doubleToConfigString(p->maxVal) +
+                                        "\nDefault: " + doubleToConfigString(p->defaultVal);
+                                    break;
                             }
                             ImGui::SetTooltip("%s", tip.c_str());
                         }
