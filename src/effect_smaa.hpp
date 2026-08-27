@@ -24,7 +24,8 @@ namespace vkBasalt
                    VkExtent2D           imageExtent,
                    std::vector<VkImage> inputImages,
                    std::vector<VkImage> outputImages,
-                   Config*              pConfig);
+                   Config*              pConfig,
+                   VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         ~SmaaEffect();
 

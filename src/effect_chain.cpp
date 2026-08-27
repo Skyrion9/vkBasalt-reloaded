@@ -58,7 +58,7 @@ namespace vkBasalt {
             return std::make_shared<DebandEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
         {"smaa", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg);
+            return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
         {"lut", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<LutEffect>(dev, uf, ext, in, out, cfg, cs);

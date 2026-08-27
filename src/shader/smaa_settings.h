@@ -1,4 +1,7 @@
+#ifndef SMAA_SETTINGS_H
+#define SMAA_SETTINGS_H
 
+#extension GL_GOOGLE_include_directive : enable
 
 layout(constant_id = 0) const float screenWidth = 1920;
 layout(constant_id = 1) const float screenHeight = 1080;
@@ -16,6 +19,5 @@ layout(constant_id = 8) const int   disableDiagDetection = 0;
 #define SMAA_MAX_SEARCH_STEPS maxSearchSteps
 #define SMAA_MAX_SEARCH_STEPS_DIAG maxSearchStepsDiag
 #define SMAA_CORNER_ROUNDING cornerRounding
-// Note: disableDiagDetection is a runtime variable (0 = enabled, 1 = disabled)
-// The shader code uses: if (disableDiagDetection == 0) to check if diagonal detection is enabled
 
+#endif

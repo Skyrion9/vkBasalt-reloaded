@@ -25,6 +25,7 @@
 #include "image.hpp"
 #include "util.hpp"
 #include "shader_sources.hpp"
+#include "format.hpp"
 
 namespace vkBasalt
 {
@@ -39,6 +40,7 @@ namespace vkBasalt
         int32_t maxSearchStepsDiag;
         int32_t cornerRounding;
         int32_t disableDiagDetection;
+        int32_t colorSpaceMode;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(SmaaOptions, field), .specSize = sizeof(((SmaaOptions*)0)->field)
@@ -48,9 +50,11 @@ namespace vkBasalt
                            VkExtent2D           imageExtent,
                            std::vector<VkImage> inputImages,
                            std::vector<VkImage> outputImages,
-                           Config*              pConfig)
+                           Config*              pConfig,
+                           VkColorSpaceKHR      colorSpace)
     {
         Logger::debug("in creating SmaaEffect");
+        ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
         this->pLogicalDevice = pLogicalDevice;
         this->format         = format;
@@ -142,7 +146,7 @@ namespace vkBasalt
         const auto& params = getParamDescs();
         SmaaOptions smaaOptions = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
-        mapEntries.reserve(params.size());
+        mapEntries.reserve(params.size() + 5);
 
         for (const auto& p : params) {
             if (p.specId < 0) continue;
@@ -185,11 +189,13 @@ namespace vkBasalt
         smaaOptions.screenHeight        = (float)imageExtent.height;
         smaaOptions.reverseScreenWidth  = 1.0f / imageExtent.width;
         smaaOptions.reverseScreenHeight = 1.0f / imageExtent.height;
+        smaaOptions.colorSpaceMode      = static_cast<int32_t>(csm);
 
         mapEntries.push_back({0, offsetof(SmaaOptions, screenWidth),         sizeof(float)});
         mapEntries.push_back({1, offsetof(SmaaOptions, screenHeight),        sizeof(float)});
         mapEntries.push_back({2, offsetof(SmaaOptions, reverseScreenWidth),  sizeof(float)});
         mapEntries.push_back({3, offsetof(SmaaOptions, reverseScreenHeight), sizeof(float)});
+        mapEntries.push_back({65535, offsetof(SmaaOptions, colorSpaceMode),  sizeof(int32_t)});
 
 
         createShaderModule(pLogicalDevice, smaa_edge_vert, &edgeVertexModule);
