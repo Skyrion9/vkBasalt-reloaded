@@ -49,7 +49,7 @@ namespace vkBasalt {
 
     static const std::unordered_map<std::string, EffectCreator> builtinEffects = {
         {"fxaa", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<FxaaEffect>(dev, sf, ext, in, out, cfg);
+            return std::make_shared<FxaaEffect>(dev, sf, ext, in, out, cfg, cs);
         }},
         {"cas", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<CasEffect>(dev, uf, ext, in, out, cfg, cs);

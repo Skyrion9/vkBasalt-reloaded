@@ -232,6 +232,16 @@ A. Or use FXAA_GREEN_AS_LUMA.
     #define FXAA_HLSL_5 0
 #endif
 /*==========================================================================*/
+#ifndef FXAA_HDR_DECODE
+    //
+    // 1 = Wrap all internal texture fetches in decodeToLinear() from color_space.h.
+    //     Requires color_space.h to be included BEFORE this header.
+    //     For SDR pipelines the decode is identity and compiled out by the driver.
+    // 0 = Raw fetches (original behavior).
+    //
+    #define FXAA_HDR_DECODE 0
+#endif
+/*--------------------------------------------------------------------------*/
 #ifndef FXAA_GREEN_AS_LUMA
     //
     // For those using non-linear color,
@@ -662,8 +672,17 @@ NOTE the other tuning knobs are now in the shader function inputs!
 /*--------------------------------------------------------------------------*/
 #if (FXAA_GLSL_130 == 1)
     // Requires "#version 130" or better
-    #define FxaaTexTop(t, p) textureLod(t, p, 0.0)
-    #define FxaaTexOff(t, p, o, r) textureLodOffset(t, p, 0.0, o)
+    #if (FXAA_HDR_DECODE == 1)
+        vec4 FxaaDecodeFetch(vec4 raw) {
+            return vec4(decodeToLinear(raw.rgb), raw.a);
+        }
+        #define FxaaTexTop(t, p) FxaaDecodeFetch(textureLod(t, p, 0.0))
+        #define FxaaTexOff(t, p, o, r) FxaaDecodeFetch(textureLodOffset(t, p, 0.0, o))
+    #else
+        #define FxaaTexTop(t, p) textureLod(t, p, 0.0)
+        #define FxaaTexOff(t, p, o, r) textureLodOffset(t, p, 0.0, o)
+    #endif
+
     #if (FXAA_GATHER4_ALPHA == 1)
         // use #extension GL_ARB_gpu_shader5 : enable
         #define FxaaTexAlpha4(t, p) textureGather(t, p, 3)

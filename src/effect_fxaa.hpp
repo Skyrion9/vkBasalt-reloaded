@@ -23,7 +23,8 @@ namespace vkBasalt
                    VkExtent2D           imageExtent,
                    std::vector<VkImage> inputImages,
                    std::vector<VkImage> outputImages,
-                   Config*              pConfig);
+                   Config*              pConfig,
+                   VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
         ~FxaaEffect();
 
         std::string getName() const override { return "fxaa"; }

@@ -12,6 +12,7 @@
 #include "config.hpp"
 #include "effect.hpp"
 #include "logical_device.hpp"
+#include "format.hpp"
 #include "shader_sources.hpp"
 
 namespace vkBasalt
@@ -23,6 +24,7 @@ namespace vkBasalt
         float edgeThresholdMin;
         float screenWidth;
         float screenHeight;
+        int32_t colorSpaceMode;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(FxaaSpecData, field), .specSize = sizeof(((FxaaSpecData*)0)->field)
@@ -32,7 +34,8 @@ namespace vkBasalt
                            VkExtent2D           imageExtent,
                            std::vector<VkImage> inputImages,
                            std::vector<VkImage> outputImages,
-                           Config*              pConfig)
+                           Config*              pConfig,
+                           VkColorSpaceKHR      colorSpace)
     {
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = fxaa_frag;
@@ -40,10 +43,12 @@ namespace vkBasalt
         // Prevent the pipeline layout from allocating a push constant range, tells SimpleEffect::applyEffect to skip the CmdPushConstants API call.
         this->pushConstantSize = 0;
 
+        ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
+
         const auto& params = getParamDescs();
         FxaaSpecData specData = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
-        mapEntries.reserve(params.size() + 2);
+        mapEntries.reserve(params.size() + 3);
 
         for (const auto& p : params) {
             if (p.specId < 0) continue;
@@ -71,10 +76,11 @@ namespace vkBasalt
 
         specData.screenWidth  = (float)imageExtent.width;
         specData.screenHeight = (float)imageExtent.height;
+        specData.colorSpaceMode = static_cast<int32_t>(csm);
 
         mapEntries.push_back({3, offsetof(FxaaSpecData, screenWidth),  sizeof(float)});
         mapEntries.push_back({4, offsetof(FxaaSpecData, screenHeight), sizeof(float)});
-
+        mapEntries.push_back({65535, offsetof(FxaaSpecData, colorSpaceMode), sizeof(int32_t)});
 
         VkSpecializationInfo fragmentSpecializationInfo;
         fragmentSpecializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
