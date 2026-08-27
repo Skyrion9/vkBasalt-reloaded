@@ -21,14 +21,24 @@ trap 'rm -f "$TEMP_SPV" "$OPT_SPV"' EXIT
 # 2. Optimize SPIR-V for maximum GPU runtime performance.
 #    spirv-opt uses --flag=value syntax for valued flags.
 "$SPIRV_OPT" \
-    -O \
-    --strip-debug \
-    --strip-nonsemantic \
+    --target-env="$TARGET_ENV" \
+    --preserve-spec-constants \
     --preserve-bindings \
     --preserve-interface \
-    --preserve-spec-constants \
-    --skip-validation \
-    --target-env="$TARGET_ENV" \
+    -O \
+    --strength-reduction \
+    --cfg-cleanup \
+    --eliminate-dead-members \
+    --eliminate-dead-const \
+    --eliminate-dead-variables \
+    --eliminate-dead-input-components \
+    --unify-const \
+    --remove-duplicates \
+    --trim-capabilities \
+    --fold-spec-const-op-composite \
+    --strip-debug \
+    --strip-nonsemantic \
+    --compact-ids \
     "$TEMP_SPV" -o "$OPT_SPV"
 
 # 3. Convert optimized SPIR-V -> comma-separated hex uint32 values (glslang -x format).
