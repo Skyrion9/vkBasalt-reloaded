@@ -2,6 +2,7 @@
 
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
+#include "format.hpp"
 #include <atomic>
 #include <string>
 #include <vector>
@@ -17,8 +18,8 @@ namespace vkBasalt {
     void captureScreenshot(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
                            uint32_t imageIndex, bool saveBeforeAfter,
                            const std::string& outputPath,
-                           const std::string& format = "png",
-                           int quality = 95);
+                           const std::string& format, int quality,
+                           ColorSpaceMode csm);
 
     // Returns true if a screenshot GPU copy is in flight.
     bool hasPendingScreenshot();

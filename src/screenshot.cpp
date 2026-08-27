@@ -6,6 +6,7 @@
 #include <stb_image_write.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -14,6 +15,25 @@
 
 namespace vkBasalt {
     std::atomic<bool> g_triggerScreenshot{false};
+
+    static float pqToLinear(float c) {
+        float N = powf(std::max(c, 0.0f), 1.0f / 78.84375f);
+        float num = std::max(N - 0.8359375f, 0.0f);
+        float den = 18.8515625f - 18.6875f * N;
+        float linear = powf(num / std::max(den, 1e-5f), 1.0f / 0.1593017578125f);
+        return linear * 100.0f; // 1.0 = SDR white (100 nits)
+    }
+
+    static float hlgToLinear(float c) {
+        float linear = (c <= 0.5f) ? (c * c / 3.0f) : ((expf((c - 0.55991073f) / 0.17883277f) + 0.28466892f) / 12.0f);
+        return linear * 10.0f; //  ~1.0 = SDR white
+    }
+
+    static float decodePixel(float c, ColorSpaceMode csm) {
+        if (csm == ColorSpaceMode::HDR10_PQ) return pqToLinear(c);
+        if (csm == ColorSpaceMode::HDR_HLG) return hlgToLinear(c);
+        return c; // SDR and scRGB are already in the correct working space
+    }
 
     // one at a time is sufficient
     struct PendingScreenshot {
@@ -33,6 +53,7 @@ namespace vkBasalt {
         std::string format;
         int quality = 95;
         VkFormat vkFormat = VK_FORMAT_UNDEFINED;
+        ColorSpaceMode csm = ColorSpaceMode::SDR_SRGB;
     };
 
     static PendingScreenshot g_pending;
@@ -62,7 +83,7 @@ namespace vkBasalt {
 
     static bool writeImage(const std::string& path, int width, int height,
                         const std::vector<uint8_t>& pixels, const std::string& format, int quality,
-                        VkFormat vkFormat) {
+                        VkFormat vkFormat, ColorSpaceMode csm) {
 
         size_t pixelCount = (size_t)width * height;
         int dstChannels = 3;
@@ -77,85 +98,90 @@ namespace vkBasalt {
             rgbPixels.resize(pixelCount * dstChannels);
         }
 
-        if (vkFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
-            const uint32_t* packed = reinterpret_cast<const uint32_t*>(pixels.data());
-            for (size_t i = 0; i < pixelCount; i++) {
-                uint32_t p = packed[i];
-                float r = ((p >>  0) & 0x3FF) / 1023.0f;
-                float g = ((p >> 10) & 0x3FF) / 1023.0f;
-                float b = ((p >> 20) & 0x3FF) / 1023.0f;
-                if (wantHDR) {
-                    hdrPixels[i * 3 + 0] = r;
-                    hdrPixels[i * 3 + 1] = g;
-                    hdrPixels[i * 3 + 2] = b;
-                } else {
-                    rgbPixels[i * 3 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-                    rgbPixels[i * 3 + 1] = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-                    rgbPixels[i * 3 + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+        switch (vkFormat) {
+            case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+            case VK_FORMAT_A2R10G10B10_UNORM_PACK32: {
+                const uint32_t* packed = reinterpret_cast<const uint32_t*>(pixels.data());
+                bool isA2R10 = (vkFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32);
+                for (size_t i = 0; i < pixelCount; i++) {
+                    uint32_t p = packed[i];
+                    float r = isA2R10 ? ((p >> 20) & 0x3FF) / 1023.0f : ((p >>  0) & 0x3FF) / 1023.0f;
+                    float g = ((p >> 10) & 0x3FF) / 1023.0f;
+                    float b = isA2R10 ? ((p >>  0) & 0x3FF) / 1023.0f : ((p >> 20) & 0x3FF) / 1023.0f;
+                    r = decodePixel(r, csm);
+                    g = decodePixel(g, csm);
+                    b = decodePixel(b, csm);
+                    if (wantHDR) {
+                        hdrPixels[i * 3 + 0] = r;
+                        hdrPixels[i * 3 + 1] = g;
+                        hdrPixels[i * 3 + 2] = b;
+                    } else {
+                        rgbPixels[i * 3 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+                        rgbPixels[i * 3 + 1] = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+                        rgbPixels[i * 3 + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+                    }
                 }
+                break;
             }
-        } else if (vkFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
-            const uint32_t* packed = reinterpret_cast<const uint32_t*>(pixels.data());
-            for (size_t i = 0; i < pixelCount; i++) {
-                uint32_t p = packed[i];
-                float r = ((p >> 20) & 0x3FF) / 1023.0f;
-                float g = ((p >> 10) & 0x3FF) / 1023.0f;
-                float b = ((p >>  0) & 0x3FF) / 1023.0f;
-                if (wantHDR) {
-                    hdrPixels[i * 3 + 0] = r;
-                    hdrPixels[i * 3 + 1] = g;
-                    hdrPixels[i * 3 + 2] = b;
-                } else {
-                    rgbPixels[i * 3 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-                    rgbPixels[i * 3 + 1] = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-                    rgbPixels[i * 3 + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+            case VK_FORMAT_R16G16B16_SFLOAT: {
+                uint32_t channels = getBytesPerPixel(vkFormat) / 2;
+                const uint16_t* fpixels = reinterpret_cast<const uint16_t*>(pixels.data());
+                for (size_t i = 0; i < pixelCount; i++) {
+                    float r = halfToFloat(fpixels[i * channels + 0]);
+                    float g = halfToFloat(fpixels[i * channels + 1]);
+                    float b = halfToFloat(fpixels[i * channels + 2]);
+                    r = decodePixel(r, csm);
+                    g = decodePixel(g, csm);
+                    b = decodePixel(b, csm);
+                    if (wantHDR) {
+                        hdrPixels[i * 3 + 0] = std::max(0.0f, r);
+                        hdrPixels[i * 3 + 1] = std::max(0.0f, g);
+                        hdrPixels[i * 3 + 2] = std::max(0.0f, b);
+                    } else {
+                        // Reinhard tonemap to compress HDR range into displayable [0,1]
+                        r = r / (1.0f + r);
+                        g = g / (1.0f + g);
+                        b = b / (1.0f + b);
+                        rgbPixels[i * 3 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+                        rgbPixels[i * 3 + 1] = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+                        rgbPixels[i * 3 + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+                    }
                 }
+                break;
             }
-        } else if (vkFormat == VK_FORMAT_R16G16B16A16_SFLOAT || vkFormat == VK_FORMAT_R16G16B16_SFLOAT) {
-            uint32_t channels = getBytesPerPixel(vkFormat) / 2;
-            const uint16_t* fpixels = reinterpret_cast<const uint16_t*>(pixels.data());
-            for (size_t i = 0; i < pixelCount; i++) {
-                float r = halfToFloat(fpixels[i * channels + 0]);
-                float g = halfToFloat(fpixels[i * channels + 1]);
-                float b = halfToFloat(fpixels[i * channels + 2]);
-                if (wantHDR) {
-                    // True HDR: preserve linear values > 1.0
-                    hdrPixels[i * 3 + 0] = std::max(0.0f, r);
-                    hdrPixels[i * 3 + 1] = std::max(0.0f, g);
-                    hdrPixels[i * 3 + 2] = std::max(0.0f, b);
-                } else {
-                    // SDR output: Reinhard tonemap to compress HDR range into displayable [0,1]
-                    r = r / (1.0f + r);
-                    g = g / (1.0f + g);
-                    b = b / (1.0f + b);
-                    rgbPixels[i * 3 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-                    rgbPixels[i * 3 + 1] = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-                    rgbPixels[i * 3 + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+            default: {
+                bool isBGR = isBGRFormat(vkFormat);
+                uint32_t stride = getBytesPerPixel(vkFormat);
+                for (size_t i = 0; i < pixelCount; i++) {
+                    uint8_t r, g, b;
+                    if (isBGR) {
+                        r = pixels[i * stride + 2];
+                        g = pixels[i * stride + 1];
+                        b = pixels[i * stride + 0];
+                    } else {
+                        r = pixels[i * stride + 0];
+                        g = pixels[i * stride + 1];
+                        b = pixels[i * stride + 2];
+                    }
+                    if (wantHDR) {
+                        // SDR is sRGB gamma. Convert to linear for .hdr output.
+                        float rl = (r / 255.0f);
+                        float gl = (g / 255.0f);
+                        float bl = (b / 255.0f);
+                        rl = (rl <= 0.04045f) ? rl / 12.92f : powf((rl + 0.055f) / 1.055f, 2.4f);
+                        gl = (gl <= 0.04045f) ? gl / 12.92f : powf((gl + 0.055f) / 1.055f, 2.4f);
+                        bl = (bl <= 0.04045f) ? bl / 12.92f : powf((bl + 0.055f) / 1.055f, 2.4f);
+                        hdrPixels[i * 3 + 0] = rl;
+                        hdrPixels[i * 3 + 1] = gl;
+                        hdrPixels[i * 3 + 2] = bl;
+                    } else {
+                        rgbPixels[i * 3 + 0] = r;
+                        rgbPixels[i * 3 + 1] = g;
+                        rgbPixels[i * 3 + 2] = b;
+                    }
                 }
-            }
-        } else {
-            bool isBGR = isBGRFormat(vkFormat);
-            uint32_t stride = getBytesPerPixel(vkFormat);
-            for (size_t i = 0; i < pixelCount; i++) {
-                uint8_t r, g, b;
-                if (isBGR) {
-                    r = pixels[i * stride + 2];
-                    g = pixels[i * stride + 1];
-                    b = pixels[i * stride + 0];
-                } else {
-                    r = pixels[i * stride + 0];
-                    g = pixels[i * stride + 1];
-                    b = pixels[i * stride + 2];
-                }
-                if (wantHDR) {
-                    hdrPixels[i * 3 + 0] = r / 255.0f;
-                    hdrPixels[i * 3 + 1] = g / 255.0f;
-                    hdrPixels[i * 3 + 2] = b / 255.0f;
-                } else {
-                    rgbPixels[i * 3 + 0] = r;
-                    rgbPixels[i * 3 + 1] = g;
-                    rgbPixels[i * 3 + 2] = b;
-                }
+                break;
             }
         }
 
@@ -185,7 +211,8 @@ namespace vkBasalt {
     void captureScreenshot(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
                         uint32_t imageIndex, bool saveBeforeAfter,
                         const std::string& outputPath,
-                        const std::string& format, int quality) {
+                        const std::string& format, int quality,
+                        ColorSpaceMode csm) {
         if (!pDevice || !pSwapchain) return;
         if (g_pending.active) {
             Logger::warn("Screenshot already in progress, skipping.");
@@ -357,6 +384,7 @@ namespace vkBasalt {
         g_pending.format = format;
         g_pending.quality = quality;
         g_pending.vkFormat = vkFormat;
+        g_pending.csm = csm;
         g_pending.active = true;
 
         Logger::debug("Screenshot capture submitted (async).");
@@ -386,7 +414,7 @@ namespace vkBasalt {
                 pDevice->vkd.UnmapMemory(pDevice->device, g_pending.bufferMemory);
 
                 std::string path = generateScreenshotPath(g_pending.outputDir, "_after", g_pending.format);
-                if (writeImage(path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality, g_pending.vkFormat)) {
+                if (writeImage(path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality, g_pending.vkFormat, g_pending.csm)) {
                     Logger::info("Screenshot saved: " + path);
                     wroteSomething = true;
                 } else {
@@ -404,7 +432,7 @@ namespace vkBasalt {
                 pDevice->vkd.UnmapMemory(pDevice->device, g_pending.bufferMemoryBefore);
 
                 std::string path = generateScreenshotPath(g_pending.outputDir, "_before", g_pending.format);
-                if (writeImage(path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality, g_pending.vkFormat)) {
+                if (writeImage(path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality, g_pending.vkFormat, g_pending.csm)) {
                     Logger::info("Before screenshot saved: " + path);
                     wroteSomething = true;
                 } else {
