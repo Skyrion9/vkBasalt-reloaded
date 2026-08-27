@@ -2,6 +2,7 @@
 #include "format.hpp"
 #include "logger.hpp"
 #include "game_detect.hpp"
+#include "color_math.hpp"
 
 #include <stb_image_write.h>
 
@@ -15,25 +16,6 @@
 
 namespace vkBasalt {
     std::atomic<bool> g_triggerScreenshot{false};
-
-    static float pqToLinear(float c) {
-        float N = powf(std::max(c, 0.0f), 1.0f / 78.84375f);
-        float num = std::max(N - 0.8359375f, 0.0f);
-        float den = 18.8515625f - 18.6875f * N;
-        float linear = powf(num / std::max(den, 1e-5f), 1.0f / 0.1593017578125f);
-        return linear * 100.0f; // 1.0 = SDR white (100 nits)
-    }
-
-    static float hlgToLinear(float c) {
-        float linear = (c <= 0.5f) ? (c * c / 3.0f) : ((expf((c - 0.55991073f) / 0.17883277f) + 0.28466892f) / 12.0f);
-        return linear * 10.0f; //  ~1.0 = SDR white
-    }
-
-    static float decodePixel(float c, ColorSpaceMode csm) {
-        if (csm == ColorSpaceMode::HDR10_PQ) return pqToLinear(c);
-        if (csm == ColorSpaceMode::HDR_HLG) return hlgToLinear(c);
-        return c; // SDR and scRGB are already in the correct working space
-    }
 
     // one at a time is sufficient
     struct PendingScreenshot {
@@ -108,9 +90,9 @@ namespace vkBasalt {
                     float r = isA2R10 ? ((p >> 20) & 0x3FF) / 1023.0f : ((p >>  0) & 0x3FF) / 1023.0f;
                     float g = ((p >> 10) & 0x3FF) / 1023.0f;
                     float b = isA2R10 ? ((p >>  0) & 0x3FF) / 1023.0f : ((p >> 20) & 0x3FF) / 1023.0f;
-                    r = decodePixel(r, csm);
-                    g = decodePixel(g, csm);
-                    b = decodePixel(b, csm);
+                    r = decodeColor(r, csm);
+                    g = decodeColor(g, csm);
+                    b = decodeColor(b, csm);
                     if (wantHDR) {
                         hdrPixels[i * 3 + 0] = r;
                         hdrPixels[i * 3 + 1] = g;
@@ -131,18 +113,18 @@ namespace vkBasalt {
                     float r = halfToFloat(fpixels[i * channels + 0]);
                     float g = halfToFloat(fpixels[i * channels + 1]);
                     float b = halfToFloat(fpixels[i * channels + 2]);
-                    r = decodePixel(r, csm);
-                    g = decodePixel(g, csm);
-                    b = decodePixel(b, csm);
+                    r = decodeColor(r, csm);
+                    g = decodeColor(g, csm);
+                    b = decodeColor(b, csm);
                     if (wantHDR) {
                         hdrPixels[i * 3 + 0] = std::max(0.0f, r);
                         hdrPixels[i * 3 + 1] = std::max(0.0f, g);
                         hdrPixels[i * 3 + 2] = std::max(0.0f, b);
                     } else {
                         // Reinhard tonemap to compress HDR range into displayable [0,1]
-                        r = r / (1.0f + r);
-                        g = g / (1.0f + g);
-                        b = b / (1.0f + b);
+                        r = tonemapReinhard(r);
+                        g = tonemapReinhard(g);
+                        b = tonemapReinhard(b);
                         rgbPixels[i * 3 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
                         rgbPixels[i * 3 + 1] = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
                         rgbPixels[i * 3 + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
@@ -166,12 +148,9 @@ namespace vkBasalt {
                     }
                     if (wantHDR) {
                         // SDR is sRGB gamma. Convert to linear for .hdr output.
-                        float rl = (r / 255.0f);
-                        float gl = (g / 255.0f);
-                        float bl = (b / 255.0f);
-                        rl = (rl <= 0.04045f) ? rl / 12.92f : powf((rl + 0.055f) / 1.055f, 2.4f);
-                        gl = (gl <= 0.04045f) ? gl / 12.92f : powf((gl + 0.055f) / 1.055f, 2.4f);
-                        bl = (bl <= 0.04045f) ? bl / 12.92f : powf((bl + 0.055f) / 1.055f, 2.4f);
+                        float rl = decodeColor(r / 255.0f, ColorSpaceMode::SDR_SRGB);
+                        float gl = decodeColor(g / 255.0f, ColorSpaceMode::SDR_SRGB);
+                        float bl = decodeColor(b / 255.0f, ColorSpaceMode::SDR_SRGB);
                         hdrPixels[i * 3 + 0] = rl;
                         hdrPixels[i * 3 + 1] = gl;
                         hdrPixels[i * 3 + 2] = bl;

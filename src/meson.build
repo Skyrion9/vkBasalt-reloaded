@@ -51,6 +51,7 @@ vkBasalt_src = [
     'sampler.cpp',
     'shader.cpp',
     'screenshot.cpp',
+    'color_math.cpp',
     'stb_image.c',
     'stb_image_resize.c',
     'stb_image_write.c',
