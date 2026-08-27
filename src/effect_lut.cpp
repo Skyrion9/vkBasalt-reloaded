@@ -29,7 +29,7 @@ namespace vkBasalt
     struct LutSpecData {
         int32_t lutSize;
         int32_t flipGB;
-        int32_t hdrMode;
+        int32_t colorSpaceMode;
     };
 
     LutEffect::LutEffect(LogicalDevice*       pLogicalDevice,
@@ -44,11 +44,7 @@ namespace vkBasalt
         fragmentCode = lut_frag;
         this->pushConstantSize = 0;
 
-        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
-                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
-                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
-                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
-                      isExtendedRangeFormat(format));
+        ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
         std::string lutFile = pConfig->getOption<std::string>("lutFile", "");
         m_paramValues["lutFile"] = 0.0; // FilePath type, value unused in m_paramValues
@@ -117,12 +113,12 @@ namespace vkBasalt
         LutSpecData specData = {};
         specData.lutSize = height;
         specData.flipGB  = 0;
-        specData.hdrMode = isHDR ? 1 : 0;
+        specData.colorSpaceMode = static_cast<int32_t>(csm);
 
         VkSpecializationMapEntry mapEntries[] = {
             {0, offsetof(LutSpecData, lutSize), sizeof(int32_t)},
             {1, offsetof(LutSpecData, flipGB),  sizeof(int32_t)},
-            {2, offsetof(LutSpecData, hdrMode), sizeof(int32_t)}
+            {65535, offsetof(LutSpecData, colorSpaceMode), sizeof(int32_t)}
         };
 
         VkSpecializationInfo fragmentSpecializationInfo;
