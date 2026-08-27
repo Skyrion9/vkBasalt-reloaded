@@ -28,7 +28,7 @@ namespace vkBasalt
         float   debandMiddiff;
         float   range;
         int32_t iterations;
-        int32_t hdrMode;
+        int32_t colorSpaceMode;
     };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(DebandSpecData, field), .specSize = sizeof(((DebandSpecData*)0)->field)
@@ -44,16 +44,12 @@ namespace vkBasalt
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = deband_frag;
 
-        bool isHDR = (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
-                      colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
-                      colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT ||
-                      colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT ||
-                      isExtendedRangeFormat(format));
+        ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
         const auto& params = getParamDescs();
         DebandSpecData specData = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
-        mapEntries.reserve(params.size());
+        mapEntries.reserve(params.size() + 5);
 
         for (const auto& p : params) {
             if (p.specId < 0) continue;
@@ -90,13 +86,13 @@ namespace vkBasalt
         specData.screenHeight        = (float)imageExtent.height;
         specData.reverseScreenWidth  = 1.0f / imageExtent.width;
         specData.reverseScreenHeight = 1.0f / imageExtent.height;
-        specData.hdrMode             = isHDR ? 1 : 0;
+        specData.colorSpaceMode      = static_cast<int32_t>(csm);
 
         mapEntries.push_back({0, offsetof(DebandSpecData, screenWidth),         sizeof(float)});
         mapEntries.push_back({1, offsetof(DebandSpecData, screenHeight),        sizeof(float)});
         mapEntries.push_back({2, offsetof(DebandSpecData, reverseScreenWidth),  sizeof(float)});
         mapEntries.push_back({3, offsetof(DebandSpecData, reverseScreenHeight), sizeof(float)});
-        mapEntries.push_back({9, offsetof(DebandSpecData, hdrMode),             sizeof(int32_t)});
+        mapEntries.push_back({65535, offsetof(DebandSpecData, colorSpaceMode),  sizeof(int32_t)});
 
         VkSpecializationInfo specializationInfo;
         specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
