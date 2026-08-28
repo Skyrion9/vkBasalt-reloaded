@@ -149,10 +149,10 @@ namespace vkBasalt {
                         b = pixels[i * stride + 2];
                     }
                     if (wantHDR) {
-                        // SDR is sRGB gamma. Convert to linear for .hdr output.
-                        float rl = decodeColor(r / 255.0f, ColorSpaceMode::SDR_SRGB);
-                        float gl = decodeColor(g / 255.0f, ColorSpaceMode::SDR_SRGB);
-                        float bl = decodeColor(b / 255.0f, ColorSpaceMode::SDR_SRGB);
+                        // SDR is sRGB gamma. Convert to true physical linear light for .hdr/.exr output.
+                        float rl = srgbToLinear(r / 255.0f);
+                        float gl = srgbToLinear(g / 255.0f);
+                        float bl = srgbToLinear(b / 255.0f);
                         hdrPixels[i * 3 + 0] = rl;
                         hdrPixels[i * 3 + 1] = gl;
                         hdrPixels[i * 3 + 2] = bl;

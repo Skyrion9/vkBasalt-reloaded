@@ -58,7 +58,7 @@ namespace vkBasalt {
     // Unified Dispatchers
     float decodeColor(float c, ColorSpaceMode csm) {
         switch (csm) {
-            case ColorSpaceMode::SDR_SRGB:  return srgbToLinear(c);
+            case ColorSpaceMode::SDR_SRGB:  return c; // SDR works in gamma space
             case ColorSpaceMode::HDR10_PQ:  return pqToLinear(c);
             case ColorSpaceMode::HDR_HLG:   return hlgToLinear(c);
             case ColorSpaceMode::HDR_SCRGB: return c; // Already linear
@@ -68,7 +68,7 @@ namespace vkBasalt {
 
     float encodeColor(float c, ColorSpaceMode csm) {
         switch (csm) {
-            case ColorSpaceMode::SDR_SRGB:  return linearToSrgb(c);
+            case ColorSpaceMode::SDR_SRGB:  return c; // SDR works in gamma space
             case ColorSpaceMode::HDR10_PQ:  return linearToPq(c);
             case ColorSpaceMode::HDR_HLG:   return linearToHlg(c);
             case ColorSpaceMode::HDR_SCRGB: return c; // Already linear
