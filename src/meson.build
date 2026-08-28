@@ -23,6 +23,8 @@ vkBasalt_src = [
     'effect_smaa.cpp',
     'effect_transfer.cpp',
     'effect_chain.cpp',
+    'simple_compute_pass.cpp',
+    'compute_test_pass.cpp',
     'fake_swapchain.cpp',
     'format.cpp',
     'framebuffer.cpp',

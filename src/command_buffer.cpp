@@ -1,15 +1,18 @@
 #include "command_buffer.hpp"
 
-#include "effect.hpp"
-#include "format.hpp"
-#include "logger.hpp"
-#include "logical_device.hpp"
-#include "util.hpp"
-#include "vulkan_include.hpp"
 #include <cstdint>
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+
+#include "effect.hpp"
+#include "format.hpp"
+#include "logger.hpp"
+#include "logical_device.hpp"
+#include "logical_swapchain.hpp"
+#include "util.hpp"
+#include "vulkan_include.hpp"
+#include "compute_pass.hpp"
 
 namespace vkBasalt
 {
@@ -34,7 +37,9 @@ namespace vkBasalt
 
         return commandBuffers;
     }
-        void writeCommandBuffers(LogicalDevice*                                           pLogicalDevice,
+
+    void writeCommandBuffers(LogicalDevice*                                               pLogicalDevice,
+                             LogicalSwapchain*                                            pLogicalSwapchain,
                              const std::vector<std::shared_ptr<vkBasalt::Effect>>&        effects,
                              VkImage                                                      depthImage,
                              VkImageView                                                  depthImageView,
@@ -91,6 +96,54 @@ namespace vkBasalt
             {
                 Logger::debug("before applying effect " + convertToString(effects[j]));
                 effects[j]->applyEffect(i, commandBuffers[i]);
+            }
+
+            // Record compute passes after all effects. Compute passes read from the final output slice (real swapchain or last fake slice) and write to their own resources.
+            if (pLogicalSwapchain && !pLogicalSwapchain->computePasses.empty() && !effects.empty())
+            {
+                // Barrier: transition source images to SHADER_READ_ONLY for compute sampling.  When mutable format is used, effects leave real swapchain images in
+                // PRESENT_SRC_KHR. Otherwise they leave fake slices in SHADER_READ_ONLY.
+                if (pLogicalDevice->supportsMutableFormat)
+                {
+                    VkImageMemoryBarrier barrier = {};
+                    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                    barrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+                    barrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                    barrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.image               = pLogicalSwapchain->images[i];
+                    barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+                    pLogicalDevice->vkd.CmdPipelineBarrier(
+                        commandBuffers[i], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        0, 0, nullptr, 0, nullptr, 1, &barrier);
+                }
+
+                for (auto& pass : pLogicalSwapchain->computePasses)
+                    pass->recordCommands(commandBuffers[i], i);
+
+                // Barrier: restore real swapchain images to PRESENT_SRC_KHR if we transitioned them.
+                if (pLogicalDevice->supportsMutableFormat)
+                {
+                    VkImageMemoryBarrier barrier = {};
+                    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                    barrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+                    barrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
+                    barrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    barrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.image               = pLogicalSwapchain->images[i];
+                    barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+                    pLogicalDevice->vkd.CmdPipelineBarrier(
+                        commandBuffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                        0, 0, nullptr, 0, nullptr, 1, &barrier);
+                }
             }
 
             // Prepare the second barrier to transition depth back to the game

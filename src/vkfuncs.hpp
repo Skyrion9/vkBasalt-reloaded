@@ -20,6 +20,7 @@
     FORVKFUNC(CmdBlitImage) \
     FORVKFUNC(CmdCopyBufferToImage) \
     FORVKFUNC(CmdCopyImage) \
+    FORVKFUNC(CmdDispatch) \
     FORVKFUNC(CmdDraw) \
     FORVKFUNC(CmdEndRenderPass) \
     FORVKFUNC(CmdPipelineBarrier) \
@@ -32,6 +33,7 @@
     FORVKFUNC(CreateFence) \
     FORVKFUNC(CreatePipelineCache) \
     FORVKFUNC(CreateFramebuffer) \
+    FORVKFUNC(CreateComputePipelines) \
     FORVKFUNC(CreateGraphicsPipelines) \
     FORVKFUNC(CreateImage) \
     FORVKFUNC(CreateImageView) \

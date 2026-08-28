@@ -68,4 +68,8 @@ namespace vkBasalt
     const std::vector<uint32_t> smaa_neighbor_vert = {
 #include "smaa_neighbor.vert.h"
     };
+
+    const std::vector<uint32_t> compute_test_comp = {
+#include "compute_test.comp.h"
+    };
 } // namespace vkBasalt

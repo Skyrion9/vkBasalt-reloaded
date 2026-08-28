@@ -11,10 +11,9 @@
 #include<atomic>
 
 #include"effect.hpp"
-
 #include"vulkan_include.hpp"
-
 #include"logical_device.hpp"
+#include "compute_pass.hpp"
 
 namespace vkBasalt
 {
@@ -48,6 +47,9 @@ namespace vkBasalt
         // Fence based deferred rebuild (avoids QueueWaitIdle deadlock in QueuePresentKHR)
         VkFence                              rebuildFence = VK_NULL_HANDLE;
         bool                                 pendingRebuild = false;
+
+        std::vector<std::shared_ptr<ComputePass>> computePasses;
+        uint32_t computeSrcSlice = 0; // which slice compute passes read from
 
         void destroy();
     };

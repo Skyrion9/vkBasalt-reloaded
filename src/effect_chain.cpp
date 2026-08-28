@@ -1,4 +1,15 @@
 #include "effect_chain.hpp"
+
+#include <cstdint>
+#include <fstream>
+#include <memory>
+#include <string>
+#include <functional>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <vulkan/vulkan_core.h>
+
 #include "effect.hpp"
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
@@ -21,16 +32,8 @@
 #include "effect_smaa.hpp"
 #include "effect_transfer.hpp"
 #include "pipeline_cache.hpp"
-
-#include <cstdint>
-#include <fstream>
-#include <memory>
-#include <string>
-#include <functional>
-#include <unordered_map>
-#include <vector>
-#include <algorithm>
-#include <vulkan/vulkan_core.h>
+#include "compute_pass.hpp"
+#include "compute_test_pass.hpp"
 
 namespace vkBasalt {
 
@@ -95,9 +98,12 @@ namespace vkBasalt {
                           OverlayManager& overlayManager)
     {
         std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-
         VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->format);
         VkFormat srgbFormat  = convertToSRGB(pLogicalSwapchain->format);
+
+        // Determine which slice compute passes read from. With mutable format the last effect writes to real swapchain images. Otherwise it writes to the last fake slice.
+        pLogicalSwapchain->computeSrcSlice =
+            pLogicalDevice->supportsMutableFormat ? 0 : getLastDstSlice(effectStrings.size());
 
         for (uint32_t i = 0; i < effectStrings.size(); i++)
         {
@@ -221,7 +227,28 @@ namespace vkBasalt {
             Logger::debug("allocated CommandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain (rebuild)");
         }
 
-        writeCommandBuffers(pLogicalDevice, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
+        // Create compute passes. They read from the final output slice.
+        if (pLogicalSwapchain->computePasses.empty())
+        {
+            std::vector<VkImage> computeSrcImages;
+            if (pLogicalDevice->supportsMutableFormat)
+            {
+                computeSrcImages = pLogicalSwapchain->images;
+            }
+            else
+            {
+                uint32_t srcSlice = pLogicalSwapchain->computeSrcSlice;
+                computeSrcImages = std::vector<VkImage>(
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
+            }
+
+            pLogicalSwapchain->computePasses.push_back(std::make_shared<ComputeTestPass>(
+                pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages));
+            Logger::debug("created compute passes");
+        }
+
+        writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
         Logger::debug("wrote CommandBuffers");
 
         // Only create semaphores on initial setup. Rebuilds preserve them as imageCount is fixed for a given swapchain.
@@ -251,11 +278,12 @@ namespace vkBasalt {
 
             pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
             writeCommandBuffers(pLogicalDevice,
-                {pLogicalSwapchain->defaultTransfer},
-                VK_NULL_HANDLE,
-                VK_NULL_HANDLE,
-                VK_FORMAT_UNDEFINED,
-                pLogicalSwapchain->commandBuffersNoEffect);
+                                pLogicalSwapchain,
+                                {pLogicalSwapchain->defaultTransfer},
+                                VK_NULL_HANDLE,
+                                VK_NULL_HANDLE,
+                                VK_FORMAT_UNDEFINED,
+                                pLogicalSwapchain->commandBuffersNoEffect);
         }
 
         for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++)
@@ -322,9 +350,9 @@ namespace vkBasalt {
             // Mark as first and last for correct barrier layouts.
             pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
 
-            writeCommandBuffers(pLogicalDevice, {pLogicalSwapchain->defaultTransfer},
-                VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
-                pLogicalSwapchain->commandBuffersNoEffect);
+            writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, {pLogicalSwapchain->defaultTransfer},
+                                VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
+                                pLogicalSwapchain->commandBuffersNoEffect);
             return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
         }
 

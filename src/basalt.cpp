@@ -609,6 +609,10 @@ namespace vkBasalt
                 {
                     effect->updateEffect();
                 }
+                for (auto& pass : pLogicalSwapchain->computePasses)
+                {
+                    pass->updatePass();
+                }
             }
 
             VkSubmitInfo submitInfo;
@@ -708,7 +712,7 @@ namespace vkBasalt
             pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
             Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
 
-            writeCommandBuffers(pLogicalDevice, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat,
+            writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat,
                                 pLogicalSwapchain->commandBuffersEffect);
             Logger::debug("wrote CommandBuffers");
         }

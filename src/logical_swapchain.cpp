@@ -5,6 +5,7 @@ namespace vkBasalt
 {
     void LogicalSwapchain::destroy()
     {
+        computePasses.clear();
         effects.clear();
         defaultTransfer.reset();
 

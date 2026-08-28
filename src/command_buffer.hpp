@@ -17,7 +17,10 @@ namespace vkBasalt
 
     std::vector<VkCommandBuffer> allocateCommandBuffer(LogicalDevice* pLogicalDevice, uint32_t count);
 
+    struct LogicalSwapchain;
+
     void writeCommandBuffers(LogicalDevice*                                               pLogicalDevice,
+                             LogicalSwapchain*                                            pLogicalSwapchain,
                              const std::vector<std::shared_ptr<vkBasalt::Effect>>&        effects,
                              VkImage                                                      depthImage,
                              VkImageView                                                  depthImageView,
