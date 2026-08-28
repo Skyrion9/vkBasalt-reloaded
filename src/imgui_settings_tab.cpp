@@ -190,7 +190,7 @@ namespace vkBasalt {
         ImGui::Spacing();
 
         // Format selector
-        const char* ssFormats[] = {"png", "jpg", "bmp", "tga", "hdr"};
+        const char* ssFormats[] = {"png", "jpg", "bmp", "tga", "hdr", "exr"};
         std::string ssFmt = m_pConfig->getOption<std::string>("screenshotFormat", "png");
         int ssFormatIdx = 0;
         for (int i = 0; i < IM_ARRAYSIZE(ssFormats); i++) {

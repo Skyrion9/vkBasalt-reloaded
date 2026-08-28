@@ -63,6 +63,7 @@ x11_dep = dependency('x11')
 wayland_client_dep = dependency('wayland-client')
 xkbcommon_dep = dependency('xkbcommon')
 vulkan_dep = dependency('vulkan')
+tinyexr_dep = subproject('tinyexr').get_variable('tinyexr_dep')
 
 # --- Wayland Protocol Generation ---
 wayland_protocols_dep = dependency('wayland-protocols')
@@ -108,7 +109,7 @@ shared_library(meson.project_name().to_lower(),
     vkBasalt_src, shader_include,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
-    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep, vulkan_dep],
+    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep, vulkan_dep, tinyexr_dep],
     gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)

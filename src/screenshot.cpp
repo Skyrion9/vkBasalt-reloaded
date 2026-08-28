@@ -5,6 +5,7 @@
 #include "color_math.hpp"
 
 #include <stb_image_write.h>
+#include "tinyexr.h"
 
 #include <algorithm>
 #include <cmath>
@@ -50,6 +51,7 @@ namespace vkBasalt {
         if (format == "bmp") return ".bmp";
         if (format == "tga") return ".tga";
         if (format == "hdr") return ".hdr";
+        if (format == "exr") return ".exr";
         return ".png";
     }
 
@@ -69,7 +71,7 @@ namespace vkBasalt {
 
         size_t pixelCount = (size_t)width * height;
         int dstChannels = 3;
-        bool wantHDR = (format == "hdr");
+        bool wantHDR = (format == "hdr" || format == "exr");
         
         std::vector<uint8_t> rgbPixels;
         std::vector<float> hdrPixels;
@@ -170,8 +172,20 @@ namespace vkBasalt {
             return stbi_write_bmp(path.c_str(), width, height, dstChannels, rgbPixels.data()) != 0;
         } else if (format == "tga") {
             return stbi_write_tga(path.c_str(), width, height, dstChannels, rgbPixels.data()) != 0;
-        } else if (wantHDR) {
+        } else if (format == "hdr") {
             return stbi_write_hdr(path.c_str(), width, height, dstChannels, hdrPixels.data()) != 0;
+        } else if (format == "exr") {
+            const char* err = nullptr;
+            // save_as_fp16 = 1 ensures true 16 bit half-float HDR preservation
+            int ret = SaveEXR(hdrPixels.data(), width, height, dstChannels, 1, path.c_str(), &err);
+            if (ret != TINYEXR_SUCCESS) {
+                if (err) {
+                    Logger::err(std::string("EXR write failed: ") + err);
+                    FreeEXRErrorMessage(err);
+                }
+                return false;
+            }
+            return true;
         }
         return stbi_write_png(path.c_str(), width, height, dstChannels, rgbPixels.data(), width * dstChannels) != 0;
     }
