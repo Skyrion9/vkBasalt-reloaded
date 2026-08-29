@@ -61,6 +61,8 @@ namespace vkBasalt {
         if (m_renderPass) { m_pDevice->vkd.DestroyRenderPass(m_pDevice->device, m_renderPass, nullptr); m_renderPass = VK_NULL_HANDLE; }
         m_framebuffers.clear();
         m_imageViews.clear();
+        m_scopeTexturesRegistered = false;
+        m_scopeTextureIDs = {};
     }
 
     ImGuiOverlay::~ImGuiOverlay() {
@@ -628,6 +630,7 @@ namespace vkBasalt {
                 m_showCloseWarning = true;
             } else {
                 m_isOpen = false;
+                disableScopesOnClose();
             }
         }
         if (m_showCloseWarning && m_hasUnsavedChanges) {
@@ -652,8 +655,22 @@ namespace vkBasalt {
         ImGui::End();
     }
 
+    void ImGuiOverlay::disableScopesOnClose() {
+        if (!m_pSwapchain) return;
+        for (auto& pass : m_pSwapchain->computePasses) {
+            if (pass->getName() == "frame_analyzer" && pass->isEnabled()) {
+                pass->setEnabled(false);
+                g_triggerSoftReload = true;
+                break;
+            }
+        }
+    }
+
     void ImGuiOverlay::toggleOverlay() {
         m_isOpen = !m_isOpen;
+        if (!m_isOpen) {
+            disableScopesOnClose();
+        }
         if (m_isOpen) {
             m_justOpened = true;
     #ifdef VK_USE_PLATFORM_WAYLAND_KHR

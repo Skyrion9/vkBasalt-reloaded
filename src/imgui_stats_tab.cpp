@@ -1,7 +1,4 @@
 #include "imgui_overlay.hpp"
-#include "logical_device.hpp"
-#include "logical_swapchain.hpp"
-#include "game_detect.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -9,8 +6,14 @@
 #include <string>
 #include <unistd.h>
 #include <vulkan/vulkan_core.h>
-
 #include "imgui.h"
+#include "imgui_impl_vulkan.h"
+
+#include "logical_device.hpp"
+#include "logical_swapchain.hpp"
+#include "game_detect.hpp"
+#include "frame_analyzer.hpp"
+#include "overlay_manager.hpp"
 
 namespace vkBasalt {
 
@@ -170,6 +173,72 @@ namespace vkBasalt {
             statRow("Cursor Scale", curBuf);
             statRow("Font Scale", fontBuf);
         }
-    }
 
+        ImGui::Spacing();
+        if (ImGui::CollapsingHeader("Scopes")) {
+            FrameAnalyzer* analyzer = nullptr;
+            if (m_pSwapchain) {
+                for (auto& pass : m_pSwapchain->computePasses) {
+                    if (pass->getName() == "frame_analyzer") {
+                        analyzer = static_cast<FrameAnalyzer*>(pass.get());
+                        break;
+                    }
+                }
+            }
+
+            if (analyzer) {
+                bool enabled = analyzer->isEnabled();
+                if (ImGui::Checkbox("Enable Scopes (GPU)", &enabled)) {
+                    analyzer->setEnabled(enabled);
+                    g_triggerSoftReload = true;
+                }
+
+                if (enabled) {
+                    if (!m_scopeTexturesRegistered) {
+                        m_scopeTextureIDs[0] = (ImTextureID)ImGui_ImplVulkan_AddTexture(
+                            analyzer->getScopeSampler(),
+                            analyzer->getScopeImageView(FrameAnalyzer::HISTOGRAM),
+                            VK_IMAGE_LAYOUT_GENERAL);
+                        m_scopeTextureIDs[1] = (ImTextureID)ImGui_ImplVulkan_AddTexture(
+                            analyzer->getScopeSampler(),
+                            analyzer->getScopeImageView(FrameAnalyzer::WAVEFORM),
+                            VK_IMAGE_LAYOUT_GENERAL);
+                        m_scopeTextureIDs[2] = (ImTextureID)ImGui_ImplVulkan_AddTexture(
+                            analyzer->getScopeSampler(),
+                            analyzer->getScopeImageView(FrameAnalyzer::VECTORSCOPE),
+                            VK_IMAGE_LAYOUT_GENERAL);
+                        m_scopeTexturesRegistered = true;
+                    }
+
+                    float availW = ImGui::GetContentRegionAvail().x;
+                    float imgSize = (availW - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
+                    if (imgSize < 100.0f) imgSize = 256.0f;
+
+                    // Row 1: Histogram | Waveform
+                    ImGui::Text("Histogram (Brightness Distribution)");
+                    ImGui::Image(m_scopeTextureIDs[0], ImVec2(imgSize, imgSize));
+                    ImGui::SameLine();
+
+                    ImGui::BeginGroup();
+                    ImGui::Text("Waveform (Luma vs Position)");
+                    ImGui::Image(m_scopeTextureIDs[1], ImVec2(imgSize, imgSize));
+                    ImGui::EndGroup();
+
+                    // Row 2: Vectorscope | Info
+                    ImGui::Text("Vectorscope (Chroma Distribution)");
+                    ImGui::Image(m_scopeTextureIDs[2], ImVec2(imgSize, imgSize));
+                    ImGui::SameLine();
+
+                    ImGui::BeginGroup();
+                    ImGui::Text("Reference");
+                    ImGui::TextDisabled("Center = neutral gray");
+                    ImGui::TextDisabled("Outward = saturation");
+                    ImGui::TextDisabled("Clockwise = hue shift");
+                    ImGui::EndGroup();
+                }
+            } else {
+                ImGui::TextDisabled("Frame Analyzer not available.");
+            }
+        }
+    }
 } // namespace vkBasalt

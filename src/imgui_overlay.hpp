@@ -8,6 +8,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <string>
 #include <unordered_map>
@@ -45,6 +46,7 @@ namespace vkBasalt {
         void drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect);
         void applyKeybind(int field, ImGuiKey key);
         void destroyRenderResources();
+        void disableScopesOnClose();
         void resetParamToDefault(Effect* effect, const EffectParamDesc& p);
         void setParamDebounced(const std::string& key, const std::string& value);
         void setParamImmediate(const std::string& key, const std::string& value);
@@ -96,6 +98,9 @@ namespace vkBasalt {
         float m_windowWidth = 0.0f;
         std::string m_windowSide = "left";
         bool m_windowStateInitialized = false;
+
+        std::array<ImTextureID, 3> m_scopeTextureIDs = {};
+        bool m_scopeTexturesRegistered = false;
 
         struct BrowserEntry {
             std::string path;

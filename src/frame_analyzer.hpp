@@ -22,8 +22,11 @@ namespace vkBasalt
         void recordCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex) override;
         std::string getName() const override { return "frame_analyzer"; }
 
-        // ImGui descriptor sets (one per scope, each containing a combined image sampler)
         enum ScopeType { HISTOGRAM = 0, WAVEFORM = 1, VECTORSCOPE = 2, SCOPE_COUNT = 3 };
+        
+        // Expose raw handles for ImGui backend registration
+        VkImageView getScopeImageView(ScopeType type) const { return m_scopeViews[type]; }
+        VkSampler   getScopeSampler() const { return m_sampler; }
         VkDescriptorSet getScopeDescriptorSet(ScopeType type) const { return m_imguiSets[type]; }
 
     private:
