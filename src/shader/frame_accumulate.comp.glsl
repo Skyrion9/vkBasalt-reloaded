@@ -49,8 +49,8 @@ void main() {
     atomicAdd(waveData[waveY * 256u + waveX], 1u);
 
     // Vectorscope: Cb vs Cr
-    float cb = 0.5 + (linear.b - luma) / 1.772;
-    float cr = 0.5 + (linear.r - luma) / 1.402;
+    float cb = 0.5 + (linear.b - luma) / 1.8556;
+    float cr = 0.5 + (linear.r - luma) / 1.5748;
     cb = clamp(cb, 0.0, 1.0);
     cr = clamp(cr, 0.0, 1.0);
     uint vecX = uint(cb * 255.0);
