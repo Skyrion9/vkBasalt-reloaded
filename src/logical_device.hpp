@@ -19,6 +19,7 @@ namespace vkBasalt
         uint32_t                         queueFamilyIndex;
         VkCommandPool                    commandPool;
         bool                             supportsMutableFormat;
+        VkFormat                         swapchainFormat = VK_FORMAT_UNDEFINED;
         std::vector<VkImage>             depthImages;
         std::vector<VkFormat>            depthFormats;
         std::vector<VkImageView>         depthImageViews;

@@ -16,6 +16,8 @@ shader_src = [
     'smaa_neighbor.frag.glsl',
     'smaa_neighbor.vert.glsl',
     'compute_test.comp.glsl',
+    'frame_accumulate.comp.glsl',
+    'frame_resolve.comp.glsl',
 ]
 
 glsl_compiler   = find_program('glslang', 'glslangValidator')

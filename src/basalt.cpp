@@ -464,6 +464,7 @@ namespace vkBasalt
         pLogicalSwapchain->imageExtent         = modifiedCreateInfo.imageExtent;
         pLogicalSwapchain->format              = modifiedCreateInfo.imageFormat;
         pLogicalSwapchain->colorSpace          = modifiedCreateInfo.imageColorSpace;
+        pLogicalDevice->swapchainFormat        = modifiedCreateInfo.imageFormat;
         pLogicalSwapchain->imageCount          = 0;
 
         VkResult result = pLogicalDevice->vkd.CreateSwapchainKHR(device, &modifiedCreateInfo, pAllocator, pSwapchain);

@@ -26,8 +26,8 @@ namespace vkBasalt
             pLogicalDevice->vkd.DestroyShaderModule(pLogicalDevice->device, shaderModule, nullptr);
     }
 
-    static uint32_t findMemoryType(const VkPhysicalDeviceMemoryProperties& props,
-                                   uint32_t typeBits, VkMemoryPropertyFlags required)
+    uint32_t SimpleComputePass::findMemoryType(const VkPhysicalDeviceMemoryProperties& props,
+                                               uint32_t typeBits, VkMemoryPropertyFlags required)
     {
         for (uint32_t i = 0; i < props.memoryTypeCount; i++)
         {
@@ -38,7 +38,8 @@ namespace vkBasalt
         return 0;
     }
 
-    VkBuffer SimpleComputePass::createDeviceLocalBuffer(VkDeviceSize size, VkBufferUsageFlags usage)
+    VkBuffer SimpleComputePass::createDeviceLocalBuffer(LogicalDevice* pDevice, VkDeviceSize size,
+                                                        VkBufferUsageFlags usage, VkDeviceMemory& memory)
     {
         VkBufferCreateInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -47,24 +48,23 @@ namespace vkBasalt
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         VkBuffer buffer = VK_NULL_HANDLE;
-        VkResult result = pLogicalDevice->vkd.CreateBuffer(pLogicalDevice->device, &info, nullptr, &buffer);
+        VkResult result = pDevice->vkd.CreateBuffer(pDevice->device, &info, nullptr, &buffer);
         if (result != VK_SUCCESS) { Logger::err("SimpleComputePass: CreateBuffer failed"); return VK_NULL_HANDLE; }
 
         VkMemoryRequirements memReqs;
-        pLogicalDevice->vkd.GetBufferMemoryRequirements(pLogicalDevice->device, buffer, &memReqs);
+        pDevice->vkd.GetBufferMemoryRequirements(pDevice->device, buffer, &memReqs);
 
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = findMemoryType(pLogicalDevice->memoryProperties,
+        allocInfo.memoryTypeIndex = findMemoryType(pDevice->memoryProperties,
                                                    memReqs.memoryTypeBits,
                                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        VkDeviceMemory memory = VK_NULL_HANDLE;
-        result = pLogicalDevice->vkd.AllocateMemory(pLogicalDevice->device, &allocInfo, nullptr, &memory);
-        if (result != VK_SUCCESS) { pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, buffer, nullptr); return VK_NULL_HANDLE; }
+        result = pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &memory);
+        if (result != VK_SUCCESS) { pDevice->vkd.DestroyBuffer(pDevice->device, buffer, nullptr); return VK_NULL_HANDLE; }
 
-        pLogicalDevice->vkd.BindBufferMemory(pLogicalDevice->device, buffer, memory, 0);
+        pDevice->vkd.BindBufferMemory(pDevice->device, buffer, memory, 0);
         return buffer;
     }
 
@@ -100,8 +100,8 @@ namespace vkBasalt
         return buffer;
     }
 
-    VkImage SimpleComputePass::createImage(uint32_t width, uint32_t height, VkFormat format,
-                                           VkImageUsageFlags usage, VkDeviceMemory& memory)
+    VkImage SimpleComputePass::createImage(LogicalDevice* pDevice, uint32_t width, uint32_t height,
+                                           VkFormat format, VkImageUsageFlags usage, VkDeviceMemory& memory)
     {
         VkImageCreateInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -117,27 +117,27 @@ namespace vkBasalt
         info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
         VkImage image = VK_NULL_HANDLE;
-        VkResult result = pLogicalDevice->vkd.CreateImage(pLogicalDevice->device, &info, nullptr, &image);
+        VkResult result = pDevice->vkd.CreateImage(pDevice->device, &info, nullptr, &image);
         if (result != VK_SUCCESS) return VK_NULL_HANDLE;
 
         VkMemoryRequirements memReqs;
-        pLogicalDevice->vkd.GetImageMemoryRequirements(pLogicalDevice->device, image, &memReqs);
+        pDevice->vkd.GetImageMemoryRequirements(pDevice->device, image, &memReqs);
 
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = findMemoryType(pLogicalDevice->memoryProperties,
+        allocInfo.memoryTypeIndex = findMemoryType(pDevice->memoryProperties,
                                                    memReqs.memoryTypeBits,
                                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        result = pLogicalDevice->vkd.AllocateMemory(pLogicalDevice->device, &allocInfo, nullptr, &memory);
-        if (result != VK_SUCCESS) { pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, image, nullptr); return VK_NULL_HANDLE; }
+        result = pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &memory);
+        if (result != VK_SUCCESS) { pDevice->vkd.DestroyImage(pDevice->device, image, nullptr); return VK_NULL_HANDLE; }
 
-        pLogicalDevice->vkd.BindImageMemory(pLogicalDevice->device, image, memory, 0);
+        pDevice->vkd.BindImageMemory(pDevice->device, image, memory, 0);
         return image;
     }
 
-    VkImageView SimpleComputePass::createImageView(VkImage image, VkFormat format,
+    VkImageView SimpleComputePass::createImageView(LogicalDevice* pDevice, VkImage image, VkFormat format,
                                                    VkImageViewType viewType, VkImageAspectFlags aspect)
     {
         VkImageViewCreateInfo info = {};
@@ -148,8 +148,26 @@ namespace vkBasalt
         info.subresourceRange = {aspect, 0, 1, 0, 1};
 
         VkImageView view = VK_NULL_HANDLE;
-        pLogicalDevice->vkd.CreateImageView(pLogicalDevice->device, &info, nullptr, &view);
+        pDevice->vkd.CreateImageView(pDevice->device, &info, nullptr, &view);
         return view;
+    }
+
+    VkBuffer SimpleComputePass::createDeviceLocalBuffer(VkDeviceSize size, VkBufferUsageFlags usage)
+    {
+        VkDeviceMemory mem = VK_NULL_HANDLE;
+        return createDeviceLocalBuffer(pLogicalDevice, size, usage, mem);
+    }
+
+    VkImage SimpleComputePass::createImage(uint32_t width, uint32_t height, VkFormat format,
+                                           VkImageUsageFlags usage, VkDeviceMemory& memory)
+    {
+        return createImage(pLogicalDevice, width, height, format, usage, memory);
+    }
+
+    VkImageView SimpleComputePass::createImageView(VkImage image, VkFormat format,
+                                                   VkImageViewType viewType, VkImageAspectFlags aspect)
+    {
+        return createImageView(pLogicalDevice, image, format, viewType, aspect);
     }
 
     void SimpleComputePass::transitionImageLayout(VkCommandBuffer cmdBuf, VkImage image,

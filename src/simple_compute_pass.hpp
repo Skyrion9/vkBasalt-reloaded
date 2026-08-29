@@ -14,6 +14,18 @@ namespace vkBasalt
 
         void recordCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex) override;
 
+        static uint32_t findMemoryType(const VkPhysicalDeviceMemoryProperties& props,
+                                       uint32_t typeBits, VkMemoryPropertyFlags required);
+        static VkBuffer createDeviceLocalBuffer(LogicalDevice* pDevice, VkDeviceSize size,
+                                                VkBufferUsageFlags usage, VkDeviceMemory& memory);
+
+        static VkImage createImage(LogicalDevice* pDevice, uint32_t width, uint32_t height,
+                                   VkFormat format, VkImageUsageFlags usage, VkDeviceMemory& memory);
+
+        static VkImageView createImageView(LogicalDevice* pDevice, VkImage image, VkFormat format,
+                                           VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                           VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
+
     protected:
         // Return compute shader SPIR-V.
         virtual const std::vector<uint32_t>& getShaderCode() const = 0;

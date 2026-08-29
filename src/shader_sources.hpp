@@ -72,4 +72,12 @@ namespace vkBasalt
     const std::vector<uint32_t> compute_test_comp = {
 #include "compute_test.comp.h"
     };
+
+    const std::vector<uint32_t> frame_accumulate_comp = {
+#include "frame_accumulate.comp.h"
+    };
+
+    const std::vector<uint32_t> frame_resolve_comp = {
+#include "frame_resolve.comp.h"
+    };
 } // namespace vkBasalt

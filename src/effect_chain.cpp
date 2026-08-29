@@ -34,6 +34,7 @@
 #include "pipeline_cache.hpp"
 #include "compute_pass.hpp"
 #include "compute_test_pass.hpp"
+#include "frame_analyzer.hpp"
 
 namespace vkBasalt {
 
@@ -243,9 +244,10 @@ namespace vkBasalt {
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
             }
 
-            pLogicalSwapchain->computePasses.push_back(std::make_shared<ComputeTestPass>(
-                pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages));
-            Logger::debug("created compute passes");
+            pLogicalSwapchain->computePasses.push_back(std::make_shared<FrameAnalyzer>(
+                pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages,
+                pLogicalSwapchain->format, pLogicalSwapchain->colorSpace));
+            Logger::debug("created compute passes (FrameAnalyzer)");
         }
 
         writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
