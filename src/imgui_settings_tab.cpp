@@ -1,7 +1,4 @@
 #include "imgui_overlay.hpp"
-#include "overlay_manager.hpp"
-#include "screenshot.hpp"
-#include "config.hpp"
 
 #include "imgui.h"
 
@@ -11,6 +8,11 @@
 #include <string>
 #include <system_error>
 #include <vector>
+
+#include "overlay_manager.hpp"
+#include "screenshot.hpp"
+#include "config.hpp"
+#include "format.hpp"
 
 namespace vkBasalt {
 
