@@ -55,12 +55,12 @@ namespace vkBasalt
                         "vivid: saturated, CDL color grade.\nnoir: high contrast B&W."},
 
             {.key = "crystalclearQualityLevel", .label = "Quality Level", .type = ParamType::Combo,
-            .defaultVal = 0.0, .minVal = 0.0, .maxVal = 4.0, .step = 1.0,
+            .defaultVal = 1.0, .minVal = 0.0, .maxVal = 4.0, .step = 1.0,
             .comboOptions = {"Perfect", "Ultra", "High", "Medium", "iGPU"},
             .category = "Presets & Performance",
-            .tooltip = "Master switch for feature gating. Grays out disabled params.\n"
+            .tooltip = "Master switch for feature gating. Disables certain features & grays them out.\n"
                         "Perfect: All features. RGB edge, fringe fix, wide-radius fetches, all guards. ~17 tex fetches/pixel.\n"
-                        "Ultra: Drops RGB edge detection + fringe fix. Best set-and-forget for discrete GPUs.\n"
+                        "Ultra: Drops RGB edge detection + fringe fix. Recommended for discrete GPUs.\n"
                         "High: Also drops wide step2 fetches and local contrast. ~13 fetches.\n"
                         "Medium: Also drops oiliness/silhouette gates, checkerboard, despeckle, BC1 fix, shimmer reduction, film grain, saturation/dark-smear guards.\n"
                         "iGPU: Core CAS + Clarity (step1) only. Band pass + edge mask + extreme protection + dithering. Minimum viable quality.",
@@ -287,9 +287,9 @@ namespace vkBasalt
 
             // Film Grain & Dither
             {.key = "crystalclearEnableFilmGrain", .label = "Enable Film Grain", .type = ParamType::Bool,
-            .defaultVal = 1.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
+            .defaultVal = 0.0, .minVal = 0.0, .maxVal = 1.0, .step = 1.0,
             .category = "Film Grain & Dither",
-            .tooltip = "Perceptual film grain with fine + coarse layers. Adds subtle texture that breaks up banding and gives a natural, non-digital look. Weighted by luminance (peaks at mid-gray, fades in shadows/highlights). Disabled on iGPU. Default on.",
+            .tooltip = "Perceptual film grain with fine + coarse layers. Adds subtle texture that breaks up banding and gives a natural, non-digital look. Weighted by luminance (peaks at mid-gray, fades in shadows/highlights). Disabled on iGPU. Default off.",
             SPEC(23, enableFilmGrain)},
 
             {.key = "crystalclearFilmGrainStrength", .label = "Grain Strength", .type = ParamType::Float,

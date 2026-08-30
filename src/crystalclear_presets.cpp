@@ -29,6 +29,7 @@ namespace vkBasalt
                 // Grain (off for competitive clarity)
                 {"crystalclearEnableFilmGrain",       0},
                 {"crystalclearFilmGrainStrength",     0.8},
+                {"crystalclearEnableDithering",       1},
                 // Blend range
                 {"crystalclearBlendIfDark",           15},
                 {"crystalclearBlendIfLight",          240},
@@ -93,6 +94,7 @@ namespace vkBasalt
                 // Color & Grain
                 {"crystalclearSpecularDesat",            0.2},
                 {"crystalclearEnableFilmGrain",          0},
+                {"crystalclearEnableDithering",          1},
             }},
 
             {"maxsharp", {
@@ -118,6 +120,7 @@ namespace vkBasalt
                 {"crystalclearChromaSmoothStrength",     0.3},
                 // Grain
                 {"crystalclearFilmGrainStrength",        0.8},
+                {"crystalclearEnableDithering",          1},
             }},
 
             {"vibrantsharp", {
@@ -143,6 +146,7 @@ namespace vkBasalt
                 {"crystalclearToneCurve",                0.2},
                 // Grain
                 {"crystalclearFilmGrainStrength",        0.6},
+                {"crystalclearEnableDithering",          1},
             }},
 
             {"devfxaa", {
@@ -165,6 +169,7 @@ namespace vkBasalt
                 {"crystalclearChromaSmoothStrength",  0.3},
                 // Grain
                 {"crystalclearFilmGrainStrength",     0.8},
+                {"crystalclearEnableDithering",       1},
             }},
 
             {"cinematic", {
@@ -183,6 +188,7 @@ namespace vkBasalt
                 {"crystalclearEnableChromaSmooth",   1},
                 {"crystalclearChromaSmoothStrength", 0.6},
                 // Film grain (warm, coarse)
+                {"crystalclearEnableFilmGrain",      1},
                 {"crystalclearFilmGrainStrength",    1.2},
                 {"crystalclearFilmGrainMinimum",     0.1},
                 {"crystalclearFineGrainWeight",      0.5},
@@ -229,6 +235,7 @@ namespace vkBasalt
                 {"crystalclearEnableChromaSmooth",   1},
                 {"crystalclearChromaSmoothStrength", 0.5},
                 // Film grain (heavy, textured)
+                {"crystalclearEnableFilmGrain",      1},
                 {"crystalclearFilmGrainStrength",    1.5},
                 {"crystalclearFilmGrainMinimum",     0.2},
                 {"crystalclearFineGrainWeight",      0.6},
@@ -284,6 +291,7 @@ namespace vkBasalt
                 {"crystalclearCDLSlopeG",            1.05},
                 {"crystalclearCDLSlopeB",            1.0},
                 // Grain
+                {"crystalclearEnableDithering",      1},
                 {"crystalclearFilmGrainStrength",    0.6},
             }},
 
@@ -309,6 +317,7 @@ namespace vkBasalt
                 {"crystalclearBlackLift",            0.05},
                 {"crystalclearWhiteClip",            0.15},
                 // Grain (visible, filmic)
+                {"crystalclearEnableFilmGrain",      1},
                 {"crystalclearFilmGrainStrength",    1.0},
                 {"crystalclearFilmGrainMinimum",     0.3},
                 {"crystalclearFineGrainWeight",      0.5},
@@ -316,7 +325,6 @@ namespace vkBasalt
                 // Banding protection
                 {"crystalclearEnableDeband",         1},
                 {"crystalclearDebandStrength",       0.5},
-                {"crystalclearEnableDithering",      1},
             }},
 
         };
