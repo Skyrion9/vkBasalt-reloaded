@@ -24,8 +24,18 @@ namespace vkBasalt
         LogicalDevice*                       pLogicalDevice;
         VkSwapchainCreateInfoKHR             swapchainCreateInfo;
         VkExtent2D                           imageExtent;
+        
+        // Legacy compatibility, equals destFormat/destColorSpace
         VkFormat                             format;
         VkColorSpaceKHR                      colorSpace;
+        
+        // Dual format tracking for Auto HDR (SDR fake images -> HDR real swapchain)
+        VkFormat                             sourceFormat;
+        VkColorSpaceKHR                      sourceColorSpace;
+        VkFormat                             destFormat;
+        VkColorSpaceKHR                      destColorSpace;
+        bool                                 autoHdrActive = false;
+
         uint32_t                             imageCount;
         std::vector<VkImage>                 images;
         std::vector<VkImage>                 fakeImages;
@@ -34,6 +44,7 @@ namespace vkBasalt
         std::vector<VkSemaphore>             semaphores;
         std::vector<std::shared_ptr<Effect>> effects;
         std::shared_ptr<Effect>              defaultTransfer;
+        std::shared_ptr<Effect>              defaultHdrEffect; // HDR conversion for empty/disabled chain when Auto HDR is active
         VkDeviceMemory                       fakeImageMemory;
 
         // flag to force the game to recreate the swapchain if the effect chain grows dynamically.

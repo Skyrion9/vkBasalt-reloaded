@@ -226,13 +226,18 @@ namespace vkBasalt
             physicalDevice, nullptr, &extensionCount, extensionProperties.data());
 
         bool supportsMutableFormat = false;
+        bool supportsSwapchainColorspace = false;
         for (VkExtensionProperties properties : extensionProperties)
         {
             if (properties.extensionName == std::string("VK_KHR_swapchain_mutable_format"))
             {
                 Logger::debug("device supports VK_KHR_swapchain_mutable_format");
                 supportsMutableFormat = true;
-                break;
+            }
+            else if (properties.extensionName == std::string("VK_EXT_swapchain_colorspace"))
+            {
+                Logger::debug("device supports VK_EXT_swapchain_colorspace");
+                supportsSwapchainColorspace = true;
             }
         }
 
@@ -251,6 +256,11 @@ namespace vkBasalt
         {
             Logger::debug("activating mutable_format");
             addUniqueCString(enabledExtensionNames, "VK_KHR_swapchain_mutable_format");
+        }
+        if (supportsSwapchainColorspace)
+        {
+            Logger::debug("activating swapchain_colorspace");
+            addUniqueCString(enabledExtensionNames, "VK_EXT_swapchain_colorspace");
         }
         if (deviceProps.apiVersion < VK_API_VERSION_1_2 || instanceVersionMap[GetKey(physicalDevice)] < VK_API_VERSION_1_2)
         {
@@ -439,17 +449,18 @@ namespace vkBasalt
         VkFormat unormFormat = isSRGB(format) ? convertToUNORM(format) : format;
         Logger::debug(std::to_string(srgbFormat) + " " + std::to_string(unormFormat));
 
-        VkFormat formats[] = {unormFormat, srgbFormat};
-
+        VkFormat formats[3] = {unormFormat, srgbFormat, VK_FORMAT_UNDEFINED};
+        uint32_t viewFormatCount = (srgbFormat == unormFormat) ? 1 : 2;
         VkImageFormatListCreateInfoKHR imageFormatListCreateInfo;
 
         // Injecting VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR flag breaks direct scanout (zero-copy presentation) on Linux compositors.
+        // However, if Auto HDR mutates the format, we MUST set it so the game can still create SDR views on the HDR images.
         modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                       | VK_IMAGE_USAGE_SAMPLED_BIT;
-        
+                                        | VK_IMAGE_USAGE_SAMPLED_BIT;
+
         imageFormatListCreateInfo.sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR;
         imageFormatListCreateInfo.pNext           = modifiedCreateInfo.pNext;
-        imageFormatListCreateInfo.viewFormatCount = (srgbFormat == unormFormat) ? 1 : 2;
+        imageFormatListCreateInfo.viewFormatCount = viewFormatCount;
         imageFormatListCreateInfo.pViewFormats    = formats;
         modifiedCreateInfo.pNext = &imageFormatListCreateInfo;
 
@@ -462,9 +473,79 @@ namespace vkBasalt
         pLogicalSwapchain->pLogicalDevice      = pLogicalDevice;
         pLogicalSwapchain->swapchainCreateInfo = *pCreateInfo;
         pLogicalSwapchain->imageExtent         = modifiedCreateInfo.imageExtent;
-        pLogicalSwapchain->format              = modifiedCreateInfo.imageFormat;
-        pLogicalSwapchain->colorSpace          = modifiedCreateInfo.imageColorSpace;
-        pLogicalDevice->swapchainFormat        = modifiedCreateInfo.imageFormat;
+        pLogicalSwapchain->sourceFormat        = pCreateInfo->imageFormat;
+        pLogicalSwapchain->sourceColorSpace    = pCreateInfo->imageColorSpace;
+        pLogicalSwapchain->destFormat          = pCreateInfo->imageFormat;
+        pLogicalSwapchain->destColorSpace      = pCreateInfo->imageColorSpace;
+
+        // Auto HDR: Mutate real swapchain to HDR10 if display supports it and config is enabled
+        std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
+        bool autoHdrEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
+        ColorSpaceMode srcCsm = getColorSpaceMode(pCreateInfo->imageFormat, pCreateInfo->imageColorSpace);
+
+        // Auto HDR requires mutable format to bridge SDR fake images and HDR real swapchain images
+        if (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled && pLogicalDevice->supportsMutableFormat) {
+            uint32_t formatCount = 0;
+            pLogicalDevice->vki.GetPhysicalDeviceSurfaceFormatsKHR(pLogicalDevice->physicalDevice, pCreateInfo->surface, &formatCount, nullptr);
+            std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
+            pLogicalDevice->vki.GetPhysicalDeviceSurfaceFormatsKHR(pLogicalDevice->physicalDevice, pCreateInfo->surface, &formatCount, surfaceFormats.data());
+
+            struct HdrTarget {
+                VkFormat format;
+                VkColorSpaceKHR colorSpace;
+                int priority; // lower is better
+            };
+            HdrTarget bestTarget = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, 999 };
+
+            for (const auto& f : surfaceFormats) {
+                int prio = 999;
+                // 1. HDR10 PQ (10 bit) - Standard for HDR TVs/Monitors
+                if (f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT && 
+                (f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 || f.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32)) {
+                    prio = 1;
+                }
+                // 2. scRGB (FP16 linear) - Standard Windows HDR path
+                else if (f.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                    prio = 2;
+                }
+                // 3. HLG (10 bit) - Broadcast standard
+                else if (f.colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT && 
+                        (f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 || f.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32)) {
+                    prio = 3;
+                }
+                // 4. BT.2020 Linear (FP16 linear) - Wide Gamut Linear
+                else if (f.colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                    prio = 4;
+                }
+                // 5. Display P3 Linear (FP16 linear) - Wide Gamut Linear
+                else if (f.colorSpace == VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                    prio = 5;
+                }
+
+                if (prio < bestTarget.priority) {
+                    bestTarget = { f.format, f.colorSpace, prio };
+                }
+            }
+
+            if (bestTarget.format != VK_FORMAT_UNDEFINED) {
+                modifiedCreateInfo.imageFormat = bestTarget.format;
+                modifiedCreateInfo.imageColorSpace = bestTarget.colorSpace;
+                
+                // CRITICAL: Must flag as mutable and add the HDR format to the view list, otherwise the game will crash when creating SDR ImageViews on the HDR swapchain images.
+                modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
+                formats[viewFormatCount++] = bestTarget.format;
+                imageFormatListCreateInfo.viewFormatCount = viewFormatCount;
+
+                pLogicalSwapchain->destFormat = modifiedCreateInfo.imageFormat;
+                pLogicalSwapchain->destColorSpace = modifiedCreateInfo.imageColorSpace;
+                pLogicalSwapchain->autoHdrActive = true;
+                Logger::info("Auto HDR: Mutating swapchain to format " + std::to_string(bestTarget.format) + " / colorspace " + std::to_string(bestTarget.colorSpace));
+            }
+        }
+
+        pLogicalSwapchain->format              = pLogicalSwapchain->destFormat;
+        pLogicalSwapchain->colorSpace          = pLogicalSwapchain->destColorSpace;
+        pLogicalDevice->swapchainFormat        = pLogicalSwapchain->destFormat;
         pLogicalSwapchain->imageCount          = 0;
 
         VkResult result = pLogicalDevice->vkd.CreateSwapchainKHR(device, &modifiedCreateInfo, pAllocator, pSwapchain);
@@ -503,12 +584,36 @@ namespace vkBasalt
         pLogicalSwapchain->images.resize(pLogicalSwapchain->imageCount);
         pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, pLogicalSwapchain->images.data());
 
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-        // Ping-pong cap at 3 slices (game input + 2 working buffers) regardless of chain length
+        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+        
+        // Account for HDR output effect (Auto HDR or Calibration) when sizing the fake image pool. Must use sourceFormat here, because pLogicalSwapchain->format is already mutated to destFormat (HDR)
+        ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
+        uint32_t totalEffectCount = (uint32_t)effectStrings.size();
+        
+        bool reserveHdrOutput = false;
+        if (srcCsm == ColorSpaceMode::SDR_SRGB) {
+            std::string autoHdr = pConfig->getOption<std::string>("autoHdr", "on");
+            if ((autoHdr == "on" || autoHdr == "true" || autoHdr == "1") && pLogicalSwapchain->autoHdrActive) {
+                reserveHdrOutput = true;
+            }
+        } else {
+            std::string hdrMode = pConfig->getOption<std::string>("hdrCalibration", "off");
+            if (hdrMode == "on" || hdrMode == "true" || hdrMode == "1") {
+                reserveHdrOutput = true;
+            }
+        }
+        
+        if (reserveHdrOutput) {
+            totalEffectCount += 1;
+        }
+
+        // Ping pong cap at 3 slices (game input + 2 working buffers) regardless of chain length
         uint32_t requiredSlices;
-        if (effectStrings.size() == 0) requiredSlices = 1;
-        else if (effectStrings.size() == 1) requiredSlices = pLogicalDevice->supportsMutableFormat ? 1 : 2;
+        if (totalEffectCount == 0) requiredSlices = 1;
+        else if (totalEffectCount == 1) requiredSlices = pLogicalDevice->supportsMutableFormat ? 1 : 2;
+        else if (totalEffectCount == 2) requiredSlices = pLogicalDevice->supportsMutableFormat ? 2 : 3;
         else requiredSlices = 3;
+
         uint32_t fakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 
         pLogicalSwapchain->fakeImages =
