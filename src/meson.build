@@ -92,7 +92,26 @@ relative_pointer_code = custom_target('relative-pointer-private-code',
 
 # Add generated files to sources
 vkBasalt_src += [relative_pointer_header, relative_pointer_code]
-# -----------------------------------
+
+# Requires wayland-protocols >= 1.31 (staging/fractional-scale). Falls back to a local copy in src/protocol/ if the system package is too old.
+fractional_scale_xml_sys = wl_protocol_dir / 'staging/fractional-scale/fractional-scale-v1.xml'
+if run_command('test', '-f', fractional_scale_xml_sys, check: false).returncode() == 0
+    fractional_scale_xml = fractional_scale_xml_sys
+else
+    fractional_scale_xml = meson.current_source_dir() / 'protocol' / 'fractional-scale-v1.xml'
+endif
+
+fractional_scale_header = custom_target('fractional-scale-client-header',
+  input: fractional_scale_xml,
+  output: 'fractional-scale-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
+
+fractional_scale_code = custom_target('fractional-scale-private-code',
+  input: fractional_scale_xml,
+  output: 'fractional-scale-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
+
+vkBasalt_src += [fractional_scale_header, fractional_scale_code]
 
 conf_paths = configuration_data()
 conf_paths.set_quoted('SYSCONFDIR', join_paths(get_option('prefix'), get_option('sysconfdir')))

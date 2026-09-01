@@ -1,9 +1,7 @@
 #include "keyboard_input_wayland.hpp"
-#include "logger.hpp"
+
 #include "relative-pointer-unstable-v1-client-protocol.h"
-#include <cfloat>
-#include <cstdint>
-#include <string>
+#include "fractional-scale-v1-client-protocol.h"
 #include <wayland-client-core.h>
 #include <wayland-client-protocol.h>
 #include <wayland-util.h>
@@ -11,15 +9,21 @@
 #include <xkbcommon/xkbcommon.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <fstream>
-#include <cstdlib>
+#include <imgui.h>
 
 #include <cstring>
 #include <set>
 #include <map>
 #include <vector>
 #include <utility>
-#include <imgui.h>
+#include <fstream>
+#include <cstdlib>
+#include <cfloat>
+#include <cstdint>
+#include <string>
+
+#include "keyboard_input.hpp"
+#include "logger.hpp"
 
 #ifdef wl_array_for_each
 #undef wl_array_for_each
@@ -50,15 +54,21 @@ namespace vkBasalt
         bool mouse_down[5] = {false, false, false, false, false};
         float mouse_wheel = 0.0f;
         bool mouse_valid = false;
+        bool pointer_locked = false;  // True when game has locked cursor (FPS mode)
 
         std::vector<uint32_t> typed_chars;
         std::vector<std::pair<xkb_keysym_t, bool>> key_events; // (keysym, is_pressed)
         struct zwp_relative_pointer_manager_v1* relative_manager = nullptr;
         struct zwp_relative_pointer_v1* relative_pointer = nullptr;
+        struct wp_fractional_scale_manager_v1* fractional_manager = nullptr;
+        struct wp_fractional_scale_v1* fractional_scale = nullptr;
+        float fractional_scale_value = 0.0f; // 0 = not yet received from compositor
 
         ~wayland_display()
         {
             wl_pressed_keys.clear();
+            if (fractional_scale) wp_fractional_scale_v1_destroy(fractional_scale);
+            if (fractional_manager) wp_fractional_scale_manager_v1_destroy(fractional_manager);
             if (relative_pointer) zwp_relative_pointer_v1_destroy(relative_pointer);
             if (relative_manager) zwp_relative_pointer_manager_v1_destroy(relative_manager);
             for (auto* out : outputs) {
@@ -76,7 +86,7 @@ namespace vkBasalt
 
     static std::map<struct wl_display *, wayland_display> displays;
 
-static int   g_outputScale = 1; // Tracks the maximum scale across all displays
+    static int   g_outputScale = 1; // Tracks the maximum scale across all displays
 
     // wl_output listener for integer scale fallback
     static void wl_output_geometry(void*, struct wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*, int32_t) {}
@@ -93,87 +103,36 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         wl_output_scale, wl_output_name, wl_output_description
     };
 
-    static float detectScaleFromEnv() {
-        const char* qtScale = std::getenv("QT_SCALE_FACTOR");
-        if (qtScale) {
-            float s = (float)std::atof(qtScale);
-            if (s >= 0.5f && s <= 5.0f) return s;
-        }
-        const char* gdkScale = std::getenv("GDK_SCALE");
-        if (gdkScale) {
-            float s = (float)std::atof(gdkScale);
-            const char* gdkDpi = std::getenv("GDK_DPI_SCALE");
-            if (gdkDpi) s *= (float)std::atof(gdkDpi);
-            if (s >= 0.5f && s <= 5.0f) return s;
-        }
-        return 0.0f; // not detected
-    }
-
-    static float detectScaleFromKDE() {
-        const char* home = std::getenv("HOME");
-        if (!home) return 0.0f;
-        std::string homeStr(home);
-
-        // Try multiple KDE config locations
-        std::vector<std::string> paths = {
-            homeStr + "/.config/kdeglobals",
-            homeStr + "/.config/kwinrc",
-        };
-
-        for (const auto& path : paths) {
-            std::ifstream f(path);
-            if (!f.good()) continue;
-            std::string line;
-            while (std::getline(f, line)) {
-                // KDE Plasma 5
-                if (line.rfind("ScreenScaleFactors=", 0) == 0) {
-                    std::string val = line.substr(19);
-                    size_t comma = val.find(',');
-                    if (comma != std::string::npos) val = val.substr(0, comma);
-                    float s = (float)std::atof(val.c_str());
-                    if (s >= 0.5f && s <= 5.0f) {
-                        Logger::debug("Detected scale from " + path + ": " + std::to_string(s));
-                        return s;
-                    }
-                }
-                // KDE Plasma 6
-                if (line.rfind("ScaleFactor=", 0) == 0) {
-                    std::string val = line.substr(12);
-                    float s = (float)std::atof(val.c_str());
-                    if (s >= 0.5f && s <= 5.0f) {
-                        Logger::debug("Detected scale from " + path + " (ScaleFactor): " + std::to_string(s));
-                        return s;
-                    }
-                }
-                if (line.rfind("Scale=", 0) == 0) {
-                    std::string val = line.substr(6);
-                    float s = (float)std::atof(val.c_str());
-                    if (s >= 0.5f && s <= 5.0f) {
-                        Logger::debug("Detected scale from " + path + " (Scale): " + std::to_string(s));
-                        return s;
-                    }
-                }
+    float getWaylandUIScale() {
+        // Compositor reported fractional scale (dynamic, always check first)
+        for (const auto& [display, wayland] : displays) {
+            if (wayland.fractional_scale_value > 0.5f) {
+                Logger::debug("Using compositor fractional scale: " + std::to_string(wayland.fractional_scale_value));
+                return wayland.fractional_scale_value;
             }
         }
 
-        // Try xrdb / Xft.dpi via X11 (KDE sets this even under Wayland)
-        const char* display = std::getenv("DISPLAY");
-        if (display && display[0] != '\0') {
-            // We can't call XOpenDisplay here (no X11 headers in this file), but getX11UIScale() in imgui_overlay.cpp handles this.
-            Logger::debug("KDE scale not found in config files, will try Xft.dpi");
+        // Cache for static fallback sources (Env, KDE, wl_output integer scale). The display scale does not change during a swapchain rebuild, so we detect it once and cache it to prevent transient detection failures from resetting the scale to 1.0.
+        static float s_cachedFallbackScale = -1.0f;
+        if (s_cachedFallbackScale > 0.5f) {
+            return s_cachedFallbackScale;
         }
 
-        return 0.0f;
-    }
+        float sharedScale = getScaleFromEnvAndKDE();
+        if (sharedScale > 0.0f) {
+            s_cachedFallbackScale = sharedScale;
+            return sharedScale;
+        }
 
-    float getWaylandUIScale() {
-        float envScale = detectScaleFromEnv();
-        if (envScale > 0.0f) return envScale;
-        float kdeScale = detectScaleFromKDE();
-        if (kdeScale > 0.0f) return kdeScale;
-        if (g_outputScale > 1) return (float)g_outputScale;
+        if (g_outputScale > 1) {
+            s_cachedFallbackScale = (float)g_outputScale;
+            return s_cachedFallbackScale;
+        }
+
+        s_cachedFallbackScale = 1.0f;
         return 1.0f;
     }
+
     bool  isWaylandInputActive() { return !displays.empty(); }
 
     // Relative pointer listener provides mouse deltas during pointer lock
@@ -189,6 +148,17 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
 
     static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {
         relative_pointer_motion
+    };
+
+    // Fractional scale listener: compositor tells us the preferred scale (x120)
+    static void fractional_scale_preferred(void* data, struct wp_fractional_scale_v1*, uint32_t scale) {
+        wayland_display* wayland = (wayland_display*)data;
+        wayland->fractional_scale_value = (float)scale / 120.0f;
+        Logger::debug("wp_fractional_scale preferred_scale: " + std::to_string(wayland->fractional_scale_value));
+    }
+
+    static const struct wp_fractional_scale_v1_listener fractional_scale_listener = {
+        fractional_scale_preferred
     };
 
     static void seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps);
@@ -269,18 +239,11 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
     static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial, struct wl_surface *surface) {
         wayland_display *wayland = (wayland_display *)data;
         if (wayland) {
-            if (ImGui::GetCurrentContext()) {
-                ImGuiIO& io = ImGui::GetIO();
-                for (auto keysym : wayland->wl_pressed_keys) {
-                    ImGuiKey imguiKey = keysymToImGuiKey(keysym);
-                    if (imguiKey != ImGuiKey_None) {
-                        io.AddKeyEvent(imguiKey, false);
-                    }
-                }
+            // Queue release events for ordered processing via feedWaylandKeyEventsToImGui instead of calling ImGui directly. This prevents dropped key releases and ensures events are processed in the correct frame.
+            for (auto keysym : wayland->wl_pressed_keys) {
+                wayland->key_events.push_back({keysym, false});
             }
             wayland->wl_pressed_keys.clear();
-            wayland->key_events.clear();
-            wayland->typed_chars.clear();
         }
     }
 
@@ -317,11 +280,14 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         wayland->mouse_x = wl_fixed_to_double(surface_x);
         wayland->mouse_y = wl_fixed_to_double(surface_y);
         wayland->mouse_valid = true;
+        wayland->pointer_locked = false;
     }
     
     static void wl_pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial, struct wl_surface *surface) {
         wayland_display *wayland = (wayland_display *)data;
         wayland->mouse_valid = false;
+        // If relative pointer is active, the game locked the cursor (FPS mode). Otherwise the pointer simply left the surface (user moved to another window).
+        wayland->pointer_locked = (wayland->relative_pointer != nullptr);
     }
     
     static void wl_pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
@@ -402,12 +368,17 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
             wl_proxy_set_queue((struct wl_proxy*)wayland->relative_manager, wayland->queue);
             Logger::debug("Bound relative_pointer_manager");
         }
-
         if (strcmp(interface, wl_output_interface.name) == 0) {
             struct wl_output* output = (struct wl_output*)wl_registry_bind(registry, name, &wl_output_interface, version < 4 ? version : 4);
             wl_proxy_set_queue((struct wl_proxy*)output, wayland->queue);
             wl_output_add_listener(output, &output_listener, nullptr);
             wayland->outputs.push_back(output);
+        }
+        if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
+            wayland->fractional_manager = (struct wp_fractional_scale_manager_v1*)wl_registry_bind(
+                registry, name, &wp_fractional_scale_manager_v1_interface, 1);
+            wl_proxy_set_queue((struct wl_proxy*)wayland->fractional_manager, wayland->queue);
+            Logger::debug("Bound wp_fractional_scale_manager_v1");
         }
     }
 
@@ -415,18 +386,18 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
 
     static bool g_registryInitialized = false;
     static struct wl_display* g_pendingDisplay = nullptr;
+    static struct wl_surface* g_pendingSurface = nullptr;
 
     void initWaylandInput(void* display_ptr, void* surface_ptr) {
-        (void)surface_ptr;
         struct wl_display *display = (struct wl_display *)display_ptr;
+        struct wl_surface *surface = (struct wl_surface *)surface_ptr;
         if (!display || displays.find(display) != displays.end()) return;
         
-        // Only store the display pointer. Don't create queue or do any Wayland operations here.
-        // The game's event loop may not be ready. Everything is deferred to ensureWaylandRegistryBound() which runs
-        // on the first QueuePresentKHR when the game is fully initialized.
+        // Only store pointers. Don't create queue or do any Wayland operations here. The game's event loop may not be ready. Everything is deferred to ensureWaylandRegistryBound() which runs on the first QueuePresentKHR when the game is fully initialized.
         displays[display].ref = 1;
         displays[display].queue = nullptr;
         g_pendingDisplay = display;
+        g_pendingSurface = surface;
         g_registryInitialized = false;
         
         Logger::debug("Wayland input: display registered, deferring all Wayland setup.");
@@ -454,7 +425,19 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         wl_display_roundtrip_queue(display, wayland.queue);
         wl_registry_destroy(registry);
         
-        Logger::debug("Wayland registry bound. Output scale: " + std::to_string(g_outputScale));
+        // Create fractional scale object for the game's surface. The compositor will respond with a preferred_scale event.
+        if (wayland.fractional_manager && g_pendingSurface && !wayland.fractional_scale) {
+            wayland.fractional_scale = wp_fractional_scale_manager_v1_get_fractional_scale(
+                wayland.fractional_manager, g_pendingSurface);
+            wl_proxy_set_queue((struct wl_proxy*)wayland.fractional_scale, wayland.queue);
+            wp_fractional_scale_v1_add_listener(wayland.fractional_scale, &fractional_scale_listener, &wayland);
+            // Roundtrip to receive the preferred_scale event immediately
+            wl_display_roundtrip_queue(display, wayland.queue);
+            Logger::debug("Created wp_fractional_scale_v1 for surface");
+        }
+
+        Logger::debug("Wayland registry bound. Output scale: " + std::to_string(g_outputScale)
+            + (wayland.fractional_scale_value > 0 ? " (fractional: " + std::to_string(wayland.fractional_scale_value) + ")" : ""));
     }
 
     uint32_t convertToKeySymWayland(std::string key) {
@@ -566,12 +549,8 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         for (auto& display_pair : displays) {
             wayland_display& wayland = display_pair.second;
 
-            if (wayland.mouse_valid) {
-                // Normal absolute position (desktop, windowed mode)
-                io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
-            } else {
-                // Pointer is locked. Relative motion deltas are applied in the relative_pointer_motion callback. 
-                // Clamp to screen bounds so the cursor doesn't drift off screen during gameplay.
+            // Clamp to screen bounds only when pointer is locked by the game (FPS mode). Otherwise (valid or left surface), keep last known position without clamping.
+            if (!wayland.mouse_valid && wayland.pointer_locked) {
                 if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0) {
                     float maxX = io.DisplaySize.x / scale;
                     float maxY = io.DisplaySize.y / scale;
@@ -580,8 +559,8 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
                     if (wayland.mouse_x > maxX) wayland.mouse_x = maxX;
                     if (wayland.mouse_y > maxY) wayland.mouse_y = maxY;
                 }
-                io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
             }
+            io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
 
             // Feed buttons unconditionally they still fire during pointer lock
             for (int i = 0; i < 5; i++) io.MouseDown[i] = wayland.mouse_down[i];
@@ -616,6 +595,7 @@ static int   g_outputScale = 1; // Tracks the maximum scale across all displays
         }
         g_registryInitialized = false;
         g_pendingDisplay = nullptr;
+        g_pendingSurface = nullptr;
         Logger::debug("Wayland input shut down.");
     }
 } // namespace vkBasalt
