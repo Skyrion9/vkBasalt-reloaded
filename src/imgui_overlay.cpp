@@ -531,8 +531,8 @@ namespace vkBasalt {
         }
         
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 4 : m_activeTab - 1;
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 4) ? 0 : m_activeTab + 1;
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 5 : m_activeTab - 1;
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 5) ? 0 : m_activeTab + 1;
         }
 
         // Footer height = separator + single button row + 2 legend lines.
@@ -553,28 +553,41 @@ namespace vkBasalt {
                 drawShadersTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Settings", nullptr, (pendingTab == 1) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+            if (ImGui::BeginTabItem("Auto HDR", nullptr, (pendingTab == 1) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 1;
+                drawAutoHdrTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Stats", nullptr, (pendingTab == 2) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 2;
+                drawStatsTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Settings", nullptr, (pendingTab == 3) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 3;
                 drawSettingsTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Presets", nullptr, (pendingTab == 2) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 2;
+            if (ImGui::BeginTabItem("Presets", nullptr, (pendingTab == 4) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 4;
                 drawPresetsTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Style", nullptr, (pendingTab == 3) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 3;
+            if (ImGui::BeginTabItem("Style", nullptr, (pendingTab == 5) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 5;
                 drawStyleTab();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Stats", nullptr, (pendingTab == 4) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 4;
-                drawStatsTab();
                 ImGui::EndTabItem();
             }
             ImGui::PopStyleColor();
             ImGui::EndTabBar();
+
+            // Auto HDR tab owns the scopes. Enable on entry, disable on exit.
+            if (m_activeTab == 1 && m_lastScopeTab != 1) {
+                setScopesEnabled(true);
+            } else if (m_activeTab != 1 && m_lastScopeTab == 1) {
+                setScopesEnabled(false);
+            }
+            m_lastScopeTab = m_activeTab;
         }
         ImGui::EndChild();
 
@@ -619,11 +632,35 @@ namespace vkBasalt {
                 ImGui::SameLine();
                 ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "(unsaved)");
             }
-        } else if (m_activeTab == 1) { // Settings tab
+        } else if (m_activeTab == 3) { // Settings tab
             if (ImGui::Button("Save Settings & Apply")) {
                 m_pConfig->savePerGame();
                 m_isOpen = false;
                 g_triggerHotReload = true;
+            }
+        } else if (m_activeTab == 1) { // Auto HDR tab
+            if (ImGui::Button("Apply HDR Changes")) {
+                bool perGameCalib = m_pConfig->hasPerGameOption("sdrWhitePointNits") ||
+                                    m_pConfig->hasPerGameOption("hdrPeakNits") ||
+                                    m_pConfig->hasPerGameOption("hdrToneMapper");
+                if (perGameCalib) {
+                    m_pConfig->savePerGame();
+                } else {
+                    m_pConfig->saveGlobal();
+                    m_pConfig->savePerGame();
+                }
+                m_hasUnsavedChanges = false;
+                // Auto HDR requires a swapchain reset+format mutation (SDR->HDR or HDR->SDR). Overlay state is preserved via OverlayManager::m_lastOverlayOpenState.
+                if (m_pSwapchain) {
+                    m_pSwapchain->forceSwapchainRebuild = true;
+                }
+            }
+            if (m_hasUnsavedChanges) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "(pending swapchain rebuild)");
+            } else {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Sliders apply in real-time");
             }
         }
 
