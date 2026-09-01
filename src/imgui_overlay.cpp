@@ -535,11 +535,11 @@ namespace vkBasalt {
             if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 5) ? 0 : m_activeTab + 1;
         }
 
-        // Footer height = separator + single button row + 2 legend lines.
+        // Footer height = separator + single button row + bypass status line + 2 legend lines.
         float footerHeight = 1.0f                                      // separator line
             + style.ItemSpacing.y * 2                                  // spacing around separator
             + ImGui::GetFrameHeightWithSpacing()                       // button row
-            + (ImGui::GetTextLineHeightWithSpacing() * 2)              // 2 legend lines
+            + (ImGui::GetTextLineHeightWithSpacing() * 3)              // bypass status + 2 legend lines
             + style.ItemSpacing.y;                                     // bottom padding
 
         ImGui::BeginChild("##content_area", ImVec2(0, -footerHeight), false);
@@ -686,9 +686,11 @@ namespace vkBasalt {
         std::string kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         std::string kbScreenshot = m_pConfig->getOption<std::string>("screenshotKey", "Delete");
-        // Show global effects state in legend
+        // Show global effects state in legend (always reserve the line height to prevent layout shift)
         if (!g_effectsEnabled) {
             ImGui::TextColored(ImVec4(0.9f, 0.4f, 0.3f, 1.0f), "Effects are BYPASSED (press %s to re-enable)", kbToggle.c_str());
+        } else {
+            ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
         }
         ImGui::Text("[Tab/Arrows] Navigate    [Enter] Edit    [Left/Right] Adjust    [Shift+Left/Right] Switch tab    [/] Search");
         ImGui::Text("[Space] Toggle checkbox    [Esc] Close    [%s] Toggle    [%s] Reload    [%s] Overlay    [%s] Screenshot",
