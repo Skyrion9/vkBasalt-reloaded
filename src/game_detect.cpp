@@ -183,6 +183,28 @@ namespace vkBasalt {
         return "";
     }
 
+    // Extract game name from Wine prefix path. Lutris etc. typically create Wine prefixes in directories named after the game.
+    static std::string getWinePrefixGameName() {
+        const char* winePrefix = std::getenv("WINEPREFIX");
+        if (!winePrefix) return "";
+        std::string prefix(winePrefix);
+        // Remove trailing slashes
+        while (!prefix.empty() && (prefix.back() == '/' || prefix.back() == '\\')) prefix.pop_back();
+        // Walk up to find a meaningful directory name (skip generic names like "pfx", "drive_c")
+        for (int depth = 0; depth < 3; depth++) {
+            size_t slash = prefix.find_last_of('/');
+            if (slash == std::string::npos) break;
+            std::string dirName = prefix.substr(slash + 1);
+            if (!dirName.empty() && dirName != "pfx" && dirName != "prefix" &&
+                dirName != "drive_c" && dirName != "wine" && dirName != "default" &&
+                dirName != "dosdevices") {
+                return dirName;
+            }
+            prefix = prefix.substr(0, slash);
+        }
+        return "";
+    }
+
     struct GameIdentity {
         std::string steamAppId;
         std::string steamName;
@@ -209,14 +231,29 @@ namespace vkBasalt {
         id.exePath = getExePath();
         id.exeName = getExeName(id.exePath);
         id.isWine  = isWineProcess(id.exeName);
-
         if (id.isWine) {
             std::string wineGameExe = findWineGameExe();
             if (!wineGameExe.empty()) {
                 id.exeName = getExeName(wineGameExe);
             }
+            // If the exe name is still a generic Wine process (explorer, wine-preloader, etc.), try to extract the game name from the Wine prefix directory.
+            if (id.exeName.empty() || id.exeName == "explorer" ||
+                id.exeName.find("wine") != std::string::npos ||
+                id.exeName.find("preloader") != std::string::npos) {
+                std::string prefixName = getWinePrefixGameName();
+                if (!prefixName.empty()) {
+                    id.exeName = prefixName;
+                }
+            }
         }
-
+        // If Lutris env vars were not inherited but we detected a Wine prefix name, promote it to a Lutris identity so computeGameId uses the "lutris_" prefix.
+        if (!id.isLutris && !id.isSteam && id.isWine) {
+            std::string prefixName = getWinePrefixGameName();
+            if (!prefixName.empty()) {
+                id.lutrisName = prefixName;
+                id.isLutris = true;
+            }
+        }
         return id;
     }
 
@@ -374,8 +411,15 @@ namespace vkBasalt {
                 Logger::debug("Steam game detected: " + id.steamAppId + " (" + id.steamName + ")");
                 cachedId = "steam_" + id.steamAppId + "_" + id.steamName;
             } else {
-                Logger::debug("Steam game detected: " + id.steamAppId + " (name not found)");
-                cachedId = "steam_" + id.steamAppId;
+                // When non-steam game added to Steam, or Steam game with no manifest. Include the exe name so the config file is human dinstinguishable.
+                std::string readableName = sanitizeName(id.exeName);
+                if (!readableName.empty()) {
+                    Logger::debug("Steam game detected: " + id.steamAppId + " (using exe name: " + readableName + ")");
+                    cachedId = "steam_" + id.steamAppId + "_" + readableName;
+                } else {
+                    Logger::debug("Steam game detected: " + id.steamAppId + " (name not found)");
+                    cachedId = "steam_" + id.steamAppId;
+                }
             }
             return cachedId;
         }
@@ -455,7 +499,6 @@ namespace vkBasalt {
         static bool computed = false;
         if (computed) return cachedName;
         computed = true;
-
         const GameIdentity& id = getGameIdentity();
 
         if (id.isSteam && !id.steamName.empty()) {
@@ -469,7 +512,11 @@ namespace vkBasalt {
             cachedName = id.lutrisName;
             return cachedName;
         }
-
+        // Steam game with no manifest: show exe name instead of raw AppID
+        if (id.isSteam) {
+            cachedName = id.exeName;
+            return cachedName;
+        }
         cachedName = id.exeName;
         return cachedName;
     }
