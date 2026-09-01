@@ -32,12 +32,15 @@ namespace vkBasalt
         bool saveGlobal();
 
         bool savePerGame();
+        bool hasPerGameOption(const std::string& option) const;
+        void removePerGameOption(const std::string& option);
+        bool hasPerGameOverrides() const;
+        std::string getGlobalPath() const { return m_globalPath; }
+        std::string getPerGamePath() const { return m_gamePath; }
+        std::string getGamePath() const { return m_gamePath; }
 
         // Reset per-game vars to global config's.
         void resetToGlobal();
-
-        std::string getPerGamePath() const { return m_gamePath; }
-        std::string getGlobalPath() const { return m_globalPath; }
 
         bool savePreset(const std::string& name);
         bool loadPreset(const std::string& name);
