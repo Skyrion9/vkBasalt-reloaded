@@ -89,7 +89,6 @@ namespace vkBasalt
         float   exposure;
         float   brightness;
         float   contrast;
-        float   sCurveStrength;
         int32_t colorSpaceMode;
     };
 

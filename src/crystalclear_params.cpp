@@ -342,14 +342,8 @@ namespace vkBasalt
             {.key = "crystalclearContrast", .label = "Contrast", .type = ParamType::Float,
             .defaultVal = 0.0, .minVal = -1.0, .maxVal = 1.0, .step = 0.01,
             .category = "Exposure & Contrast",
-            .tooltip = "Linear contrast scaling around the midpoint. Positive values increase contrast, negative values decrease it. Soft-clipped at extremes to preserve detail. Default 0.0.",
+            .tooltip = "Contrast scaling with hermite S-curve midtone shaping. Pushes midtones toward the extremes more aggressively than values already near black/white, creating a natural filmic contrast roll-off. Default 0.2.",
             SPEC(77, contrast)},
-
-            {.key = "crystalclearSCurveStrength", .label = "S-Curve", .type = ParamType::Float,
-            .defaultVal = 0.0, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
-            .category = "Exposure & Contrast",
-            .tooltip = "Hermite S-curve midtone shaping. Pushes midtones toward the extremes more aggressively than values already near black/white, creating a natural filmic contrast roll-off. Default 0.0.",
-            SPEC(78, sCurveStrength)},
 
             // Color & Tone
             {.key = "crystalclearVibrance", .label = "Vibrance", .type = ParamType::Float,

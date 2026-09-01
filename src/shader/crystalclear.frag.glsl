@@ -146,7 +146,6 @@ layout(constant_id = 74) const float bc1FixStrength = 0.3;         // 0.0 = off,
 layout(constant_id = 75) const float exposure = 0.0;               // -2.0 to 2.0 stops
 layout(constant_id = 76) const float brightness = 0.0;             // -0.5 to 0.5 additive lift
 layout(constant_id = 77) const float contrast = 0.0;               // -1.0 to 1.0 linear scale
-layout(constant_id = 78) const float sCurveStrength = 0.0;         // 0.0 to 1.0 hermite midtone push
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
@@ -729,30 +728,21 @@ void main() {
             }
         }
 
-        // phase 10.2: Contrast (linear scale around mid) + S-Curve (hermite midtone push)
-        if (contrast != 0.0 || sCurveStrength > 0.0) {
+        // phase 10.2: Contrast (S-curve based). Positive values apply a hermite S-curve that boosts midtone separation while preserving shadow/highlight detail (zero derivatives at 0 and 1).
+        if (contrast != 0.0) {
             vec3 t = finalColor / hdrNorm;
             vec3 shaped = t;
-            
             vec3 inRange = step(0.0, t) * step(t, vec3(1.0));
-            
-            // S-Curve: built-in smoothstep handles the hermite polynomial and clamping internally. Only apply to [0, 1] range to preserve HDR highlights > 1.0.
-            if (sCurveStrength > 0.0) {
+
+            if (contrast > 0.0) {
+                // S-curve: smoothstep's hermite polynomial (3t² - 2t³) preserves extremes
                 vec3 sCurve = smoothstep(0.0, 1.0, t);
-                shaped = mix(shaped, mix(shaped, sCurve, sCurveStrength), inRange);
+                shaped = mix(shaped, mix(shaped, sCurve, contrast), inRange);
+            } else {
+                // Negative contrast: blend toward neutral gray (flatten image)
+                shaped = mix(shaped, vec3(0.5), -contrast * inRange);
             }
-            
-            // Contrast: scale around 0.5
-            if (contrast != 0.0) {
-                shaped = (shaped - 0.5) * (1.0 + contrast) + 0.5;
-            }
-            
-            // Soft clip: blend into hard clip at extremes for filmic shoulder. Reuses the invariant inRange mask to avoid crushing HDR highlights.
-            vec3 hardClipped = clamp(shaped, 0.0, 1.0);
-            vec3 softMask = smoothstep(0.8, 1.0, abs(shaped - 0.5) * 2.0);
-            vec3 softClipped = mix(shaped, hardClipped, softMask);
-            shaped = mix(shaped, softClipped, inRange);
-            
+
             finalColor = max(shaped, 0.0) * hdrNorm;
         }
 
