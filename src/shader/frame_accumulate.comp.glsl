@@ -24,10 +24,22 @@ void main() {
     vec2 uv = (vec2(pixel) + 0.5) / vec2(pc.width, pc.height);
     vec4 raw = textureLod(inputImage, uv, 0.0);
     
-    vec3 linear = decodeToLinear(raw.rgb);
+    // Explicitly linearize for photometric accuracy. decodeToLinear() skips sRGB to keep effects in gamma space, so we do it manually here.
+    vec3 linear;
+    if (colorSpaceMode == CSP_SDR_SRGB || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
+        linear = srgb_to_linear(raw.rgb);
+    } else {
+        linear = decodeToLinear(raw.rgb);
+    }
 
-    // Luma (Rec. 709)
-    float luma = dot(linear, vec3(0.2126, 0.7152, 0.0722));
+    // Luma coefficients depend on the color space primaries
+    vec3 lumaCoeffs = vec3(0.2126, 0.7152, 0.0722); // Rec.709 / sRGB / scRGB
+    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
+        lumaCoeffs = vec3(0.2627, 0.6780, 0.0593); // Rec.2020
+    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
+        lumaCoeffs = vec3(0.2289, 0.6917, 0.0793); // Display P3 (SMPTE RP 431-2)
+    }
+    float luma = dot(linear, lumaCoeffs);
 
     // Clamp for binning (HDR highlights accumulate at bin 255)
     vec3 clamped = clamp(linear, 0.0, 1.0);
@@ -48,9 +60,19 @@ void main() {
     uint waveY = uint(lumaClamped * 255.0);
     atomicAdd(waveData[waveY * 256u + waveX], 1u);
 
-    // Vectorscope: Cb vs Cr
-    float cb = 0.5 + (linear.b - luma) / 1.8556;
-    float cr = 0.5 + (linear.r - luma) / 1.5748;
+    // Vectorscope: Cb vs Cr (Scaling constants depend on primaries)
+    float cbScale = 1.8556;
+    float crScale = 1.5748;
+    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
+        cbScale = 1.9404; // Rec.2020 Cb scaling
+        crScale = 1.7184; // Rec.2020 Cr scaling
+    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
+        cbScale = 1.8414; // Display P3 Cb scaling (2 * (1 - 0.0793))
+        crScale = 1.5422; // Display P3 Cr scaling (2 * (1 - 0.2289))
+    }
+    
+    float cb = 0.5 + (linear.b - luma) / cbScale;
+    float cr = 0.5 + (linear.r - luma) / crScale;
     cb = clamp(cb, 0.0, 1.0);
     cr = clamp(cr, 0.0, 1.0);
     uint vecX = uint(cb * 255.0);
