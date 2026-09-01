@@ -80,4 +80,8 @@ namespace vkBasalt
     const std::vector<uint32_t> frame_resolve_comp = {
 #include "frame_resolve.comp.h"
     };
+
+    const std::vector<uint32_t> nit_calibration_frag = {
+#include "nit_calibration.frag.h"
+    };
 } // namespace vkBasalt
