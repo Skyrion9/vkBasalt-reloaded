@@ -16,6 +16,7 @@
 #include "overlay_manager.hpp"
 #include "config.hpp"
 #include "format.hpp"
+#include "keyboard_input.hpp"
 
 namespace vkBasalt {
 
@@ -196,13 +197,15 @@ namespace vkBasalt {
             const char* x11Display = getenv("DISPLAY");
             
             std::string displayServer;
-            if (waylandDisplay && x11Display) {
-                // Both present, (game using X11 under Wayland compositor)
-                displayServer = "XWayland";
-            } else if (waylandDisplay) {
+            // Use the actual confirmed input backend instead of guessing from env vars (Proton sets both WAYLAND_DISPLAY and DISPLAY even for native Wayland games)
+            if (isWaylandBackend()) {
                 displayServer = "Wayland";
             } else if (x11Display) {
-                displayServer = "X11";
+                if (waylandDisplay) {
+                    displayServer = "XWayland";
+                } else {
+                    displayServer = "X11";
+                }
             } else {
                 displayServer = "Unknown";
             }
