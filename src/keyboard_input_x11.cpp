@@ -1,11 +1,18 @@
 #include "keyboard_input_x11.hpp"
-#include "logger.hpp"
-#include <X11/X.h>
+
+#include <cstdlib>
 #include <cstdint>
+
+#include <X11/X.h>
 #include <imgui.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
-#include <cstdlib>
+
+// Undefine X11 macros that collide with identifiers in the rest of the codebase (e.g. logger.hpp has an enum member called None, which X11/X.h #defines as 0L)
+#undef None
+
+#include "keyboard_input.hpp"
+#include "logger.hpp"
 
 namespace vkBasalt
 {
@@ -42,15 +49,53 @@ namespace vkBasalt
     }
 
     float getX11UIScale() {
+        // Cache the scale to prevent it from resetting to def during transient display  connection failures in the swapchain rebuild window (e.g., passthrough mode).
+        static float s_cachedScale = -1.0f;
+        if (s_cachedScale > 0.0f) {
+            return s_cachedScale;
+        }
+
+        // Env vars and KDE config files (shared across backends)
+        float sharedScale = getScaleFromEnvAndKDE();
+        if (sharedScale > 0.0f) {
+            s_cachedScale = sharedScale;
+            return sharedScale;
+        }
+
+        // X11 Xft.dpi and physical screen size
         Display* dpy = g_gameDisplay;
         bool own = false;
-        if (!dpy) { dpy = XOpenDisplay(getenv("DISPLAY")); own = true; }
+        if (!dpy) { 
+            const char* disVar = getenv("DISPLAY");
+            if (disVar) dpy = XOpenDisplay(disVar); 
+            own = true; 
+        }
+        
         float scale = 1.0f;
         if (dpy) {
+            // Try XGetDefault (often fails under Wine/Proton because Xrm isn't initialized)
             char* dpi = XGetDefault(dpy, "Xft", "dpi");
-            if (dpi) { float d = (float)std::atof(dpi); if (d > 0.0f) scale = d / 96.0f; }
+            if (dpi) { 
+                float d = (float)std::atof(dpi); 
+                if (d > 0.0f) scale = d / 96.0f; 
+            }
+            
+            // Fallback: calculate DPI from physical screen dimensions
+            if (scale == 1.0f) {
+                int screen = DefaultScreen(dpy);
+                int heightPx = DisplayHeight(dpy, screen);
+                int heightMM = DisplayHeightMM(dpy, screen);
+                if (heightMM > 0) {
+                    double dpiCalc = (double)heightPx / ((double)heightMM / 25.4);
+                    scale = (float)(dpiCalc / 96.0);
+                    // XWayland sometimes reports bogus physical sizes. Clamp to reasonable bounds.
+                    if (scale < 0.5f || scale > 5.0f) scale = 1.0f;
+                }
+            }
             if (own) XCloseDisplay(dpy);
         }
+        
+        s_cachedScale = scale;
         return scale;
     }
 
