@@ -24,6 +24,7 @@
 #include <mutex>
 #include <vector>
 #include <unordered_map>
+#include <chrono>
 #include <string>
 #include <memory>
 #include <cstring>
@@ -79,6 +80,16 @@ namespace vkBasalt
 
     std::mutex globalLock;
     static OverlayManager g_overlayManager;
+
+    // Bypass(effect toggle) VRAM Reclaim Timer State
+    std::chrono::steady_clock::time_point g_effectsDisabledTime;
+    bool g_effectsDisabledTimerActive = false;
+    bool g_vramReclaimedForCurrentBypass = false;
+
+    // Passthrough Mode State (zero effects, no HDR processing)
+    std::chrono::steady_clock::time_point g_passthroughTimerStart;
+    bool g_passthroughTimerActive = false;
+    bool g_passthroughActive = false;
 
 #ifdef _GCC_
     using scoped_lock __attribute__((unused)) = std::lock_guard<std::mutex>;
@@ -584,28 +595,47 @@ namespace vkBasalt
         pLogicalSwapchain->images.resize(pLogicalSwapchain->imageCount);
         pLogicalDevice->vkd.GetSwapchainImagesKHR(device, swapchain, &pLogicalSwapchain->imageCount, pLogicalSwapchain->images.data());
 
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
-        
-        // Account for HDR output effect (Auto HDR or Calibration) when sizing the fake image pool. Must use sourceFormat here, because pLogicalSwapchain->format is already mutated to destFormat (HDR)
-        ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
-        uint32_t totalEffectCount = (uint32_t)effectStrings.size();
-        
-        bool reserveHdrOutput = false;
-        if (srcCsm == ColorSpaceMode::SDR_SRGB) {
-            std::string autoHdr = pConfig->getOption<std::string>("autoHdr", "on");
-            if ((autoHdr == "on" || autoHdr == "true" || autoHdr == "1") && pLogicalSwapchain->autoHdrActive) {
-                reserveHdrOutput = true;
+        // Passthrough mode: return real images directly, skip fake image allocation entirely
+        if (g_passthroughActive) {
+            // Guard: if overlay already exists for this swapchain, just return the real images. Games often call vkGetSwapchainImagesKHR twice (count query + data query).
+            if (g_overlayManager.hasOverlay(swapchain)) {
+                *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
+                std::memcpy(pSwapchainImages, pLogicalSwapchain->images.data(), sizeof(VkImage) * (*pCount));
+                return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
             }
-        } else {
-            std::string hdrMode = pConfig->getOption<std::string>("hdrCalibration", "off");
-            if (hdrMode == "on" || hdrMode == "true" || hdrMode == "1") {
-                reserveHdrOutput = true;
+
+            // Free stale command buffers that reference the now destroyed fake images
+            if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
+                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
+                    pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
+                pLogicalSwapchain->commandBuffersEffect.clear();
             }
+            if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
+                pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
+                    pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
+                pLogicalSwapchain->commandBuffersNoEffect.clear();
+            }
+            pLogicalSwapchain->fakeImages.clear();
+            pLogicalSwapchain->effects.clear();
+            pLogicalSwapchain->computePasses.clear();
+            pLogicalSwapchain->defaultTransfer.reset();
+            pLogicalSwapchain->defaultHdrEffect.reset();
+            pLogicalSwapchain->passthroughEligible = true;
+
+            if (pLogicalSwapchain->semaphores.empty()) {
+                pLogicalSwapchain->semaphores = createSemaphores(pLogicalDevice, pLogicalSwapchain->imageCount);
+            }
+
+            // Init overlay (renders on top of real images)
+            VkFormat overlayFormat = convertToUNORM(pLogicalSwapchain->destFormat);
+            g_overlayManager.initOverlay(pLogicalDevice, pLogicalSwapchain, swapchain, overlayFormat, pConfig.get());
+
+            *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
+            std::memcpy(pSwapchainImages, pLogicalSwapchain->images.data(), sizeof(VkImage) * (*pCount));
+            return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
         }
-        
-        if (reserveHdrOutput) {
-            totalEffectCount += 1;
-        }
+
+        uint32_t totalEffectCount = calculateTotalEffectCount(pConfig.get(), pLogicalSwapchain);
 
         // Ping pong cap at 3 slices (game input + 2 working buffers) regardless of chain length
         uint32_t requiredSlices;
@@ -640,6 +670,91 @@ namespace vkBasalt
                 LogicalDevice* pDev = deviceMap[GetKey(queue)].get();
                 return pDev->vkd.QueuePresentKHR(queue, pPresentInfo);
             }
+
+            // Bypass VRAM Reclaim Timer
+            bool currentlyEnabled = g_effectsEnabled.load();
+            static bool previouslyEnabled = true;
+            if (previouslyEnabled && !currentlyEnabled) {
+                g_effectsDisabledTime = std::chrono::steady_clock::now();
+                g_effectsDisabledTimerActive = true;
+                g_vramReclaimedForCurrentBypass = false;
+            } else if (!previouslyEnabled && currentlyEnabled) {
+                g_effectsDisabledTimerActive = false;
+                // Immediately exit passthrough so the next rebuild creates fake images
+                g_passthroughActive = false;
+                g_passthroughTimerActive = false;
+                if (g_vramReclaimedForCurrentBypass) {
+                    // Pool was shrunk, must grow it back for the full effect chain
+                    for (auto& [sc, lsc] : swapchainMap) {
+                        lsc->forceSwapchainRebuild = true;
+                    }
+                }
+                g_vramReclaimedForCurrentBypass = false;
+            }
+            previouslyEnabled = currentlyEnabled;
+
+        if (g_effectsDisabledTimerActive && !g_vramReclaimedForCurrentBypass) {
+            auto elapsed = std::chrono::steady_clock::now() - g_effectsDisabledTime;
+            if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= 15) {
+                g_vramReclaimedForCurrentBypass = true;
+                
+                // Check if we can go straight to passthrough (0 MB) or if we must keep 1 slice for HDR
+                bool anyHdrOutputNeeded = false;
+                for (auto& [sc, lsc] : swapchainMap) {
+                    if (isHdrOutputNeeded(pConfig.get(), lsc.get())) {
+                        anyHdrOutputNeeded = true; break;
+                    }
+                }
+
+                if (!anyHdrOutputNeeded) {
+                    // No HDR processing needed, go straight to passthrough (0 fake images, 0 MB)
+                    g_passthroughActive = true;
+                    g_passthroughTimerActive = false;
+                } else {
+                    // HDR processing needed, just shrink to 1 slice and reset passthrough timer
+                    g_passthroughTimerActive = false;
+                    g_passthroughActive = false;
+                }
+
+                for (auto& [sc, lsc] : swapchainMap) {
+                    lsc->forceSwapchainRebuild = true;
+                }
+            }
+        }
+
+            // Passthrough Mode Timer
+            bool anyPassthroughEligible = true;
+            for (auto& [sc, lsc] : swapchainMap) {
+                if (!lsc->passthroughEligible) {
+                    anyPassthroughEligible = false;
+                    break;
+                }
+            }
+
+            if (anyPassthroughEligible && !g_passthroughActive) {
+                if (!g_passthroughTimerActive) {
+                    g_passthroughTimerStart = std::chrono::steady_clock::now();
+                    g_passthroughTimerActive = true;
+                }
+                auto elapsed = std::chrono::steady_clock::now() - g_passthroughTimerStart;
+                if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= 15) {
+                    g_passthroughActive = true;
+                    g_passthroughTimerActive = false;
+                    for (auto& [sc, lsc] : swapchainMap) {
+                        lsc->forceSwapchainRebuild = true;
+                    }
+                }
+            } else if (!anyPassthroughEligible) {
+                g_passthroughTimerActive = false;
+                // Don't undo passthrough if the bypass timer just activated it. passthroughEligible hasn't been updated yet (buildEffectChain hasn't run), but the bypass timer already decided passthrough is correct.
+                if (g_passthroughActive && !g_vramReclaimedForCurrentBypass) {
+                    g_passthroughActive = false;
+                    for (auto& [sc, lsc] : swapchainMap) {
+                        lsc->forceSwapchainRebuild = true;
+                    }
+                }
+            }
+
             pLogicalDevice = deviceMap[GetKey(queue)];
             localSwapchains.reserve(pPresentInfo->swapchainCount);
             for (unsigned int i = 0; i < pPresentInfo->swapchainCount; i++) {
@@ -689,6 +804,44 @@ namespace vkBasalt
             }
             if (!pLogicalSwapchain) continue;
 
+            // Passthrough mode: no effect chain, just forward semaphore for overlay
+            if (g_passthroughActive) {
+                // Handle forced rebuild (e.g., user toggled effects back on, or passthrough just activated)
+                if (pLogicalSwapchain->forceSwapchainRebuild) {
+                    forceOutOfDate = true;
+                    pLogicalSwapchain->forceSwapchainRebuild = false;
+                    // Still present something valid: forward the semaphore
+                    VkSubmitInfo forwardSubmit = {};
+                    forwardSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                    forwardSubmit.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
+                    forwardSubmit.pWaitSemaphores = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
+                    forwardSubmit.pWaitDstStageMask = i == 0 ? waitStages : nullptr;
+                    forwardSubmit.commandBufferCount = 0;
+                    forwardSubmit.signalSemaphoreCount = 1;
+                    forwardSubmit.pSignalSemaphores = &(pLogicalSwapchain->semaphores[index]);
+                    pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &forwardSubmit, VK_NULL_HANDLE);
+                    presentSemaphores[presentSemCount++] = pLogicalSwapchain->semaphores[index];
+                    continue;
+                }
+
+                VkSubmitInfo forwardSubmit = {};
+                forwardSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                forwardSubmit.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
+                forwardSubmit.pWaitSemaphores = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
+                forwardSubmit.pWaitDstStageMask = i == 0 ? waitStages : nullptr;
+                forwardSubmit.commandBufferCount = 0; // Just semaphore forwarding
+                forwardSubmit.signalSemaphoreCount = 1;
+                forwardSubmit.pSignalSemaphores = &(pLogicalSwapchain->semaphores[index]);
+                pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &forwardSubmit, VK_NULL_HANDLE);
+                presentSemaphores[presentSemCount++] = pLogicalSwapchain->semaphores[index];
+
+                // Overlay still renders on top of the game's direct render
+                if (g_overlayManager.renderOverlay(pLogicalDevice.get(), pLogicalSwapchain, swapchain, index)) {
+                    presentSemaphores[presentSemCount - 1] = g_overlayManager.getOverlaySemaphore(swapchain, index);
+                }
+                continue;
+            }
+
             // If the effect chain grew dynamically submit the fallback and signal OUT_OF_DATE
             if (pLogicalSwapchain->forceSwapchainRebuild) {
                 forceOutOfDate = true;
@@ -699,14 +852,21 @@ namespace vkBasalt
                 submitInfo.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
                 submitInfo.pWaitSemaphores = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
                 submitInfo.pWaitDstStageMask = i == 0 ? waitStages : nullptr;
-                submitInfo.commandBufferCount = 1;
-                submitInfo.pCommandBuffers = &(pLogicalSwapchain->commandBuffersNoEffect[index]);
                 submitInfo.signalSemaphoreCount = 1;
                 submitInfo.pSignalSemaphores = &(pLogicalSwapchain->semaphores[index]);
 
+                // Coming from passthrough: no command buffers exist, just forward the semaphore
+                if (pLogicalSwapchain->commandBuffersNoEffect.empty() ||
+                    index >= pLogicalSwapchain->commandBuffersNoEffect.size()) {
+                    submitInfo.commandBufferCount = 0;
+                } else {
+                    submitInfo.commandBufferCount = 1;
+                    submitInfo.pCommandBuffers = &(pLogicalSwapchain->commandBuffersNoEffect[index]);
+                }
+
                 pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
                 presentSemaphores[presentSemCount++] = pLogicalSwapchain->semaphores[index];
-                continue; 
+                continue;
             }
 
             if (g_effectsEnabled.load()) {
