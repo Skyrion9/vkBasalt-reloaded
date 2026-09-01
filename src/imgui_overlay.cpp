@@ -29,6 +29,11 @@
 
 namespace vkBasalt {
 
+    // Static cache for resolved scales. Survives overlay destruction/recreation during swapchain rebuilds. Once a valid scale is detected or explicitly set by the user.
+    static float s_cachedCursorScale = -1.0f;
+    static float s_cachedUiScale     = -1.0f;
+    static float s_cachedFontScale   = -1.0f;
+
     VkDescriptorPool ImGuiOverlay::s_descriptorPool = VK_NULL_HANDLE;
     int ImGuiOverlay::s_instanceCount = 0;
 
@@ -137,6 +142,55 @@ namespace vkBasalt {
         m_imageViews.resize(m_pSwapchain->imageCount, VK_NULL_HANDLE);
         m_framebuffers.resize(m_pSwapchain->imageCount, VK_NULL_HANDLE);
 
+        // Scale detection helper (always available, not tied to context creation)
+        auto detectScale = [&]() -> float {
+            float s = 1.0f;
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+            if (getenv("WAYLAND_DISPLAY") && isWaylandInputActive()) {
+                s = getWaylandUIScale();
+            }
+            if (s <= 1.001f) {
+                float x11s = getX11UIScale();
+                if (x11s > s) s = x11s;
+            }
+#else
+            s = getX11UIScale();
+#endif
+            return (s >= 0.5f) ? s : 1.0f;
+        };
+
+        // Resolve a scale value: explicit config > cached > auto-detect > fallback. Caches the result so it survives overlay destruction during swapchain rebuilds.
+        auto resolveScale = [&](float configVal, float& cache, float fallback) -> float {
+            if (configVal > 0.0f) { cache = configVal; return configVal; }
+            if (cache > 0.0f)     { return cache; }
+            float detected = detectScale();
+            cache = (detected > 0.0f) ? detected : fallback;
+            return cache;
+        };
+
+        // Resolve scales always (each new overlay instance needs correct values, regardless of whether the ImGui context already exists)
+        float cursorCfg = m_pConfig->getOption<float>("cursorScale", -1.0f);
+        if (cursorCfg < 0.0f) cursorCfg = m_pConfig->getOption<float>("overlayScale", 0.0f); // backward compat
+        m_cursorScale = resolveScale(cursorCfg, s_cachedCursorScale, 1.0f);
+        Logger::debug("cursorScale: " + std::to_string(m_cursorScale));
+
+        float uiCfg = m_pConfig->getOption<float>("uiScale", 0.0f);
+        m_uiScale = resolveScale(uiCfg, s_cachedUiScale, 1.0f);
+        Logger::debug("uiScale: " + std::to_string(m_uiScale));
+
+        // Font Scale is an additional multiplier on top of uiScale. 0 = default 1.1
+        float fontCfg = m_pConfig->getOption<float>("fontScale", 0.0f);
+        if (fontCfg > 0.0f) {
+            m_fontScale = fontCfg;
+            s_cachedFontScale = fontCfg;
+        } else if (s_cachedFontScale > 0.0f) {
+            m_fontScale = s_cachedFontScale;
+        } else {
+            m_fontScale = 1.1f;
+            s_cachedFontScale = 1.1f;
+        }
+        Logger::debug("fontScale: " + std::to_string(m_fontScale));
+
         if (!ImGui::GetCurrentContext()) {
             Logger::debug("initImGui: Creating ImGui Context...");
             IMGUI_CHECKVERSION();
@@ -145,43 +199,7 @@ namespace vkBasalt {
             io.IniFilename = nullptr;
             io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-                     // Scale detection helper
-         auto detectScale = [&]() -> float {
-             float s = 1.0f;
-#ifdef VK_USE_PLATFORM_WAYLAND_KHR
-             if (getenv("WAYLAND_DISPLAY") && isWaylandInputActive()) {
-                 s = getWaylandUIScale();
-             }
-             if (s <= 1.001f) {
-                 float x11s = getX11UIScale();
-                 if (x11s > s) s = x11s;
-             }
-#else
-             s = getX11UIScale();
-#endif
-             return (s >= 0.5f) ? s : 1.0f;
-         };
-
-            // Cursor Area Scale ONLY affects mouse coordinate transformation
-            float cursorScale = m_pConfig->getOption<float>("cursorScale", -1.0f);
-            if (cursorScale < 0.0f) cursorScale = m_pConfig->getOption<float>("overlayScale", 0.0f); // backward compat
-            if (cursorScale <= 0.0f) cursorScale = detectScale();
-            m_cursorScale = cursorScale;
-            Logger::debug("cursorScale: " + std::to_string(m_cursorScale));
-
-            // UI Scale affects element sizes, padding, spacing (NOT mouse)
-            float uiScale = m_pConfig->getOption<float>("uiScale", 0.0f);
-            if (uiScale <= 0.0f) uiScale = detectScale();
-            m_uiScale = uiScale;
-            Logger::debug("uiScale: " + std::to_string(m_uiScale));
-
-            // Font Scale additional multiplier on top of uiScale for fonts only
-            float fontScale = m_pConfig->getOption<float>("fontScale", 0.0f);
-            if (fontScale <= 0.0f) fontScale = 1.0f;
-            m_fontScale = fontScale;
-            Logger::debug("fontScale: " + std::to_string(m_fontScale));
-
-            // Apply UI scale to padding/spacing/widget sizes
+            // Apply UI scale to padding/spacing/widget sizes (only on context creation)
             if (m_uiScale > 0.5f) {
                 ImGui::GetStyle().ScaleAllSizes(m_uiScale);
             }
@@ -195,63 +213,62 @@ namespace vkBasalt {
             }
 
             applyThemeFromConfig(m_pConfig);
-        }
-        
-        if (!s_descriptorPool) {
-            Logger::debug("initImGui: Creating Descriptor Pool...");
-            VkDescriptorPoolSize pool_sizes[] = {
-                { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-                { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-                { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-            };
-            VkDescriptorPoolCreateInfo pool_info = {};
-            pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-            pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-            pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
-            pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
-            pool_info.pPoolSizes = pool_sizes;
-            m_pDevice->vkd.CreateDescriptorPool(m_pDevice->device, &pool_info, nullptr, &s_descriptorPool);
-        }
-        
-        ImGuiIO& io = ImGui::GetIO();
-        if (!io.BackendRendererUserData) {
-            // Cache memory properties for ImGui to avoid loader PID checks
-            ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
-            Logger::debug("initImGui: Loading ImGui Vulkan functions via layer dispatch...");
-            
-            // Force ImGui to use vkBasalt's dispatch tables. If we don't do this, ImGui calls global libvulkan.so functions directly,
-            // which crashes because the VkPhysicalDevice handle is wrapped by the layer chain.
-            auto loader_func = [](const char* function_name, void* user_data) -> PFN_vkVoidFunction {
-                LogicalDevice* dev = static_cast<LogicalDevice*>(user_data);
-                if (!dev || dev->device == VK_NULL_HANDLE) return nullptr;
-                PFN_vkVoidFunction func = dev->vkd.GetDeviceProcAddr(dev->device, function_name);
-                if (!func) {
-                    func = dev->vki.GetInstanceProcAddr(dev->instance, function_name);
-                }
-                return func;
-            };
-            ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1, loader_func, m_pDevice);
 
-            Logger::debug("initImGui: Calling ImGui_ImplVulkan_Init...");
-            ImGui_ImplVulkan_InitInfo init_info = {};
-            init_info.Instance = m_pDevice->instance;
-            init_info.PhysicalDevice = m_pDevice->physicalDevice;
-            init_info.Device = m_pDevice->device;
-            init_info.QueueFamily = m_pDevice->queueFamilyIndex;
-            init_info.Queue = m_pDevice->queue;
-            init_info.DescriptorPool = s_descriptorPool;
+            if (!s_descriptorPool) {
+                Logger::debug("initImGui: Creating Descriptor Pool...");
+                VkDescriptorPoolSize pool_sizes[] = {
+                    { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+                    { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+                };
+                VkDescriptorPoolCreateInfo pool_info = {};
+                pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+                pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+                pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
+                pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
+                pool_info.pPoolSizes = pool_sizes;
+                m_pDevice->vkd.CreateDescriptorPool(m_pDevice->device, &pool_info, nullptr, &s_descriptorPool);
+            }
             
-            init_info.PipelineInfoMain.RenderPass = m_renderPass;
-            init_info.PipelineInfoMain.Subpass = 0;
-            init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-            
-            init_info.MinImageCount = 2;
-            init_info.ImageCount = std::max(2u, m_pSwapchain->imageCount); 
-            
-            ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
-            ImGui_ImplVulkan_Init(&init_info);
-            Logger::debug("initImGui: ImGui_ImplVulkan_Init returned successfully!");
+            if (!io.BackendRendererUserData) {
+                // Cache memory properties for ImGui to avoid loader PID checks
+                ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
+                Logger::debug("initImGui: Loading ImGui Vulkan functions via layer dispatch...");
+                
+                // Force ImGui to use vkBasalt's dispatch tables. If we don't do this, ImGui calls global libvulkan.so functions directly,
+                // which crashes because the VkPhysicalDevice handle is wrapped by the layer chain.
+                auto loader_func = [](const char* function_name, void* user_data) -> PFN_vkVoidFunction {
+                    LogicalDevice* dev = static_cast<LogicalDevice*>(user_data);
+                    if (!dev || dev->device == VK_NULL_HANDLE) return nullptr;
+                    PFN_vkVoidFunction func = dev->vkd.GetDeviceProcAddr(dev->device, function_name);
+                    if (!func) {
+                        func = dev->vki.GetInstanceProcAddr(dev->instance, function_name);
+                    }
+                    return func;
+                };
+                ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1, loader_func, m_pDevice);
+
+                Logger::debug("initImGui: Calling ImGui_ImplVulkan_Init...");
+                ImGui_ImplVulkan_InitInfo init_info = {};
+                init_info.Instance = m_pDevice->instance;
+                init_info.PhysicalDevice = m_pDevice->physicalDevice;
+                init_info.Device = m_pDevice->device;
+                init_info.QueueFamily = m_pDevice->queueFamilyIndex;
+                init_info.Queue = m_pDevice->queue;
+                init_info.DescriptorPool = s_descriptorPool;
+                
+                init_info.PipelineInfoMain.RenderPass = m_renderPass;
+                init_info.PipelineInfoMain.Subpass = 0;
+                init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+                
+                init_info.MinImageCount = 2;
+                init_info.ImageCount = std::max(2u, m_pSwapchain->imageCount); 
+                
+                ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
+                ImGui_ImplVulkan_Init(&init_info);
+                Logger::debug("initImGui: ImGui_ImplVulkan_Init returned successfully!");
+            }
         }
 
         m_isInitialized = true;
@@ -734,11 +751,11 @@ namespace vkBasalt {
         }
         if (m_isOpen) {
             m_justOpened = true;
-    #ifdef VK_USE_PLATFORM_WAYLAND_KHR
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
             if (getenv("WAYLAND_DISPLAY") && isWaylandInputActive()) {
                 clearWaylandInputQueues();
             }
-    #endif
+#endif
         }
         // MouseDrawCursor is enforced per-frame in processFrame(). When closing, explicitly disable so the game regains normal cursor behavior.
         if (!m_isOpen && ImGui::GetCurrentContext()) {
