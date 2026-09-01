@@ -49,9 +49,6 @@ namespace vkBasalt {
             overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
             screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
             
-            // On config reload, respect enableOnLaunch from the new config
-            g_effectsEnabled = pConfig->getOption<bool>("enableOnLaunch", true);
-            
             // Sync caches to prevent the refresh block below from desync
             cachedToggleKey  = pConfig->getOption<std::string>("toggleKey", "Insert");
             cachedReloadKey  = pConfig->getOption<std::string>("reloadConfigKey", "End");
