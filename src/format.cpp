@@ -260,23 +260,36 @@ namespace vkBasalt
 
     ColorSpaceMode getColorSpaceMode(VkFormat format, VkColorSpaceKHR colorSpace)
     {
-        // HDR10 / PQ (ST 2084) - Covers HDR10, HDR12, and Dolby Vision base layers
+        // 1. Explicit Color Spaces (Check to prevent format-only fallbacks from shadowing wide gamuts)
         if (colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT || 
             colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT) {
             return ColorSpaceMode::HDR10_PQ;
         }
-        // HLG (Hybrid Log-Gamma)
         if (colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT) {
             return ColorSpaceMode::HDR_HLG;
         }
-        // scRGB / Extended Linear Float
-        if (colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ||
-            format == VK_FORMAT_R16G16B16A16_SFLOAT ||
+        if (colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT) {
+            return ColorSpaceMode::HDR_BT2020_LINEAR;
+        }
+        if (colorSpace == VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT) {
+            return ColorSpaceMode::HDR_DISPLAY_P3_LINEAR;
+        }
+        if (colorSpace == VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT ||
+            colorSpace == VK_COLOR_SPACE_DCI_P3_NONLINEAR_EXT) {
+            return ColorSpaceMode::DISPLAY_P3_NONLINEAR;
+        }
+        if (colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT) {
+            return ColorSpaceMode::HDR_SCRGB;
+        }
+
+        // 2. Format-based fallbacks (for games that use FP16 with standard sRGB colorspace but expect HDR behavior)
+        if (format == VK_FORMAT_R16G16B16A16_SFLOAT ||
             format == VK_FORMAT_R32G32B32A32_SFLOAT ||
             format == VK_FORMAT_R16G16B16_SFLOAT ||
             format == VK_FORMAT_R32G32B32_SFLOAT) {
             return ColorSpaceMode::HDR_SCRGB;
         }
+
         // Fallback: SDR sRGB
         return ColorSpaceMode::SDR_SRGB;
     }

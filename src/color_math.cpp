@@ -58,20 +58,26 @@ namespace vkBasalt {
     // Unified Dispatchers
     float decodeColor(float c, ColorSpaceMode csm) {
         switch (csm) {
-            case ColorSpaceMode::SDR_SRGB:  return c; // SDR works in gamma space
-            case ColorSpaceMode::HDR10_PQ:  return pqToLinear(c);
-            case ColorSpaceMode::HDR_HLG:   return hlgToLinear(c);
-            case ColorSpaceMode::HDR_SCRGB: return c; // Already linear
+            case ColorSpaceMode::SDR_SRGB:              return c; // SDR works in gamma space
+            case ColorSpaceMode::HDR10_PQ:              return pqToLinear(c);
+            case ColorSpaceMode::HDR_HLG:               return hlgToLinear(c);
+            case ColorSpaceMode::HDR_SCRGB:             return c; // Already linear (Rec.709 primaries)
+            case ColorSpaceMode::HDR_BT2020_LINEAR:     return c; // Already linear (BT.2020 primaries)
+            case ColorSpaceMode::HDR_DISPLAY_P3_LINEAR: return c; // Already linear (Display P3 primaries)
+            case ColorSpaceMode::DISPLAY_P3_NONLINEAR:  return linearToSrgb(c); // sRGB transfer, P3 primaries
             default: return c;
         }
     }
 
     float encodeColor(float c, ColorSpaceMode csm) {
         switch (csm) {
-            case ColorSpaceMode::SDR_SRGB:  return c; // SDR works in gamma space
-            case ColorSpaceMode::HDR10_PQ:  return linearToPq(c);
-            case ColorSpaceMode::HDR_HLG:   return linearToHlg(c);
-            case ColorSpaceMode::HDR_SCRGB: return c; // Already linear
+            case ColorSpaceMode::SDR_SRGB:              return linearToSrgb(c); // SDR works in gamma space
+            case ColorSpaceMode::HDR10_PQ:              return linearToPq(c);
+            case ColorSpaceMode::HDR_HLG:               return linearToHlg(c);
+            case ColorSpaceMode::HDR_SCRGB:             return c; // Already linear (Rec.709 primaries)
+            case ColorSpaceMode::HDR_BT2020_LINEAR:     return c; // Already linear (BT.2020 primaries)
+            case ColorSpaceMode::HDR_DISPLAY_P3_LINEAR: return c; // Already linear (Display P3 primaries)
+            case ColorSpaceMode::DISPLAY_P3_NONLINEAR:  return linearToSrgb(c); // sRGB transfer, P3 primaries
             default: return c;
         }
     }
@@ -89,4 +95,31 @@ namespace vkBasalt {
         return std::clamp(a / b, 0.0f, 1.0f);
     }
 
+    void rec709ToRec2020(float& r, float& g, float& b) {
+        float outR = 0.6274f * r + 0.3293f * g + 0.0433f * b;
+        float outG = 0.0691f * r + 0.9195f * g + 0.0114f * b;
+        float outB = 0.0164f * r + 0.0880f * g + 0.8956f * b;
+        r = outR; g = outG; b = outB;
+    }
+
+    void rec2020ToRec709(float& r, float& g, float& b) {
+        float outR =  1.6605f * r - 0.5876f * g - 0.0728f * b;
+        float outG = -0.1246f * r + 1.1330f * g - 0.0084f * b;
+        float outB = -0.0182f * r - 0.1006f * g + 1.1187f * b;
+        r = outR; g = outG; b = outB;
+    }
+
+    void rec709ToDisplayP3(float& r, float& g, float& b) {
+        float outR = 0.8225f * r + 0.1774f * g + 0.0000f * b;
+        float outG = 0.0332f * r + 0.9669f * g + 0.0000f * b;
+        float outB = 0.0171f * r + 0.0724f * g + 0.9108f * b;
+        r = outR; g = outG; b = outB;
+    }
+
+    void displayP3ToRec709(float& r, float& g, float& b) {
+        float outR =  1.2249f * r - 0.2247f * g + 0.0000f * b;
+        float outG = -0.0420f * r + 1.0419f * g + 0.0000f * b;
+        float outB = -0.0196f * r - 0.0786f * g + 1.0984f * b;
+        r = outR; g = outG; b = outB;
+    }
 } // namespace vkBasalt

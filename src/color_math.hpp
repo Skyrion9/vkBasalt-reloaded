@@ -24,4 +24,16 @@ namespace vkBasalt {
     float tonemapReinhard(float c);
     float tonemapACES(float c);
 
+    // Luma Coefficients
+    static const float LUMA_REC709[3]  = { 0.2126f, 0.7152f, 0.0722f };
+    static const float LUMA_REC2020[3] = { 0.2627f, 0.6780f, 0.0593f };
+
+    // Gamut Mapping (Rec.709 <-> Rec.2020) Operates on linear light RGB
+    void rec709ToRec2020(float& r, float& g, float& b);
+    void rec2020ToRec709(float& r, float& g, float& b);
+
+    // Gamut Mapping (Rec.709 <-> Display P3 D65) Operates on linear light RGB
+    void rec709ToDisplayP3(float& r, float& g, float& b);
+    void displayP3ToRec709(float& r, float& g, float& b);
+
 } // namespace vkBasalt
