@@ -26,6 +26,7 @@ vkBasalt_src = [
     'simple_compute_pass.cpp',
     'compute_test_pass.cpp',
     'frame_analyzer.cpp',
+    'hdr_detect.cpp',
     'fake_swapchain.cpp',
     'format.cpp',
     'framebuffer.cpp',
