@@ -40,6 +40,7 @@ vkBasalt_src = [
     'imgui_style_tab.cpp',
     'imgui_presets_tab.cpp',
     'imgui_settings_tab.cpp',
+    'imgui_autohdr_tab.cpp',
     'imgui_shaders_tab.cpp',
     'imgui_theme.cpp',
     'game_detect.cpp',
