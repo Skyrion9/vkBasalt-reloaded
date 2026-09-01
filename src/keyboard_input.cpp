@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <string>
+#include <vector>
 
 #ifndef VKBASALT_X11
 #define VKBASALT_X11 1
@@ -70,6 +73,62 @@ namespace vkBasalt
         }
         input_initialized = true;
         Logger::debug(std::string("Input backend confirmed: ") + (is_wayland ? "Wayland" : "X11"));
+    }
+
+    // Shared scale detection for Env vars and KDE config files. Used by both Wayland and X11 backends to avoid DRY violations across the static library boundary.
+    float getScaleFromEnvAndKDE() {
+        const char* qtScale = std::getenv("QT_SCALE_FACTOR");
+        if (qtScale) {
+            float s = (float)std::atof(qtScale);
+            if (s >= 0.5f && s <= 5.0f) return s;
+        }
+        const char* gdkScale = std::getenv("GDK_SCALE");
+        if (gdkScale) {
+            float s = (float)std::atof(gdkScale);
+            const char* gdkDpi = std::getenv("GDK_DPI_SCALE");
+            if (gdkDpi) s *= (float)std::atof(gdkDpi);
+            if (s >= 0.5f && s <= 5.0f) return s;
+        }
+
+        const char* home = std::getenv("HOME");
+        if (!home) return 0.0f;
+        std::string homeStr(home);
+        std::vector<std::string> paths = {
+            homeStr + "/.config/kdeglobals",
+            homeStr + "/.config/kwinrc",
+        };
+        for (const auto& path : paths) {
+            std::ifstream f(path);
+            if (!f.good()) continue;
+            std::string line;
+            while (std::getline(f, line)) {
+                if (line.rfind("ScreenScaleFactors=", 0) == 0) {
+                    std::string val = line.substr(19);
+                    size_t comma = val.find(',');
+                    if (comma != std::string::npos) val = val.substr(0, comma);
+                    float s = (float)std::atof(val.c_str());
+                    if (s >= 0.5f && s <= 5.0f) return s;
+                }
+                if (line.rfind("ScaleFactor=", 0) == 0) {
+                    std::string val = line.substr(12);
+                    float s = (float)std::atof(val.c_str());
+                    if (s >= 0.5f && s <= 5.0f) return s;
+                }
+                if (line.rfind("Scale=", 0) == 0) {
+                    std::string val = line.substr(6);
+                    float s = (float)std::atof(val.c_str());
+                    if (s >= 0.5f && s <= 5.0f) return s;
+                }
+            }
+        }
+        return 0.0f;
+    }
+
+    // Returns true if the active input backend is Wayland
+    bool isWaylandBackend()
+    {
+        init_input_backend();
+        return is_wayland;
     }
 
     uint32_t convertToKeySym(const std::string& key)
