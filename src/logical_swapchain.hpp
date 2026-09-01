@@ -35,7 +35,8 @@ namespace vkBasalt
         VkFormat                             destFormat;
         VkColorSpaceKHR                      destColorSpace;
         bool                                 autoHdrActive = false;
-
+        bool                                 passthroughEligible = false;
+        
         uint32_t                             imageCount;
         std::vector<VkImage>                 images;
         std::vector<VkImage>                 fakeImages;

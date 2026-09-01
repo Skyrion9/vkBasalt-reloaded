@@ -35,6 +35,7 @@ namespace vkBasalt {
 
         // Cleanup overlay resources when swapchain is destroyed.
         void destroyOverlay(LogicalDevice* pDevice, VkSwapchainKHR swapchain);
+        bool hasOverlay(VkSwapchainKHR swapchain) const { return m_overlayMap.count(swapchain) > 0; }
 
         // Update overlay config pointers after config reload.
         void updateAllOverlays(Config* pConfig, bool reinit);

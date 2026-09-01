@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan_include.hpp"
+#include <cstdint>
 #include <vector>
 
 namespace vkBasalt {
@@ -18,4 +19,13 @@ namespace vkBasalt {
     void rebuildEffectChain(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
                             Config* pConfig, OverlayManager& overlayManager,
                             bool waitForIdle = true);
+
+    // Check if HDR output effect (Auto HDR or Calibration) is needed for the given swapchain.
+    bool isHdrOutputNeeded(Config* pConfig, LogicalSwapchain* pLogicalSwapchain);
+
+    // Calculate the total number of effects in the chain, accounting for HDR output and bypass state.
+    uint32_t calculateTotalEffectCount(Config* pConfig, LogicalSwapchain* pLogicalSwapchain);
+
+    // Free command buffers, clear effects, and build the default no-effect fallback chain.
+    void rebuildFallbackChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig);
 } // namespace vkBasalt
