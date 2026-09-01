@@ -35,6 +35,7 @@
 #include "compute_pass.hpp"
 #include "compute_test_pass.hpp"
 #include "frame_analyzer.hpp"
+#include "effect_nit_calibration.hpp"
 
 namespace vkBasalt {
 
@@ -91,6 +92,7 @@ namespace vkBasalt {
     static uint32_t getRequiredSlices(uint32_t effectCount, bool supportsMutable) {
         if (effectCount == 0) return 1; // fallback transfer reads slice 0
         if (effectCount == 1) return supportsMutable ? 1 : 2;
+        if (effectCount == 2) return supportsMutable ? 2 : 3;
         return 3; // ping-pong: slices 0, 1, 2
     }
 
@@ -98,9 +100,21 @@ namespace vkBasalt {
                           VkSwapchainKHR swapchain, Config* pConfig,
                           OverlayManager& overlayManager)
     {
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-        VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->format);
-        VkFormat srgbFormat  = convertToSRGB(pLogicalSwapchain->format);
+        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+
+        // Append HDR Output Effect (Auto HDR or Nit Calibration)
+        std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
+        std::string hdrCalibOpt = pConfig->getOption<std::string>("hdrCalibration", "off");
+        bool autoHdrEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
+        bool hdrCalibEnabled = (hdrCalibOpt == "on" || hdrCalibOpt == "true" || hdrCalibOpt == "1");
+        
+        ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
+        bool shouldAppendHdrOutput = (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled && pLogicalSwapchain->autoHdrActive) ||
+                                    (srcCsm != ColorSpaceMode::SDR_SRGB && hdrCalibEnabled);
+
+        // Normal effects operate on the fake images, which are always in the source format.
+        VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->sourceFormat);
+        VkFormat srgbFormat  = convertToSRGB(pLogicalSwapchain->sourceFormat);
 
         // Determine which slice compute passes read from. With mutable format the last effect writes to real swapchain images. Otherwise it writes to the last fake slice.
         pLogicalSwapchain->computeSrcSlice =
@@ -123,12 +137,14 @@ namespace vkBasalt {
             std::vector<VkImage> firstImages(
                 pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
                 pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
-            Logger::debug(std::to_string(firstImages.size()) + " images in firstImages (slice " + std::to_string(srcSlice) + ")");
 
+
+            Logger::debug(std::to_string(firstImages.size()) + " images in firstImages (slice " + std::to_string(srcSlice) + ")");
             std::vector<VkImage> secondImages;
-            if (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat)
+
+            // Last effect writes directly to real swapchain images  (only when no HDR output effect follows)
+            if (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput)
             {
-                // Last effect writes directly to real swapchain images
                 secondImages = pLogicalSwapchain->images;
                 Logger::debug("using swapchain images as second images");
             }
@@ -148,7 +164,7 @@ namespace vkBasalt {
             {
                 pLogicalSwapchain->effects.push_back(
                     it->second(pLogicalDevice, unormFormat, srgbFormat, pLogicalSwapchain->imageExtent,
-                               firstImages, secondImages, pConfig, pLogicalSwapchain->colorSpace, effectStrings[i]));
+                               firstImages, secondImages, pConfig, pLogicalSwapchain->sourceColorSpace, effectStrings[i]));
                 Logger::debug("created " + effectStrings[i] + " effect");
             }
             else
@@ -168,7 +184,7 @@ namespace vkBasalt {
 
                 if (fileExists) {
                     pLogicalSwapchain->effects.push_back(std::make_shared<ReshadeEffect>(
-                        pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                        pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->imageExtent,
                         firstImages, secondImages, pConfig, effectStrings[i]));
                     Logger::debug("created ReshadeEffect for " + effectStrings[i]);
                 } else {
@@ -177,8 +193,35 @@ namespace vkBasalt {
             }
         }
 
-        // Non-mutable format add a final transfer from the last fake slice to real swapchain images
-        if (!pLogicalDevice->supportsMutableFormat)
+        // Append HDR Output Effect (Auto HDR / Nit Calibration)
+        if (shouldAppendHdrOutput) {
+            uint32_t lastSlice = getLastDstSlice(effectStrings.size());
+            std::vector<VkImage> hdrInputImages;
+            if (pLogicalDevice->supportsMutableFormat && effectStrings.empty()) {
+                hdrInputImages = std::vector<VkImage>(
+                    pLogicalSwapchain->fakeImages.begin(),
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
+            } else {
+                hdrInputImages = std::vector<VkImage>(
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * lastSlice,
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (lastSlice + 1));
+            }
+
+            auto hdrEffect = std::make_shared<NitCalibrationEffect>(
+                pLogicalDevice, 
+                pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat, 
+                pLogicalSwapchain->imageExtent,
+                hdrInputImages, pLogicalSwapchain->images, 
+                pConfig, 
+                pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
+                pLogicalSwapchain->autoHdrActive);
+            
+            pLogicalSwapchain->effects.push_back(hdrEffect);
+            Logger::debug("Appended HDR Output Effect");
+        }
+
+        // Non-mutable format add a final transfer from the last fake slice to real swapchain images. Skip when HDR output effect is present it already writes to real swapchain images.
+        if (!pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput)
         {
             uint32_t transferSrcSlice = getLastDstSlice(effectStrings.size());
             pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new TransferEffect(
@@ -264,24 +307,43 @@ namespace vkBasalt {
             Logger::debug(std::to_string(i) + " written commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersEffect[i]));
         }
 
-        // Default transfer for when effects are toggled off, preserved across rebuilds.
+        // Default chain for when effects are toggled off, preserved across rebuilds. When Auto HDR is active, we must still convert SDR->HDR even with effects off, lest the display receives SDR values in an HDR colorspace (teal/cyan artifact).
         if (!pLogicalSwapchain->defaultTransfer) {
-            pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
-                pLogicalDevice,
-                pLogicalSwapchain->format,
-                pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
-                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
-                pLogicalSwapchain->images,
-                pConfig));
-            
-            // defaultTransfer is a standalone 1-effect chain (slice 0 -> real swapchain). It must be marked as both first and last so its barriers use PRESENT_SRC_KHR.
-            pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
+            std::vector<std::shared_ptr<Effect>> noEffectChain;
+
+            if (pLogicalSwapchain->autoHdrActive) {
+                // Use NitCalibrationEffect for SDR->HDR conversion (slice 0 -> real swapchain)
+                std::vector<VkImage> slice0Images(
+                    pLogicalSwapchain->fakeImages.begin(),
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
+                pLogicalSwapchain->defaultHdrEffect = std::make_shared<NitCalibrationEffect>(
+                    pLogicalDevice,
+                    pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
+                    pLogicalSwapchain->imageExtent,
+                    slice0Images, pLogicalSwapchain->images,
+                    pConfig,
+                    pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
+                    pLogicalSwapchain->autoHdrActive);
+                pLogicalSwapchain->defaultHdrEffect->setChainPosition(true, true);
+                noEffectChain.push_back(pLogicalSwapchain->defaultHdrEffect);
+            } else {
+                // No Auto HDR: simple transfer
+                pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
+                    pLogicalDevice,
+                    pLogicalSwapchain->format,
+                    pLogicalSwapchain->imageExtent,
+                    std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
+                        pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                    pLogicalSwapchain->images,
+                    pConfig));
+                pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
+                noEffectChain.push_back(pLogicalSwapchain->defaultTransfer);
+            }
 
             pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
             writeCommandBuffers(pLogicalDevice,
                                 pLogicalSwapchain,
-                                {pLogicalSwapchain->defaultTransfer},
+                                noEffectChain,
                                 VK_NULL_HANDLE,
                                 VK_NULL_HANDLE,
                                 VK_FORMAT_UNDEFINED,
@@ -293,9 +355,10 @@ namespace vkBasalt {
             Logger::debug(std::to_string(i) + " written noEffect commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersNoEffect[i]));
         }
 
-        // Initialize ImGui Overlay eagerly while the queue is idle
+        // Initialize ImGui Overlay eagerly while the queue is idle, the overlay renders on top of the real swapchain images, so it must use destFormat (HDR), not sourceFormat (SDR).
         if (swapchain != VK_NULL_HANDLE) {
-            overlayManager.initOverlay(pLogicalDevice, pLogicalSwapchain, swapchain, unormFormat, pConfig);
+            VkFormat overlayFormat = convertToUNORM(pLogicalSwapchain->destFormat);
+            overlayManager.initOverlay(pLogicalDevice, pLogicalSwapchain, swapchain, overlayFormat, pConfig);
         }
 
         // Save pipeline cache only on initial setup so that we don't write to disk for every slider adjustment. The cache is already saved in vkBasalt_DestroyDevice for normal exits.
@@ -311,13 +374,32 @@ namespace vkBasalt {
     {
         Logger::debug("Rebuilding effects for swapchain...");
 
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
-
+        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
         if (waitForIdle) {
             pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         }
-
-        uint32_t requiredSlices = getRequiredSlices(effectStrings.size(), pLogicalDevice->supportsMutableFormat);
+        
+        ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
+        uint32_t totalEffectCount = (uint32_t)effectStrings.size();
+        
+        bool reserveHdrOutput = false;
+        if (srcCsm == ColorSpaceMode::SDR_SRGB) {
+            std::string autoHdr = pConfig->getOption<std::string>("autoHdr", "on");
+            if ((autoHdr == "on" || autoHdr == "true" || autoHdr == "1") && pLogicalSwapchain->autoHdrActive) {
+                reserveHdrOutput = true;
+            }
+        } else {
+            std::string hdrMode = pConfig->getOption<std::string>("hdrCalibration", "off");
+            if (hdrMode == "on" || hdrMode == "true" || hdrMode == "1") {
+                reserveHdrOutput = true;
+            }
+        }
+        
+        if (reserveHdrOutput) {
+            totalEffectCount += 1;
+        }
+        
+        uint32_t requiredSlices = getRequiredSlices(totalEffectCount, pLogicalDevice->supportsMutableFormat);
         uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 
         // Chain GREW beyond allocated pool, game holds old VkImage handles, so we must force the game to recreate its swapchain.
@@ -343,16 +425,33 @@ namespace vkBasalt {
 
             pLogicalSwapchain->effects.clear();
             pLogicalSwapchain->defaultTransfer.reset();
-            pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
-                pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
-                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
-                pLogicalSwapchain->images, pConfig));
-            
-            // Mark as first and last for correct barrier layouts.
-            pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
+            pLogicalSwapchain->defaultHdrEffect.reset();
 
-            writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, {pLogicalSwapchain->defaultTransfer},
+            std::vector<std::shared_ptr<Effect>> noEffectChain;
+            if (pLogicalSwapchain->autoHdrActive) {
+                std::vector<VkImage> slice0Images(
+                    pLogicalSwapchain->fakeImages.begin(),
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
+                pLogicalSwapchain->defaultHdrEffect = std::make_shared<NitCalibrationEffect>(
+                    pLogicalDevice,
+                    pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
+                    pLogicalSwapchain->imageExtent,
+                    slice0Images, pLogicalSwapchain->images,
+                    pConfig,
+                    pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
+                    pLogicalSwapchain->autoHdrActive);
+                pLogicalSwapchain->defaultHdrEffect->setChainPosition(true, true);
+                noEffectChain.push_back(pLogicalSwapchain->defaultHdrEffect);
+            } else {
+                pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
+                    pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                    std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
+                        pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                    pLogicalSwapchain->images, pConfig));
+                pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
+                noEffectChain.push_back(pLogicalSwapchain->defaultTransfer);
+            }
+            writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, noEffectChain,
                                 VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
                                 pLogicalSwapchain->commandBuffersNoEffect);
             return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
@@ -372,5 +471,4 @@ namespace vkBasalt {
         buildEffectChain(pLogicalDevice, pLogicalSwapchain, VK_NULL_HANDLE, pConfig, overlayManager);
         Logger::debug("Rebuild complete.");
     }
-
 } // namespace vkBasalt
