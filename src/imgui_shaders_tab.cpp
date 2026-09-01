@@ -53,8 +53,10 @@ namespace vkBasalt {
         switch (p.type) {
             case ParamType::Combo:
                 if (!p.comboOptions.empty()) {
-                    m_pConfig->setOption(p.key, p.comboOptions[0]);
-                    setUIParam(p.key, 0.0);
+                    int defIdx = std::clamp((int)p.defaultVal, 0, (int)p.comboOptions.size() - 1);
+                    m_pConfig->setOption(p.key, p.comboOptions[defIdx]);
+                    effect->setParam(p.key, (double)defIdx);
+                    setUIParam(p.key, (double)defIdx);
                 }
                 break;
             case ParamType::FilePath:
