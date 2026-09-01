@@ -525,6 +525,11 @@ namespace vkBasalt {
         // Shift + Left/Right to cycle tabs pendingTab is only set for 1 frame SetSelected shouldn't persist
         int pendingTab = -1;
 
+        if (m_forceSelectTab) {
+            pendingTab = m_activeTab;
+            m_forceSelectTab = false;
+        }
+        
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
             if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 4 : m_activeTab - 1;
             if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 4) ? 0 : m_activeTab + 1;
