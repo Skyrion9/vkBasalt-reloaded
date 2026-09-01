@@ -25,6 +25,8 @@ namespace vkBasalt {
 
         void processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height);
         void toggleOverlay();
+        int  getActiveTab() const { return m_activeTab; }
+        void setActiveTab(int tab) { m_activeTab = tab; m_forceSelectTab = true; }
         void initImGui(VkFormat format);
         void reinitImGui();
         void updateConfig(Config* pConfig) { m_pConfig = pConfig; }
@@ -38,6 +40,7 @@ namespace vkBasalt {
         void drawUI();
         void drawShadersTab();
         void drawSettingsTab();
+        void drawAutoHdrTab();
         void drawPresetsTab();
         void drawStyleTab();
         void drawStatsTab();
@@ -47,6 +50,7 @@ namespace vkBasalt {
         void applyKeybind(int field, ImGuiKey key);
         void destroyRenderResources();
         void disableScopesOnClose();
+        void setScopesEnabled(bool enabled);
         void resetParamToDefault(Effect* effect, const EffectParamDesc& p);
         void setParamDebounced(const std::string& key, const std::string& value);
         void setParamImmediate(const std::string& key, const std::string& value);
@@ -70,7 +74,8 @@ namespace vkBasalt {
         VkFormat m_format = VK_FORMAT_UNDEFINED;
         size_t m_selectedEffectIndex = 0;
         char m_searchFilter[256] = {};
-        int m_activeTab = 0;   // 0=Shaders, 1=Settings, 2=Presets
+        int m_activeTab = 0;
+        bool m_forceSelectTab = false;
         int m_bindingField = -1; // -1=none, 0=toggle, 1=reload, 2=overlay
         bool        m_showBrowser = false;
         std::string m_browserDir;
@@ -101,6 +106,9 @@ namespace vkBasalt {
 
         std::array<ImTextureID, 3> m_scopeTextureIDs = {};
         bool m_scopeTexturesRegistered = false;
+        void* m_lastAnalyzerPtr = nullptr;
+
+        int m_lastScopeTab = -1;
 
         struct BrowserEntry {
             std::string path;

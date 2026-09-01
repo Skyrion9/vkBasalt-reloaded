@@ -655,15 +655,22 @@ namespace vkBasalt {
         ImGui::End();
     }
 
-    void ImGuiOverlay::disableScopesOnClose() {
+    void ImGuiOverlay::setScopesEnabled(bool enabled) {
         if (!m_pSwapchain) return;
         for (auto& pass : m_pSwapchain->computePasses) {
-            if (pass->getName() == "frame_analyzer" && pass->isEnabled()) {
-                pass->setEnabled(false);
+            if (pass->getName() == "frame_analyzer" && pass->isEnabled() != enabled) {
+                pass->setEnabled(enabled);
                 g_triggerSoftReload = true;
                 break;
             }
         }
+    }
+
+    void ImGuiOverlay::disableScopesOnClose() {
+        setScopesEnabled(false);
+        m_lastScopeTab = -1;
+        m_scopeTexturesRegistered = false;
+        m_lastAnalyzerPtr = nullptr;
     }
 
     void ImGuiOverlay::toggleOverlay() {

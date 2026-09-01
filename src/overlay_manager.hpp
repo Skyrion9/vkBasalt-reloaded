@@ -56,6 +56,7 @@ namespace vkBasalt {
 
     private:
         bool m_lastOverlayOpenState = false;
+        int  m_lastActiveTab = 0;
 
         std::unordered_map<VkSwapchainKHR, std::shared_ptr<ImGuiOverlay>> m_overlayMap;
         std::unordered_map<VkSwapchainKHR, std::vector<VkCommandBuffer>> m_commandBuffersMap;

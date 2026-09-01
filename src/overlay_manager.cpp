@@ -39,6 +39,7 @@ namespace vkBasalt {
 
         if (m_lastOverlayOpenState) {
             overlay->toggleOverlay();
+            overlay->setActiveTab(m_lastActiveTab);
             m_lastOverlayOpenState = false;
         }
 
@@ -94,6 +95,7 @@ namespace vkBasalt {
         auto it = m_overlayMap.find(swapchain);
         if (it != m_overlayMap.end() && it->second) {
             m_lastOverlayOpenState = it->second->isOverlayOpen();
+            m_lastActiveTab = it->second->getActiveTab();
         }
         m_overlayMap.erase(swapchain);
 
