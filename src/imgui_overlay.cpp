@@ -652,6 +652,16 @@ namespace vkBasalt {
         ImGui::Text("[Space] Toggle checkbox    [Esc] Close    [%s] Toggle    [%s] Reload    [%s] Overlay    [%s] Screenshot",
                     kbToggle.c_str(), kbReload.c_str(), kbOverlay.c_str(), kbScreenshot.c_str());
         ImGui::PopStyleColor();
+
+        // Live Preview Debounce applies to all tabs
+        if (m_previewDirty && m_hasUnsavedChanges) {
+            float elapsed = ImGui::GetTime() - m_lastChangeTime;
+            if (elapsed > 0.25f) {
+                g_triggerPreviewReload = true;
+                m_previewDirty = false;
+            }
+        }
+
         ImGui::End();
     }
 

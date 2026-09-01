@@ -254,7 +254,10 @@ namespace vkBasalt {
 
         // Rebuild cache only when a reload trigger fired
         if (m_chainCacheDirty || g_triggerPreviewReload || g_triggerSoftReload || g_triggerRevertReload) {
-            m_cachedChainList = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+            m_cachedChainList = m_pConfig->getOption<std::vector<std::string>>("effects", {});
+            // Filter out empty strings that might result from parsing an empty "effects=" key
+            m_cachedChainList.erase(std::remove_if(m_cachedChainList.begin(), m_cachedChainList.end(),
+                [](const std::string& s) { return s.empty(); }), m_cachedChainList.end());
             m_cachedAllEffects.clear();
             for (const char* b : kBuiltInEffects) m_cachedAllEffects.push_back(b);
             for (auto& name : m_cachedChainList) {
@@ -590,16 +593,6 @@ namespace vkBasalt {
             }
             m_justOpened = false;
         }
-
-        // Live preview debounce (for parameter sliders, not checkbox toggles)
-        if (m_previewDirty && m_hasUnsavedChanges) {
-            float elapsed = ImGui::GetTime() - m_lastChangeTime;
-            if (elapsed > 0.25f) {
-                g_triggerPreviewReload = true;
-                m_previewDirty = false;
-            }
-        }
-
         ImGui::EndChild();
     }
 
