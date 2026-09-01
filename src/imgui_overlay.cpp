@@ -597,7 +597,7 @@ namespace vkBasalt {
         if (m_activeTab == 0) { // Shaders tab
             if (ImGui::Button("Save & Apply")) {
                 // Resolve selected effect by name, not by index into the active chain
-                std::vector<std::string> effectNames = m_pConfig->getOption<std::vector<std::string>>("effects", {"cas"});
+                std::vector<std::string> effectNames = m_pConfig->getOption<std::vector<std::string>>("effects", {});
                 if (m_pSwapchain && m_selectedEffectIndex < effectNames.size()) {
                     std::string selectedName = effectNames[m_selectedEffectIndex];
                     for (auto& eff : m_pSwapchain->effects) {
