@@ -14,6 +14,8 @@
 #include "game_detect.hpp"
 #include "frame_analyzer.hpp"
 #include "overlay_manager.hpp"
+#include "config.hpp"
+#include "format.hpp"
 
 namespace vkBasalt {
 
@@ -145,8 +147,50 @@ namespace vkBasalt {
                 statRow("Total VRAM", vramBuf);
             }
         }
-        ImGui::Spacing();
 
+        ImGui::Spacing();
+        if (ImGui::CollapsingHeader("Effect Chain", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (m_pSwapchain) {
+                statRow("Effects Active", g_effectsEnabled.load() ? "YES" : "BYPASSED");
+                char effectCountBuf[16];
+                snprintf(effectCountBuf, sizeof(effectCountBuf), "%zu", m_pSwapchain->effects.size());
+                statRow("Effect Count", effectCountBuf);
+
+                // List active effect names
+                std::string effectNames;
+                for (size_t i = 0; i < m_pSwapchain->effects.size(); i++) {
+                    if (i > 0) effectNames += " → ";
+                    effectNames += m_pSwapchain->effects[i]->getName();
+                }
+                statRow("Chain Order", effectNames.empty() ? "None" : effectNames.c_str());
+
+                char fakeImgBuf[64];
+                size_t fakeCount = m_pSwapchain->fakeImages.size();
+                uint32_t bpp = getBytesPerPixel(m_pSwapchain->sourceFormat);
+                float poolMB = (float)(fakeCount * m_pSwapchain->imageExtent.width * m_pSwapchain->imageExtent.height * bpp) / (1024.0f * 1024.0f);
+                snprintf(fakeImgBuf, sizeof(fakeImgBuf), "%zu images (%.1f MB)", fakeCount, poolMB);
+                statRow("Fake Image Pool", fakeImgBuf);
+
+                statRow("Auto HDR", m_pSwapchain->autoHdrActive ? "Active (SDR→HDR)" : "Inactive");
+
+                char computeBuf[16];
+                snprintf(computeBuf, sizeof(computeBuf), "%zu", m_pSwapchain->computePasses.size());
+                statRow("Compute Passes", computeBuf);
+            } else {
+                ImGui::TextDisabled("No active swapchain.");
+            }
+        }
+
+        ImGui::Spacing();
+        if (ImGui::CollapsingHeader("Configuration", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (m_pConfig) {
+                statRow("Global Config", m_pConfig->getGlobalPath().c_str());
+                statRow("Per-Game Config", m_pConfig->getGamePath().c_str());
+                statRow("Per-Game Overrides", m_pConfig->hasPerGameOverrides() ? "YES" : "NO");
+            }
+        }
+
+        ImGui::Spacing();
         if (ImGui::CollapsingHeader("Overlay & Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
             const char* waylandDisplay = getenv("WAYLAND_DISPLAY");
             const char* x11Display = getenv("DISPLAY");
