@@ -8,6 +8,7 @@ namespace vkBasalt
         computePasses.clear();
         effects.clear();
         defaultTransfer.reset();
+        defaultHdrEffect.reset();
 
         if (!commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(

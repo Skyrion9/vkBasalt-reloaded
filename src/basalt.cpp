@@ -888,12 +888,17 @@ namespace vkBasalt
             submitInfo.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
             submitInfo.pWaitSemaphores    = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
             submitInfo.pWaitDstStageMask  = i == 0 ? waitStages : nullptr;
+            // Guard: fall back to commandBuffersNoEffect if commandBuffersEffect is empty (e.g., after rebuildFallbackChain allocated but didn't record it)
+            bool useEffectChain = g_effectsEnabled.load()
+                && !pLogicalSwapchain->commandBuffersEffect.empty()
+                && index < pLogicalSwapchain->commandBuffersEffect.size();
             submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers =
-                g_effectsEnabled.load() ? &(pLogicalSwapchain->commandBuffersEffect[index]) : &(pLogicalSwapchain->commandBuffersNoEffect[index]);
+            submitInfo.pCommandBuffers = useEffectChain
+                ? &(pLogicalSwapchain->commandBuffersEffect[index])
+                : &(pLogicalSwapchain->commandBuffersNoEffect[index]);
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores    = &(pLogicalSwapchain->semaphores[index]);
-
+            
             presentSemaphores[presentSemCount++] = pLogicalSwapchain->semaphores[index];
 
             VkResult vr = pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
