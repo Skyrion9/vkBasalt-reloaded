@@ -5,11 +5,6 @@
 
 namespace vkBasalt
 {
-    struct ClarityRcasPushConstants {
-        PushVec2 step1;
-        PushVec2 step2;
-    };
-    
     class ClarityRcasEffect : public SimpleEffect
     {
     public:
@@ -33,6 +28,31 @@ namespace vkBasalt
         const std::vector<EffectParamDesc>& getParamDescs() const override;
         
     private:
+        struct ClarityRcasPushConstants {
+            PushVec2 step1;
+            PushVec2 step2;
+        };
+
+        struct ClarityRcasSpecData {
+            float radius;
+            float offset;
+            float clarityStrength;
+            int32_t blendMode;
+            int32_t blendIfDark;
+            int32_t blendIfLight;
+            float rcasSharpness;
+            float rcasStrength;
+            float edgeThreshLow;
+            float edgeThreshHigh;
+            int32_t enableDithering;
+            int32_t enableFilmGrain;
+            float filmGrainStrength;
+            float filmGrainMinimum;
+            float fineGrainWeight;
+            float coarseGrainWeight;
+            int32_t colorSpaceMode;
+        };
+    
         float radius;
         float offset;
         ClarityRcasPushConstants pushConstants;

@@ -20,21 +20,7 @@
 
 namespace vkBasalt
 {
-    struct ClaritySpecData {
-        float radius;
-        float offset;
-        float strength;
-        int32_t blendMode;
-        int32_t blendIfDark;
-        int32_t blendIfLight;
-        float edgeThreshLow;
-        float edgeThreshHigh;
-        int32_t enableDithering;
-        int32_t colorSpaceMode;
-    };
-
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClaritySpecData, field), .specSize = sizeof(((ClaritySpecData*)0)->field)
-
     ClarityEffect::ClarityEffect(LogicalDevice*       pLogicalDevice,
                                  VkFormat             format,
                                  VkExtent2D           imageExtent,

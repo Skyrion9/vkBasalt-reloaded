@@ -29,5 +29,14 @@ namespace vkBasalt
 
         std::string getName() const override { return "fxaa"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
+    private:
+        struct FxaaSpecData {
+            float subpix;
+            float edgeThreshold;
+            float edgeThresholdMin;
+            float screenWidth;
+            float screenHeight;
+            int32_t colorSpaceMode;
+        };
     };
 } // namespace vkBasalt

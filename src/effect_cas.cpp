@@ -14,11 +14,6 @@
 
 namespace vkBasalt
 {
-    struct CasSpecData {
-        float sharpness;
-        float contrastLimit;
-        int32_t colorSpaceMode;
-    };
 
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(CasSpecData, field), .specSize = sizeof(((CasSpecData*)0)->field)
 

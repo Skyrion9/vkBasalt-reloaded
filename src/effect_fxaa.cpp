@@ -17,16 +17,6 @@
 
 namespace vkBasalt
 {
-
-    struct FxaaSpecData {
-        float subpix;
-        float edgeThreshold;
-        float edgeThresholdMin;
-        float screenWidth;
-        float screenHeight;
-        int32_t colorSpaceMode;
-    };
-
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(FxaaSpecData, field), .specSize = sizeof(((FxaaSpecData*)0)->field)
 
     FxaaEffect::FxaaEffect(LogicalDevice*       pLogicalDevice,

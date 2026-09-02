@@ -32,6 +32,12 @@ namespace vkBasalt
         const std::vector<EffectParamDesc>& getParamDescs() const override;
 
     private:
+        struct LutSpecData {
+            int32_t lutSize;
+            int32_t flipGB;
+            int32_t colorSpaceMode;
+        };
+
         VkImage               lutImage;
         VkDeviceMemory        lutMemory;
         VkImageView           lutImageView;

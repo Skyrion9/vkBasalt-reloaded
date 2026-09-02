@@ -33,6 +33,20 @@ namespace vkBasalt
         const std::vector<EffectParamDesc>& getParamDescs() const override;
 
     private:
+        struct SmaaOptions
+        {
+            float   screenWidth;
+            float   screenHeight;
+            float   reverseScreenWidth;
+            float   reverseScreenHeight;
+            float   threshold;
+            int32_t maxSearchSteps;
+            int32_t maxSearchStepsDiag;
+            int32_t cornerRounding;
+            int32_t disableDiagDetection;
+            int32_t colorSpaceMode;
+        };
+
         LogicalDevice*               pLogicalDevice;
         std::vector<VkImage>         inputImages;
         std::vector<VkImage>         edgeImages;

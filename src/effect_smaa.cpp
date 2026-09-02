@@ -29,20 +29,6 @@
 
 namespace vkBasalt
 {
-    struct SmaaOptions
-    {
-        float   screenWidth;
-        float   screenHeight;
-        float   reverseScreenWidth;
-        float   reverseScreenHeight;
-        float   threshold;
-        int32_t maxSearchSteps;
-        int32_t maxSearchStepsDiag;
-        int32_t cornerRounding;
-        int32_t disableDiagDetection;
-        int32_t colorSpaceMode;
-    };
-
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(SmaaOptions, field), .specSize = sizeof(((SmaaOptions*)0)->field)
 
     SmaaEffect::SmaaEffect(LogicalDevice*       pLogicalDevice,

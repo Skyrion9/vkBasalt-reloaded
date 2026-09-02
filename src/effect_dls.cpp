@@ -17,12 +17,6 @@
 
 namespace vkBasalt
 {
-    struct DlsSpecData {
-        float sharpen;
-        float denoise;
-        int32_t colorSpaceMode;
-    };
-
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(DlsSpecData, field), .specSize = sizeof(((DlsSpecData*)0)->field)
 
     DlsEffect::DlsEffect(LogicalDevice*       pLogicalDevice,

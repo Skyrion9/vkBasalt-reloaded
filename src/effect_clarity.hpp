@@ -4,11 +4,6 @@
 
 namespace vkBasalt
 {
-    struct ClarityPushConstants {
-        PushVec2 step1;
-        PushVec2 step2;
-    };
-
     class ClarityEffect : public SimpleEffect
     {
     public:
@@ -29,6 +24,24 @@ namespace vkBasalt
         const std::vector<EffectParamDesc>& getParamDescs() const override;
         
         private:
+            struct ClarityPushConstants {
+                PushVec2 step1;
+                PushVec2 step2;
+            };
+
+            struct ClaritySpecData {
+                float radius;
+                float offset;
+                float strength;
+                int32_t blendMode;
+                int32_t blendIfDark;
+                int32_t blendIfLight;
+                float edgeThreshLow;
+                float edgeThreshHigh;
+                int32_t enableDithering;
+                int32_t colorSpaceMode;
+            };
+
         float radius;
         float offset;
         ClarityPushConstants pushConstants;

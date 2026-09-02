@@ -7,6 +7,8 @@
 
 namespace vkBasalt
 {
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(CrystalClearSpecData, field), .specSize = sizeof(((CrystalClearSpecData*)0)->field)
+
     int CrystalClearEffect::minQualityForParam(const std::string& key) const
     {
         // Parameters disabled below certain quality levels. Returns the MAXIMUM qualityLevel at which the param is still active. If current qualityLevel > returned value, the param is disabled.

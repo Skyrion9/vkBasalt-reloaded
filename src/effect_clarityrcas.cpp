@@ -21,26 +21,6 @@
 
 namespace vkBasalt
 {
-    struct ClarityRcasSpecData {
-        float radius;
-        float offset;
-        float clarityStrength;
-        int32_t blendMode;
-        int32_t blendIfDark;
-        int32_t blendIfLight;
-        float rcasSharpness;
-        float rcasStrength;
-        float edgeThreshLow;
-        float edgeThreshHigh;
-        int32_t enableDithering;
-        int32_t enableFilmGrain;
-        float filmGrainStrength;
-        float filmGrainMinimum;
-        float fineGrainWeight;
-        float coarseGrainWeight;
-        int32_t colorSpaceMode;
-    };
-
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClarityRcasSpecData, field), .specSize = sizeof(((ClarityRcasSpecData*)0)->field)
 
     ClarityRcasEffect::ClarityRcasEffect(LogicalDevice*       pLogicalDevice,

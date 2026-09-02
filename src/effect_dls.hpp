@@ -27,5 +27,11 @@ namespace vkBasalt
 
         std::string getName() const override { return "dls"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
+    private:
+        struct DlsSpecData {
+            float sharpen;
+            float denoise;
+            int32_t colorSpaceMode;
+        };
     };
 } // namespace vkBasalt

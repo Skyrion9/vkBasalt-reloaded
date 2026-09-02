@@ -104,11 +104,10 @@ namespace vkBasalt {
                 pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
             pLogicalSwapchain->commandBuffersNoEffect.clear();
         }
-        pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
         pLogicalSwapchain->effects.clear();
+        pLogicalSwapchain->computePasses.clear();
         pLogicalSwapchain->defaultTransfer.reset();
         pLogicalSwapchain->defaultHdrEffect.reset();
-
         buildDefaultNoEffectChain(pLogicalDevice, pLogicalSwapchain, pConfig);
     }
 
@@ -450,15 +449,14 @@ namespace vkBasalt {
 
         // Chain same size, rebuild in-place using existing pool. The game's cached VkImage handles remain valid.
         Logger::debug("Effect chain fits in existing pool. Rebuilding in-place...");
-
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
                                                    pLogicalSwapchain->commandBuffersEffect.size(),
                                                    pLogicalSwapchain->commandBuffersEffect.data());
             pLogicalSwapchain->commandBuffersEffect.clear();
         }
-
         pLogicalSwapchain->effects.clear();
+        pLogicalSwapchain->computePasses.clear();
         buildEffectChain(pLogicalDevice, pLogicalSwapchain, VK_NULL_HANDLE, pConfig, overlayManager);
         Logger::debug("Rebuild complete.");
     }

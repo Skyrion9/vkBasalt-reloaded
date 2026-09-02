@@ -18,19 +18,6 @@
 
 namespace vkBasalt
 {
-    struct DebandSpecData {
-        float   screenWidth;
-        float   screenHeight;
-        float   reverseScreenWidth;
-        float   reverseScreenHeight;
-        float   debandAvgdiff;
-        float   debandMaxdiff;
-        float   debandMiddiff;
-        float   range;
-        int32_t iterations;
-        int32_t colorSpaceMode;
-    };
-
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(DebandSpecData, field), .specSize = sizeof(((DebandSpecData*)0)->field)
 
     DebandEffect::DebandEffect(LogicalDevice*       pLogicalDevice,

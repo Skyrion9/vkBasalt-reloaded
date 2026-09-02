@@ -25,13 +25,6 @@
 
 namespace vkBasalt
 {
-
-    struct LutSpecData {
-        int32_t lutSize;
-        int32_t flipGB;
-        int32_t colorSpaceMode;
-    };
-
     LutEffect::LutEffect(LogicalDevice*       pLogicalDevice,
                          VkFormat             format,
                          VkExtent2D           imageExtent,

@@ -27,5 +27,12 @@ namespace vkBasalt
 
         std::string getName() const override { return "cas"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
+
+    private:
+        struct CasSpecData {
+            float sharpness;
+            float contrastLimit;
+            int32_t colorSpaceMode;
+        };
     };
 } // namespace vkBasalt
