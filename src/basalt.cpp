@@ -466,8 +466,9 @@ namespace vkBasalt
 
         // Injecting VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR flag breaks direct scanout (zero-copy presentation) on Linux compositors.
         // However, if Auto HDR mutates the format, we MUST set it so the game can still create SDR views on the HDR images.
-        modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                        | VK_IMAGE_USAGE_SAMPLED_BIT;
+        modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
+                                      | VK_IMAGE_USAGE_SAMPLED_BIT 
+                                      | VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // Required for screenshot readback
 
         imageFormatListCreateInfo.sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR;
         imageFormatListCreateInfo.pNext           = modifiedCreateInfo.pNext;
