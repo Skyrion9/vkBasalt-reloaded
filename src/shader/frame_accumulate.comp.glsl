@@ -24,13 +24,7 @@ void main() {
     vec2 uv = (vec2(pixel) + 0.5) / vec2(pc.width, pc.height);
     vec4 raw = textureLod(inputImage, uv, 0.0);
     
-    // Explicitly linearize for photometric accuracy. decodeToLinear() skips sRGB to keep effects in gamma space, so we do it manually here.
-    vec3 linear;
-    if (colorSpaceMode == CSP_SDR_SRGB || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
-        linear = srgb_to_linear(raw.rgb);
-    } else {
-        linear = decodeToLinear(raw.rgb);
-    }
+    vec3 linear = decodeToLinear(raw.rgb);
 
     // Luma coefficients depend on the color space primaries
     vec3 lumaCoeffs = vec3(0.2126, 0.7152, 0.0722); // Rec.709 / sRGB / scRGB
@@ -41,9 +35,20 @@ void main() {
     }
     float luma = dot(linear, lumaCoeffs);
 
-    // Clamp for binning (HDR highlights accumulate at bin 255)
-    vec3 clamped = clamp(linear, 0.0, 1.0);
-    float lumaClamped = clamp(luma, 0.0, 1.0);
+    // In HDR, 1.0 = SDR white (100 nits). Highlights exceed 1.0. We map a reference HDR peak (1000 nits = 10.0 in linear space) to the 255 bin.
+    // This prevents HDR highlights from crushing into a single bin while preserving SDR distribution.
+    float hdrScale = 1.0;
+    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_SCRGB || 
+        colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR ||
+        colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR) {
+        hdrScale = 10.0; // Maps 0-1000 nits to 0.0-1.0 binning range
+    }
+    
+    vec3 scaledLinear = linear / hdrScale;
+    float scaledLuma = luma / hdrScale;
+
+    vec3 clamped = clamp(scaledLinear, 0.0, 1.0);
+    float lumaClamped = clamp(scaledLuma, 0.0, 1.0);
 
     uint binR = uint(clamped.r * 255.0);
     uint binG = uint(clamped.g * 255.0);
@@ -60,15 +65,15 @@ void main() {
     uint waveY = uint(lumaClamped * 255.0);
     atomicAdd(waveData[waveY * 256u + waveX], 1u);
 
-    // Vectorscope: Cb vs Cr (Scaling constants depend on primaries)
-    float cbScale = 1.8556;
-    float crScale = 1.5748;
+    // Vectorscope: Cb vs Cr (Scaling constants depend on primaries). We use the UNSCALED linear values to preserve true chrominance angles.
+    float cbScale = 1.8556; // Rec.709: 2 * (1 - 0.0722)
+    float crScale = 1.5748; // Rec.709: 2 * (1 - 0.2126)
     if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
-        cbScale = 1.9404; // Rec.2020 Cb scaling
-        crScale = 1.7184; // Rec.2020 Cr scaling
+        cbScale = 1.8814; // Rec.2020: 2 * (1 - 0.0593)
+        crScale = 1.4746; // Rec.2020: 2 * (1 - 0.2627)
     } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
-        cbScale = 1.8414; // Display P3 Cb scaling (2 * (1 - 0.0793))
-        crScale = 1.5422; // Display P3 Cr scaling (2 * (1 - 0.2289))
+        cbScale = 1.8414; // Display P3: 2 * (1 - 0.0793)
+        crScale = 1.5422; // Display P3: 2 * (1 - 0.2289)
     }
     
     float cb = 0.5 + (linear.b - luma) / cbScale;
