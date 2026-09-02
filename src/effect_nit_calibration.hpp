@@ -7,7 +7,8 @@
 
 namespace vkBasalt {
 
-    class NitCalibrationEffect : public SimpleEffect {
+    class NitCalibrationEffect : public SimpleEffect 
+    {
     public:
         NitCalibrationEffect(LogicalDevice* pLogicalDevice, 
                              VkFormat sourceFormat, VkFormat destFormat, VkExtent2D imageExtent,
@@ -19,13 +20,12 @@ namespace vkBasalt {
         
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         void updateEffect() override;
+        
+        std::string getName() const override { return "nitcalibration"; }
+        static const std::vector<EffectParamDesc>& getCalibrationParams();
 
     private:
         Config* m_pConfigRef;
-        
-        int32_t m_toneMapperModeInt;
-        int32_t m_sourceColorSpaceInt;
-        int32_t m_destColorSpaceInt;
         bool m_autoHdrActive;
 
         struct NitCalibrationSpecData {
@@ -38,7 +38,7 @@ namespace vkBasalt {
         };
 
         NitCalibrationSpecData m_specData;
-        VkSpecializationMapEntry m_specMapEntries[6];
+        std::vector<VkSpecializationMapEntry> m_specMapEntries;
         VkSpecializationInfo m_specInfo;
     };
 } // namespace vkBasalt

@@ -2,8 +2,46 @@
 #include "shader_sources.hpp"
 #include "logger.hpp"
 #include <vulkan/vulkan_core.h>
+#include <algorithm>
+#include <cstring>
 
-namespace vkBasalt {
+namespace vkBasalt 
+{
+    #define SPEC(id, field) .specId = id, .specOffset = offsetof(NitCalibrationSpecData, field), .specSize = sizeof(((NitCalibrationSpecData*)0)->field)
+
+    // Static accessor, callable without an instance (used by AutoHDR tab when effect isn't in chain)
+    const std::vector<EffectParamDesc>& NitCalibrationEffect::getCalibrationParams()
+    {
+        static const std::vector<EffectParamDesc> params = {
+            {.key = "hdrToneMapper", .label = "Tone Mapper", .type = ParamType::Combo,
+             .defaultVal = 2.0, .minVal = 0.0, .maxVal = 2.0, .step = 1.0,
+             .comboOptions = {"quality", "fast", "hermite"},
+             .category = "Display Calibration",
+             .tooltip = "HDR tone mapping algorithm.\n"
+                        "quality: Reinhard, rational curve with matched slope, Hunt effect, achromatic clipping.\n"
+                        "fast: Polynomial sRGB decode, simpler curve, MaxRGB clamp.\n"
+                        "hermite: BT.2390 cubic spline, C1 continuous roll-off (default).",
+             SPEC(65533, toneMapperMode)},
+
+            {.key = "sdrWhitePointNits", .label = "SDR White Point (nits)", .type = ParamType::Float,
+             .defaultVal = 203.0, .minVal = 80.0, .maxVal = 400.0, .step = 1.0,
+             .category = "Display Calibration",
+             .tooltip = "Reference white luminance for SDR content.\n"
+                        "100 = ITU-R BT.709 reference\n"
+                        "203 = HDR10 standard SDR white\n"
+                        "80-120 = dim room viewing",
+             SPEC(0, sdrWhitePoint)},
+
+            {.key = "hdrPeakNits", .label = "Peak Brightness (nits)", .type = ParamType::Float,
+             .defaultVal = 1000.0, .minVal = 200.0, .maxVal = 4000.0, .step = 10.0,
+             .category = "Display Calibration",
+             .tooltip = "Maximum display luminance.\n"
+                        "Clamps HDR highlights to your display's measured peak.\n"
+                        "Common values: 400 (entry HDR), 600-1000 (mid-range), 1000-2000 (high-end OLED/MiniLED).",
+             SPEC(1, hdrPeakNits)},
+        };
+        return params;
+    }
 
     NitCalibrationEffect::NitCalibrationEffect(LogicalDevice* pLogicalDevice, 
                                                VkFormat sourceFormat, VkFormat destFormat, VkExtent2D imageExtent,
@@ -18,30 +56,63 @@ namespace vkBasalt {
         m_pConfigRef = pConfig;
         m_autoHdrActive = autoHdrActive;
         
-        std::string toneMapperMode = pConfig->getOption<std::string>("hdrToneMapper", "quality");
-        m_toneMapperModeInt = (toneMapperMode == "fast" || toneMapperMode == "igpu") ? 1 : 0;
-        
-        m_sourceColorSpaceInt = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
-        m_destColorSpaceInt = static_cast<int32_t>(getColorSpaceMode(destFormat, destColorSpace));
-        
-        m_specData = {
-            pConfig->getOption<float>("sdrWhitePointNits", 203.0f),
-            pConfig->getOption<float>("hdrPeakNits", 1000.0f),
-            m_autoHdrActive ? 1 : 0,
-            m_toneMapperModeInt,
-            m_sourceColorSpaceInt,
-            m_destColorSpaceInt
-        };
+        // Read config, apply defaults, clamp, write to specData by offset, and build mapEntries
+        NitCalibrationSpecData specData = {};
+        std::vector<VkSpecializationMapEntry> mapEntries;
+        mapEntries.reserve(getParamDescs().size() + 3); // +3 for autoHdr, source/dest colorspace
 
-        m_specMapEntries[0] = { 0, offsetof(NitCalibrationSpecData, sdrWhitePoint), sizeof(float) };
-        m_specMapEntries[1] = { 1, offsetof(NitCalibrationSpecData, hdrPeakNits), sizeof(float) };
-        m_specMapEntries[2] = { 2, offsetof(NitCalibrationSpecData, autoHdrEnabled), sizeof(int32_t) };
-        m_specMapEntries[3] = { 65533, offsetof(NitCalibrationSpecData, toneMapperMode), sizeof(int32_t) };
-        m_specMapEntries[4] = { 65534, offsetof(NitCalibrationSpecData, sourceColorSpace), sizeof(int32_t) };
-        m_specMapEntries[5] = { 65535, offsetof(NitCalibrationSpecData, destColorSpace), sizeof(int32_t) };
+        const auto& params = getParamDescs();
+        for (const auto& p : params) {
+            if (p.specId < 0) continue;
+            
+            double def = p.defaultVal;
+            double val;
+            
+            if (p.type == ParamType::Combo) {
+                std::string strVal = pConfig->getOption<std::string>(p.key, "");
+                int idx = static_cast<int>(p.defaultVal);
+                for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
+                    if (p.comboOptions[ci] == strVal) {
+                        idx = static_cast<int>(ci);
+                        break;
+                    }
+                }
+                val = static_cast<double>(idx);
+            } else if (p.type == ParamType::Float) {
+                val = static_cast<double>(pConfig->getOption<float>(p.key, static_cast<float>(def)));
+            } else {
+                val = static_cast<double>(pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(def)));
+            }
+            
+            val = std::clamp(val, p.minVal, p.maxVal);
+            m_paramValues[p.key] = val;
+            
+            if (p.type == ParamType::Float) {
+                float f = (float)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+            } else {
+                int32_t i = (int32_t)val;
+                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+            }
+            
+            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+        }
+
+        // Add non-user-configurable specialization constants
+        specData.autoHdrEnabled = autoHdrActive ? 1 : 0;
+        mapEntries.push_back({2, offsetof(NitCalibrationSpecData, autoHdrEnabled), sizeof(int32_t)});
         
-        m_specInfo.mapEntryCount = 6;
-        m_specInfo.pMapEntries = m_specMapEntries;
+        specData.sourceColorSpace = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
+        mapEntries.push_back({65534, offsetof(NitCalibrationSpecData, sourceColorSpace), sizeof(int32_t)});
+        
+        specData.destColorSpace = static_cast<int32_t>(getColorSpaceMode(destFormat, destColorSpace));
+        mapEntries.push_back({65535, offsetof(NitCalibrationSpecData, destColorSpace), sizeof(int32_t)});
+        
+        m_specData = specData;
+        m_specMapEntries = mapEntries;
+        
+        m_specInfo.mapEntryCount = (uint32_t)m_specMapEntries.size();
+        m_specInfo.pMapEntries = m_specMapEntries.data();
         m_specInfo.dataSize = sizeof(NitCalibrationSpecData);
         m_specInfo.pData = &m_specData;
         

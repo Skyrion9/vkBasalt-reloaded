@@ -1,7 +1,10 @@
 #include "imgui_overlay.hpp"
+
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
+
 #include <string>
+
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
 #include "format.hpp"
@@ -9,6 +12,7 @@
 #include "config.hpp"
 #include "frame_analyzer.hpp"
 #include "hdr_detect.hpp"
+#include "effect_nit_calibration.hpp"
 
 namespace vkBasalt {
 
@@ -133,12 +137,13 @@ namespace vkBasalt {
             bool perGameCalib = m_pConfig->hasPerGameOption("sdrWhitePointNits") ||
                                 m_pConfig->hasPerGameOption("hdrPeakNits") ||
                                 m_pConfig->hasPerGameOption("hdrToneMapper");
+
             if (ImGui::Checkbox("Only change calibration for this game", &perGameCalib)) {
                 if (perGameCalib) {
                     // Lock in the current global values to the per game config immediately so the checkbox state sticks
                     m_pConfig->setOption("sdrWhitePointNits", doubleToConfigString(m_pConfig->getOption<float>("sdrWhitePointNits", 203.0f)));
                     m_pConfig->setOption("hdrPeakNits", doubleToConfigString(m_pConfig->getOption<float>("hdrPeakNits", 1000.0f)));
-                    m_pConfig->setOption("hdrToneMapper", m_pConfig->getOption<std::string>("hdrToneMapper", "quality"));
+                    m_pConfig->setOption("hdrToneMapper", m_pConfig->getOption<std::string>("hdrToneMapper", "hermite"));
                     m_pConfig->savePerGame();
                     g_triggerSoftReload = true;
                 } else {
@@ -153,72 +158,96 @@ namespace vkBasalt {
             if (perGameCalib) {
                 ImGui::TextDisabled("Calibration changes will be saved to this game's config only.");
             }
+
             ImGui::Spacing();
 
             DisplayHdrInfo detected = detectDisplayHdrCalibration();
             std::string sourceStr = "Fallback Defaults";
             if (detected.source == "kde") sourceStr = "KDE Plasma";
-            
             ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "System Detection: %s", sourceStr.c_str());
-            ImGui::TextDisabled("Detected Peak: %.0f nits | White: %.0f nits", 
+            ImGui::TextDisabled("Detected Peak: %.0f nits | White: %.0f nits",
                                 detected.peakBrightnessNits, detected.sdrWhitePointNits);
-            ImGui::Spacing();
-
-            std::string toneMapperMode = m_pConfig->getOption<std::string>("hdrToneMapper", "quality");
-            int toneMapperIndex = (toneMapperMode == "fast" || toneMapperMode == "igpu") ? 1 : 0;
-            const char* toneMapperItems[] = { "Quality (more precise)", "Fast (iGPU / performance)" };
-            
-            ImGui::PushItemWidth(250);
-            if (ImGui::Combo("Processing Mode", &toneMapperIndex, toneMapperItems, 2)) {
-                if (perGameCalib) {
-                    m_pConfig->setOption("hdrToneMapper", toneMapperIndex == 1 ? "fast" : "quality");
-                    m_pConfig->savePerGame();
-                } else {
-                    m_pConfig->setGlobalOption("hdrToneMapper", toneMapperIndex == 1 ? "fast" : "quality");
-                    m_pConfig->saveGlobal();
-                }
-                g_triggerSoftReload = true;
-            }
-            ImGui::PopItemWidth();
-
-            if (toneMapperIndex == 0) {
-                ImGui::TextDisabled("Quality: Rational curve, Hunt effect, achromatic clipping.");
-            } else {
-                ImGui::TextDisabled("Fast: Polynomial sRGB, simpler curve, MaxRGB clamp.");
-            }
-            ImGui::Spacing();
-
-            float sdrWhite = m_pConfig->getOption<float>("sdrWhitePointNits", 203.0f);
-            ImGui::PushItemWidth(250);
-            if (ImGui::SliderFloat("SDR White Point (nits)", &sdrWhite, 80.0f, 400.0f, "%.0f")) {
-                if (perGameCalib) {
-                    m_pConfig->setOption("sdrWhitePointNits", doubleToConfigString(sdrWhite));
-                } else {
-                    m_pConfig->setGlobalOption("sdrWhitePointNits", doubleToConfigString(sdrWhite));
-                }
-                m_hasUnsavedChanges = true;
-                m_previewDirty = true;
-                m_lastChangeTime = ImGui::GetTime();
-            }
-            ImGui::PopItemWidth();
-            ImGui::TextDisabled("100 (ref), 203 (HDR10 standard), 80-120 (dim rooms)");
 
             ImGui::Spacing();
 
-            float peakNits = m_pConfig->getOption<float>("hdrPeakNits", 1000.0f);
-            ImGui::PushItemWidth(250);
-            if (ImGui::SliderFloat("Peak Brightness (nits)", &peakNits, 200.0f, 4000.0f, "%.0f")) {
-                if (perGameCalib) {
-                    m_pConfig->setOption("hdrPeakNits", doubleToConfigString(peakNits));
-                } else {
-                    m_pConfig->setGlobalOption("hdrPeakNits", doubleToConfigString(peakNits));
+            // Render calibration params from the declarative params
+            const auto& calibParams = NitCalibrationEffect::getCalibrationParams();
+            for (const auto& p : calibParams) {
+                ImGui::PushID(p.key.c_str());
+                bool changed = false;
+
+                switch (p.type) {
+                    case ParamType::Combo: {
+                        // Read current config value and map to combo index
+                        std::string strVal = m_pConfig->getOption<std::string>(p.key, "");
+                        int currentIdx = 0;
+                        for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
+                            if (p.comboOptions[ci] == strVal) { currentIdx = (int)ci; break; }
+                        }
+                        if (strVal.empty()) currentIdx = (int)p.defaultVal;
+
+                        ImGui::PushItemWidth(250);
+                        if (ImGui::BeginCombo(p.label.c_str(), p.comboOptions[currentIdx].c_str())) {
+                            for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
+                                bool is_sel = (currentIdx == (int)ci);
+                                if (ImGui::Selectable(p.comboOptions[ci].c_str(), is_sel)) {
+                                    currentIdx = (int)ci;
+                                    changed = true;
+                                }
+                                if (is_sel) ImGui::SetItemDefaultFocus();
+                            }
+                            ImGui::EndCombo();
+                        }
+                        ImGui::PopItemWidth();
+
+                        if (changed) {
+                            std::string modeStr = p.comboOptions[currentIdx];
+                            if (perGameCalib) {
+                                m_pConfig->setOption(p.key, modeStr);
+                                m_pConfig->savePerGame();
+                            } else {
+                                m_pConfig->setGlobalOption(p.key, modeStr);
+                                m_pConfig->saveGlobal();
+                            }
+                            g_triggerSoftReload = true;
+                        }
+                        break;
+                    }
+                    case ParamType::Float: {
+                        float val = m_pConfig->getOption<float>(p.key, (float)p.defaultVal);
+                        ImGui::PushItemWidth(250);
+                        if (ImGui::SliderFloat(p.label.c_str(), &val, (float)p.minVal, (float)p.maxVal, "%.0f")) {
+                            changed = true;
+                        }
+                        ImGui::PopItemWidth();
+
+                        if (changed) {
+                            val = std::clamp(val, (float)p.minVal, (float)p.maxVal);
+                            if (perGameCalib) {
+                                m_pConfig->setOption(p.key, doubleToConfigString(val));
+                                m_pConfig->savePerGame();
+                            } else {
+                                m_pConfig->setGlobalOption(p.key, doubleToConfigString(val));
+                                m_pConfig->saveGlobal();
+                            }
+                            m_hasUnsavedChanges = true;
+                            m_previewDirty = true;
+                            m_lastChangeTime = ImGui::GetTime();
+                            g_triggerSoftReload = true;
+                        }
+                        break;
+                    }
+                    default: break;
                 }
-                m_hasUnsavedChanges = true;
-                m_previewDirty = true;
-                m_lastChangeTime = ImGui::GetTime();
+
+                // Tooltip from param description
+                if (ImGui::IsItemHovered() && !p.tooltip.empty()) {
+                    ImGui::SetTooltip("%s", p.tooltip.c_str());
+                }
+
+                ImGui::Spacing();
+                ImGui::PopID();
             }
-            ImGui::PopItemWidth();
-            ImGui::TextDisabled("Clamps HDR highlights to your display's measured peak.");
         }
 
         ImGui::Spacing();
