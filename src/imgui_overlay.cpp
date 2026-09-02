@@ -359,11 +359,15 @@ namespace vkBasalt {
     if (isWayland) {
         updateWaylandImGuiIO(m_cursorScale);
         return;
-}
+    }
 #endif
-    // X11/XWayland coordinates are already in the swapchains pixel space.
-    // Don't multiply by UI scale here thats only needed for native Wayland.
+    // X11/XWayland coordinates are already in the swapchains pixel space. Don't multiply by UI scale here thats only needed for native Wayland.
     updateX11ImGuiIO(m_isOpen, 1.0f);
+
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+    // XQueryPointer can't detect scroll wheel (Buttons 4/5 are momentary). Gamescope sends scroll events to the Wayland surface even for XWayland clients.
+    ImGui::GetIO().MouseWheel += consumeWaylandMouseWheel();
+#endif
     }
 
     void ImGuiOverlay::processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height) {

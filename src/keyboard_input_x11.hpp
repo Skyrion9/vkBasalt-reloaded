@@ -11,5 +11,6 @@ namespace vkBasalt
 
     // Overlay input support
     void initX11Input(void* display_ptr, void* window_ptr);
-    void updateX11ImGuiIO(bool overlayOpen, float scale = 1.0f);
+    void supplementX11MouseButtons();
+    void updateX11ImGuiIO(bool overlayOpen, float scale);
 } // namespace vkBasalt

@@ -151,8 +151,13 @@ namespace vkBasalt
         init_input_backend();
 
 #if VKBASALT_WAYLAND
-        if (is_wayland)
-            return isKeyPressedWayland(ks);
+        if (is_wayland) {
+            if (isKeyPressedWayland(ks)) return true;
+            // Gamescope and other nested compositors route keyboard input through XWayland even for native Wayland clients. Fall back to X11.
+#if VKBASALT_X11
+            return isKeyPressedX11(ks);
+#endif
+        }
 #endif
 
 #if VKBASALT_X11

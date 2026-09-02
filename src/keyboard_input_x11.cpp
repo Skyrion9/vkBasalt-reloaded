@@ -18,6 +18,7 @@ namespace vkBasalt
 {
     static Display* g_gameDisplay = nullptr;
     static Window g_gameWindow = 0;
+    static Display* g_fallbackDisplay = nullptr; // Cached for Wayland games in Gamescope
 
     void initX11Input(void* display_ptr, void* window_ptr) {
         g_gameDisplay = (Display*)display_ptr;
@@ -26,26 +27,25 @@ namespace vkBasalt
     }
 
     uint32_t convertToKeySymX11(std::string key) {
-        uint32_t result = (uint32_t) XStringToKeysym(key.c_str());
-        return result;
+        return (uint32_t)XStringToKeysym(key.c_str());
     }
 
     bool isKeyPressedX11(uint32_t ks) {
         Display* dpy = g_gameDisplay;
         if (!dpy) {
-            const char* disVar = getenv("DISPLAY");
-            if (!disVar) return false;
-            dpy = XOpenDisplay(disVar);
-            if (!dpy) return false;
+            if (!g_fallbackDisplay) {
+                const char* disVar = getenv("DISPLAY");
+                if (!disVar) return false;
+                g_fallbackDisplay = XOpenDisplay(disVar);
+                if (!g_fallbackDisplay) return false;
+            }
+            dpy = g_fallbackDisplay;
         }
         
         char keys_return[32];
         XQueryKeymap(dpy, keys_return);
-        KeyCode kc2 = XKeysymToKeycode(dpy, (KeySym) ks);
-        bool pressed = !!(keys_return[kc2 >> 3] & (1 << (kc2 & 7)));
-        
-        if (!g_gameDisplay && dpy) XCloseDisplay(dpy);
-        return pressed;
+        KeyCode kc2 = XKeysymToKeycode(dpy, (KeySym)ks);
+        return !!(keys_return[kc2 >> 3] & (1 << (kc2 & 7)));
     }
 
     float getX11UIScale() {
@@ -55,14 +55,12 @@ namespace vkBasalt
             return s_cachedScale;
         }
 
-        // Env vars and KDE config files (shared across backends)
         float sharedScale = getScaleFromEnvAndKDE();
         if (sharedScale > 0.0f) {
             s_cachedScale = sharedScale;
             return sharedScale;
         }
 
-        // X11 Xft.dpi and physical screen size
         Display* dpy = g_gameDisplay;
         bool own = false;
         if (!dpy) { 
@@ -99,6 +97,32 @@ namespace vkBasalt
         return scale;
     }
 
+    void supplementX11MouseButtons() {
+        if (!ImGui::GetCurrentContext()) return;
+        ImGuiIO& io = ImGui::GetIO();
+
+        Display* dpy = g_gameDisplay;
+        if (!dpy) {
+            if (!g_fallbackDisplay) {
+                const char* disVar = getenv("DISPLAY");
+                if (!disVar) return;
+                g_fallbackDisplay = XOpenDisplay(disVar);
+                if (!g_fallbackDisplay) return;
+            }
+            dpy = g_fallbackDisplay;
+        }
+
+        Window root, child;
+        int root_x, root_y, win_x, win_y;
+        unsigned int mask;
+        Window win = g_gameWindow ? g_gameWindow : DefaultRootWindow(dpy);
+        if (XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
+            // X11: Button2=Middle, Button3=Right. ImGui: 1=Right, 2=Middle.
+            if (!io.MouseDown[1]) io.MouseDown[1] = (mask & Button3Mask) != 0;
+            if (!io.MouseDown[2]) io.MouseDown[2] = (mask & Button2Mask) != 0;
+        }
+    }
+
     void updateX11ImGuiIO(bool overlayOpen, float scale) {
         if (!ImGui::GetCurrentContext()) return;
         ImGuiIO& io = ImGui::GetIO();
@@ -106,8 +130,13 @@ namespace vkBasalt
         Display* dpy = g_gameDisplay;
         Window win = g_gameWindow;
         if (!dpy) {
-            dpy = XOpenDisplay(getenv("DISPLAY"));
-            if (!dpy) return;
+            if (!g_fallbackDisplay) {
+                const char* disVar = getenv("DISPLAY");
+                if (!disVar) return;
+                g_fallbackDisplay = XOpenDisplay(disVar);
+                if (!g_fallbackDisplay) return;
+            }
+            dpy = g_fallbackDisplay;
             win = DefaultRootWindow(dpy);
         }
 
@@ -116,11 +145,9 @@ namespace vkBasalt
         unsigned int mask;
         if (XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
             io.MousePos = ImVec2((float)win_x * scale, (float)win_y * scale);
-            io.MouseDown[0] = (mask & Button1Mask) != 0;
-            io.MouseDown[1] = (mask & Button2Mask) != 0;
-            io.MouseDown[2] = (mask & Button3Mask) != 0;
+            io.MouseDown[0] = (mask & Button1Mask) != 0; // Left
+            io.MouseDown[1] = (mask & Button3Mask) != 0; // Right
+            io.MouseDown[2] = (mask & Button2Mask) != 0; // Middle
         }
-        
-        if (!g_gameDisplay && dpy) XCloseDisplay(dpy);
     }
 } // namespace vkBasalt

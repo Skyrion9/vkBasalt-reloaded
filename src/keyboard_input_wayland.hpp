@@ -13,6 +13,7 @@ namespace vkBasalt
     bool wasSlashTypedWayland();
     
     float getWaylandUIScale();
+    float consumeWaylandMouseWheel();
     bool  isWaylandInputActive();
     void shutdownWaylandInput();
     void clearWaylandInputQueues();

@@ -23,6 +23,7 @@
 #include <string>
 
 #include "keyboard_input.hpp"
+#include "keyboard_input_x11.hpp"
 #include "logger.hpp"
 
 #ifdef wl_array_for_each
@@ -188,8 +189,18 @@ namespace vkBasalt
     static void wl_pointer_frame(void *data, struct wl_pointer *wl_pointer) {}
     static void wl_pointer_axis_source(void *data, struct wl_pointer *wl_pointer, uint32_t axis_source) {}
     static void wl_pointer_axis_stop(void *data, struct wl_pointer *wl_pointer, uint32_t time, uint32_t axis) {}
-    static void wl_pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis, int32_t discrete) {}
-    static void wl_pointer_axis_value120(void *data, struct wl_pointer *wl_pointer, uint32_t axis, int32_t value120) {}
+    static void wl_pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer, uint32_t axis, int32_t discrete) {
+        wayland_display *wayland = (wayland_display *)data;
+        if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+            wayland->mouse_wheel += -(float)discrete;
+        }
+    }
+    static void wl_pointer_axis_value120(void *data, struct wl_pointer *wl_pointer, uint32_t axis, int32_t value120) {
+        wayland_display *wayland = (wayland_display *)data;
+        if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+            wayland->mouse_wheel += -(float)value120 / 120.0f;
+        }
+    }
     static void wl_pointer_axis_relative_direction(void *data, struct wl_pointer *wl_pointer, uint32_t axis, uint32_t direction) {}
 
     static const struct wl_pointer_listener pointer_listener = {
@@ -566,6 +577,9 @@ namespace vkBasalt
             for (int i = 0; i < 5; i++) io.MouseDown[i] = wayland.mouse_down[i];
             io.MouseWheel += wayland.mouse_wheel;
             wayland.mouse_wheel = 0.0f;
+
+            // Gamescope and other nested compositors may not forward all pointer buttons via wl_pointer. Supplement with X11 state (XQueryPointer is server-wide).
+            supplementX11MouseButtons();
             break;
         }
     }
@@ -585,6 +599,18 @@ namespace vkBasalt
             for (int i = 0; i < 5; i++) io.MouseDown[i] = false;
             io.MouseWheel = 0.0f;
         }
+    }
+
+    float consumeWaylandMouseWheel() {
+        float total = 0.0f;
+        for (auto& display_pair : displays) {
+            wayland_display& wayland = display_pair.second;
+            if (!wayland.queue) continue;
+            wl_display_dispatch_queue_pending(display_pair.first, wayland.queue);
+            total += wayland.mouse_wheel;
+            wayland.mouse_wheel = 0.0f;
+        }
+        return total;
     }
 
     void shutdownWaylandInput() {
