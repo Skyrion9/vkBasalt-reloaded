@@ -1,8 +1,40 @@
 #include "color_math.hpp"
+
 #include <cmath>
+#include <cstring> 
 #include <algorithm>
 
 namespace vkBasalt {
+
+    // FP16 (Half Float) to FP32 conversion for scRGB / HDR formats
+    float halfToFloat(uint16_t h) {
+        uint32_t sign = (uint32_t)(h & 0x8000) << 16;
+        uint32_t exponent = (h >> 10) & 0x1F;
+        uint32_t mantissa = h & 0x3FF;
+        uint32_t result;
+
+        if (exponent == 0) {
+            if (mantissa == 0) {
+                result = sign;
+            } else {
+                exponent = 1;
+                while ((mantissa & 0x400) == 0) {
+                    mantissa <<= 1;
+                    exponent--;
+                }
+                mantissa &= 0x3FF;
+                result = sign | ((exponent + 127 - 15) << 23) | (mantissa << 13);
+            }
+        } else if (exponent == 31) {
+            result = sign | 0x7F800000 | (mantissa << 13);
+        } else {
+            result = sign | ((exponent + 127 - 15) << 23) | (mantissa << 13);
+        }
+
+        float f;
+        std::memcpy(&f, &result, sizeof(float));
+        return f;
+    }
 
     //  sRGB 
     float srgbToLinear(float c) {
@@ -58,13 +90,13 @@ namespace vkBasalt {
     // Unified Dispatchers
     float decodeColor(float c, ColorSpaceMode csm) {
         switch (csm) {
-            case ColorSpaceMode::SDR_SRGB:              return c; // SDR works in gamma space
+            case ColorSpaceMode::SDR_SRGB:              return srgbToLinear(c); // Matches GLSL decodeToLinear
             case ColorSpaceMode::HDR10_PQ:              return pqToLinear(c);
             case ColorSpaceMode::HDR_HLG:               return hlgToLinear(c);
             case ColorSpaceMode::HDR_SCRGB:             return c; // Already linear (Rec.709 primaries)
             case ColorSpaceMode::HDR_BT2020_LINEAR:     return c; // Already linear (BT.2020 primaries)
             case ColorSpaceMode::HDR_DISPLAY_P3_LINEAR: return c; // Already linear (Display P3 primaries)
-            case ColorSpaceMode::DISPLAY_P3_NONLINEAR:  return linearToSrgb(c); // sRGB transfer, P3 primaries
+            case ColorSpaceMode::DISPLAY_P3_NONLINEAR:  return srgbToLinear(c); // sRGB transfer, P3 primaries
             default: return c;
         }
     }
@@ -95,6 +127,7 @@ namespace vkBasalt {
         return std::clamp(a / b, 0.0f, 1.0f);
     }
 
+    // Utility, some of these are unused for now.
     void rec709ToRec2020(float& r, float& g, float& b) {
         float outR = 0.6274f * r + 0.3293f * g + 0.0433f * b;
         float outG = 0.0691f * r + 0.9195f * g + 0.0114f * b;

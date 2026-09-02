@@ -221,43 +221,6 @@ namespace vkBasalt
         }
     }
 
-    float halfToFloat(uint16_t h)
-    {
-        uint32_t sign = (uint32_t)(h & 0x8000) << 16;
-        uint32_t exponent = (h >> 10) & 0x1F;
-        uint32_t mantissa = h & 0x3FF;
-        uint32_t result;
-        if (exponent == 0)
-        {
-            if (mantissa == 0)
-            {
-                result = sign;
-            }
-            else
-            {
-                exponent = 1;
-                while ((mantissa & 0x400) == 0)
-                {
-                    mantissa <<= 1;
-                    exponent--;
-                }
-                mantissa &= 0x3FF;
-                result = sign | ((exponent + 127 - 15) << 23) | (mantissa << 13);
-            }
-        }
-        else if (exponent == 31)
-        {
-            result = sign | 0x7F800000 | (mantissa << 13);
-        }
-        else
-        {
-            result = sign | ((exponent + 127 - 15) << 23) | (mantissa << 13);
-        }
-        float f;
-        memcpy(&f, &result, sizeof(float));
-        return f;
-    }
-
     ColorSpaceMode getColorSpaceMode(VkFormat format, VkColorSpaceKHR colorSpace)
     {
         // 1. Explicit Color Spaces (Check to prevent format-only fallbacks from shadowing wide gamuts)

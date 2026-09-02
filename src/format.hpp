@@ -19,8 +19,6 @@ namespace vkBasalt
     VkFormat convertToUNORM(VkFormat format);
 
     uint32_t getBytesPerPixel(VkFormat format);
-    float halfToFloat(uint16_t h);
-
 
     VkFormat getSupportedFormat(LogicalDevice*        pLogicalDevice,
                                 std::vector<VkFormat> formats,

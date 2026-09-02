@@ -3,6 +3,8 @@
 #include "format.hpp"
 
 namespace vkBasalt {
+    // FP16 (Half Float) to FP32 conversion for scRGB / HDR formats
+    float halfToFloat(uint16_t h);
 
     // Transfer Functions (Decode: Encoded -> Linear)
     float srgbToLinear(float c);
