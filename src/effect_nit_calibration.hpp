@@ -1,9 +1,15 @@
 #pragma once
 #include "effect_simple.hpp"
+
+#include <vulkan/vulkan_core.h>
+
+#include <vector>
+#include <memory>
+
+
 #include "config.hpp"
 #include "format.hpp"
-#include <vector>
-#include <vulkan/vulkan_core.h>
+#include "auto_hdr_analyzer.hpp"
 
 namespace vkBasalt {
 
@@ -35,10 +41,13 @@ namespace vkBasalt {
             int32_t toneMapperMode;
             int32_t sourceColorSpace;
             int32_t destColorSpace;
+            int32_t hdrAdaptive;
         };
 
         NitCalibrationSpecData m_specData;
         std::vector<VkSpecializationMapEntry> m_specMapEntries;
         VkSpecializationInfo m_specInfo;
+        std::unique_ptr<AutoHdrAnalyzer> m_autoHdrAnalyzer;
+        bool m_hdrAdaptive = true;
     };
 } // namespace vkBasalt

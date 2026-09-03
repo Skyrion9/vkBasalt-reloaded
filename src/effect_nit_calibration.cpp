@@ -108,6 +108,14 @@ namespace vkBasalt
         specData.destColorSpace = static_cast<int32_t>(getColorSpaceMode(destFormat, destColorSpace));
         mapEntries.push_back({65535, offsetof(NitCalibrationSpecData, destColorSpace), sizeof(int32_t)});
         
+        // Determine if adaptive analyzer should be created before setting spec data
+        m_hdrAdaptive = pConfig->getOption<bool>("hdrAdaptive", true);
+        bool willCreateAnalyzer = m_hdrAdaptive && (autoHdrActive || getColorSpaceMode(sourceFormat, sourceColorSpace) != ColorSpaceMode::SDR_SRGB);
+
+        // Pass adaptive state to shader so it knows whether to read the metrics UBO
+        specData.hdrAdaptive = willCreateAnalyzer ? 1 : 0;
+        mapEntries.push_back({3, offsetof(NitCalibrationSpecData, hdrAdaptive), sizeof(int32_t)});
+        
         m_specData = specData;
         m_specMapEntries = mapEntries;
         
@@ -118,6 +126,13 @@ namespace vkBasalt
         
         pVertexSpecInfo = nullptr;
         pFragmentSpecInfo = &m_specInfo;
+        
+        // Create analyzer and add its descriptor set layout before init()
+        if (willCreateAnalyzer) {
+            int32_t srcCsmInt = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
+            m_autoHdrAnalyzer = std::make_unique<AutoHdrAnalyzer>(pLogicalDevice, imageExtent, inputImages.size(), pConfig, srcCsmInt);
+            this->descriptorSetLayouts.push_back(m_autoHdrAnalyzer->getMetricsSetLayout());
+        }
         
         // Init with destFormat so renderpass/framebuffers match the real HDR swapchain
         init(pLogicalDevice, destFormat, imageExtent, inputImages, outputImages, pConfig);
@@ -148,6 +163,10 @@ namespace vkBasalt
                 pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &write, 0, nullptr);
             }
         }
+        // Bind the static input views to the analyzers descriptor sets only once
+        if (m_autoHdrAnalyzer) {
+            m_autoHdrAnalyzer->updateInputViews(inputImageViews);
+        }
     }
 
     NitCalibrationEffect::~NitCalibrationEffect() {}
@@ -155,7 +174,7 @@ namespace vkBasalt
     void NitCalibrationEffect::updateEffect() {}
 
     void NitCalibrationEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) {
-        // Barrier 1: Acquire inputImages for reading
+        // Barrier 1: Acquire inputImages for reading (Compute + Fragment)
         VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         memoryBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -170,10 +189,26 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
-        // Render Pass (writes to outputImages, automatically transitions them to finalLayout = PRESENT_SRC_KHR)
+        // Run AutoHDR Analyzer (Compute passes)
+        if (m_autoHdrAnalyzer) {
+            m_autoHdrAnalyzer->recordCommands(commandBuffer, inputImageViews[imageIndex], imageIndex);
+            
+            // Barrier: Compute SSBO write -> Fragment SSBO read
+            VkMemoryBarrier memBarrier = {};
+            memBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            memBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            memBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            
+            pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                0, 1, &memBarrier, 0, nullptr, 0, nullptr);
+        }
+
+        // Render Pass
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.renderPass        = renderPass;
@@ -182,10 +217,18 @@ namespace vkBasalt
         renderPassBeginInfo.renderArea.extent = imageExtent;
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         
+        // Bind Set 0 (Image + UBO)
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
-        pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+            
+        // Bind Set 1 (Metrics SSBO) if adaptive
+        if (m_autoHdrAnalyzer) {
+            VkDescriptorSet metricSet = m_autoHdrAnalyzer->getMetricsDescriptorSet(imageIndex);
+            pLogicalDevice->vkd.CmdBindDescriptorSets(
+                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &metricSet, 0, nullptr);
+        }
         
+        pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 

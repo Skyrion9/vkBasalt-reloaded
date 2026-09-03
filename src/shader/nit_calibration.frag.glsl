@@ -5,6 +5,13 @@ layout(set = 0, binding = 0) uniform sampler2D img;
 layout(constant_id = 0) const float sdrWhitePoint = 203.0;
 layout(constant_id = 1) const float hdrPeakNits = 1000.0;
 layout(constant_id = 2) const int autoHdrEnabled = 0;
+layout(constant_id = 3) const int hdrAdaptive = 1; // Default ON
+
+layout(set = 1, binding = 0) readonly buffer AdaptiveMetrics {
+    float adaptiveWhite;
+    float adaptivePeak;
+    float intensity;
+} metrics;
 
 #define CSP_SDR_SRGB              0
 #define CSP_HDR10_PQ              1
@@ -125,10 +132,8 @@ vec3 achromaticGamutClip(vec3 c, float mappedLuma, float peakLinear) {
 
     // Distance to peak: naturally >= 1.0 if in gamut, < 1.0 if out of gamut.
     float distToMax = (peakLinear - mappedLuma) / max(maxC - mappedLuma, 0.0001);
-    
     // Distance to zero: naturally >= 1.0 if in gamut, < 1.0 if out of gamut.
     float distToMin = mappedLuma / max(mappedLuma - minC, 0.0001);
-    
     // Take the most restrictive constraint and clamp to [0, 1]. If both distances are >= 1.0, clipFactor becomes 1.0 and the color is unchanged.
     float clipFactor = clamp(min(distToMax, distToMin), 0.0, 1.0);
 
@@ -173,8 +178,8 @@ void main() {
     if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
         float satFactor = 1.0;
         if (autoHdrEnabled == 1 && sourceColorSpace == CSP_SDR_SRGB) {
-            float targetWhite = sdrWhitePoint * 0.01;
-            float targetPeak  = hdrPeakNits * 0.01;
+            float targetWhite = (hdrAdaptive == 1) ? metrics.adaptiveWhite : sdrWhitePoint * 0.01;
+            float targetPeak  = (hdrAdaptive == 1) ? metrics.adaptivePeak  : hdrPeakNits * 0.01;
 
             // Specular weighting: achromatic pixels (light sources) expand to full peak, chromatic pixels (surfaces) expand to a lower ceiling.
             vec3  chromaVec    = linear - vec3(luma);
@@ -193,8 +198,8 @@ void main() {
             float t = clamp((mappedLuma - targetWhite) * invSatRange, 0.0, 1.0);
             satFactor = 1.0 - 0.15 * (t * t * (3.0 - 2.0 * t));
         } else {
-            float targetWhite = sdrWhitePoint * 0.01;
-            float targetPeak  = hdrPeakNits * 0.01;
+            float targetWhite = (hdrAdaptive == 1) ? metrics.adaptiveWhite : sdrWhitePoint * 0.01;
+            float targetPeak  = (hdrAdaptive == 1) ? metrics.adaptivePeak  : hdrPeakNits * 0.01;
             float knee = targetWhite;
 
             if (luma <= knee) {
