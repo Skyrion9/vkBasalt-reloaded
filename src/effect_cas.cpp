@@ -27,6 +27,7 @@ namespace vkBasalt
     {
         vertexCode   = full_screen_triangle_vert;
         fragmentCode = cas_frag;
+        this->pushConstantSize = 0;
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
