@@ -27,6 +27,16 @@ namespace vkBasalt
         uint32_t frameCounter;
     };
 
+    // Push constants for basic spatial geometry (texel sizes). Pre-computed once in init() to avoid per frame divisions.
+    struct SimplePushConstants {
+        float texelSizeX;
+        float texelSizeY;
+        float reserved0;
+        float reserved1;
+        float texelSizeX2;
+        float texelSizeY2;
+    };
+
     class SimpleEffect : public Effect
     {
     public:
@@ -69,6 +79,9 @@ namespace vkBasalt
         
         bool needsClear = false;
         VkImageLayout finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        // Pre-computed push constants for basic texel sizes
+        SimplePushConstants pushConstants = {};
 
         // subclasses can put DescriptorSets in here, but the first one will be the input image descriptorSet
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;

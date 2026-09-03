@@ -188,6 +188,14 @@ namespace vkBasalt
         }
 
         framebuffers = createFramebuffers(pLogicalDevice, renderPass, imageExtent, {outputImageViews});
+
+        // Pre-compute push constants once (texel sizes are constant per pipeline lifetime).
+        if (pushConstantSize > 0) {
+            pushConstants.texelSizeX  = 1.0f / static_cast<float>(imageExtent.width);
+            pushConstants.texelSizeY  = 1.0f / static_cast<float>(imageExtent.height);
+            pushConstants.texelSizeX2 = pushConstants.texelSizeX;
+            pushConstants.texelSizeY2 = pushConstants.texelSizeY;
+        }
     }
     
     void SimpleEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
@@ -230,17 +238,8 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
         if (pushConstantSize > 0) {
-            float pushData[32] = {}; 
-            float texelSizeX = 1.0f / static_cast<float>(imageExtent.width);
-            float texelSizeY = 1.0f / static_cast<float>(imageExtent.height);
-            pushData[0] = texelSizeX;
-            pushData[1] = texelSizeY;
-            if (pushConstantSize >= 6 * sizeof(float)) {
-                pushData[4] = texelSizeX;
-                pushData[5] = texelSizeY;
-            }
             pLogicalDevice->vkd.CmdPushConstants(
-                commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, pushConstantSize, pushData);
+                commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, pushConstantSize, &pushConstants);
         }
 
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
