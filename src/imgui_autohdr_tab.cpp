@@ -269,7 +269,8 @@ namespace vkBasalt {
                 bool enabled = analyzer->isEnabled();
                 if (ImGui::Checkbox("Enable Scopes (GPU)", &enabled)) {
                     analyzer->setEnabled(enabled);
-                    g_triggerSoftReload = true;
+                    m_pConfig->setGlobalOption("scopesEnabled", enabled ? "true" : "false");
+                    m_pConfig->saveGlobal();
                 }
 
                 if (enabled) {

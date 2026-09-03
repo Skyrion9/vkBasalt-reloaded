@@ -735,7 +735,6 @@ namespace vkBasalt {
         for (auto& pass : m_pSwapchain->computePasses) {
             if (pass->getName() == "frame_analyzer" && pass->isEnabled() != enabled) {
                 pass->setEnabled(enabled);
-                g_triggerSoftReload = true;
                 break;
             }
         }

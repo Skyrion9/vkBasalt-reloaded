@@ -27,7 +27,15 @@ namespace vkBasalt
         // Expose raw handles for ImGui backend registration
         VkImageView getScopeImageView(ScopeType type) const { return m_scopeViews[type]; }
         VkSampler   getScopeSampler() const { return m_sampler; }
-        VkDescriptorSet getScopeDescriptorSet(ScopeType type) const { return m_imguiSets[type]; }
+
+        void setEnabled(bool enabled) override { 
+            m_enabled = enabled; 
+            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0; 
+        }
+        void setOverlayVisible(bool visible) { 
+            m_overlayVisible = visible; 
+            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0; 
+        }
 
     private:
         LogicalDevice* m_pDevice;
@@ -68,12 +76,16 @@ namespace vkBasalt
         VkDescriptorSet       m_resolveSet      = VK_NULL_HANDLE;
 
         // ImGui display (combined image samplers)
-        VkDescriptorSetLayout m_imguiDSL   = VK_NULL_HANDLE;
         VkDescriptorPool      m_pool       = VK_NULL_HANDLE;
-        std::array<VkDescriptorSet, SCOPE_COUNT> m_imguiSets{};
         VkSampler             m_sampler    = VK_NULL_HANDLE;
 
+        // Host visible active flag buffer. Allows CPU to toggle compute dispatch on/off without rrecording command buffers again or destroying Vulkan resources.
+        VkBuffer m_activeBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory m_activeMemory = VK_NULL_HANDLE;
+        uint32_t* m_mappedActive = nullptr;
+
         bool m_layoutsInitialized = false;
+        bool m_overlayVisible = true;
 
         struct PushConstants {
             uint32_t width;

@@ -1,18 +1,22 @@
 #include "overlay_manager.hpp"
+
+#include <sys/types.h>
+#include <unistd.h>
+#include <vulkan/vulkan_core.h>
+
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include "imgui_overlay.hpp"
+#include "frame_analyzer.hpp"
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"
 #include "command_buffer.hpp"
 #include "format.hpp"
 #include "logger.hpp"
-#include <atomic>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <sys/types.h>
-#include <unistd.h>
-#include <vulkan/vulkan_core.h>
 
 namespace vkBasalt {
     extern pid_t g_layer_init_pid;
@@ -53,6 +57,15 @@ namespace vkBasalt {
         auto overlayIt = m_overlayMap.find(swapchain);
         if (overlayIt == m_overlayMap.end() || !overlayIt->second) {
             return false;
+        }
+
+        // Propagate overlay visibility to FrameAnalyzer so it can skip GPU work when UI is hidden
+        bool overlayOpen = overlayIt->second->isOverlayOpen();
+        for (auto& pass : pSwapchain->computePasses) {
+            if (pass->getName() == "frame_analyzer") {
+                static_cast<FrameAnalyzer*>(pass.get())->setOverlayVisible(overlayOpen);
+                break;
+            }
         }
 
         VkCommandBuffer overlayCmdBuf = m_commandBuffersMap[swapchain][imageIndex];

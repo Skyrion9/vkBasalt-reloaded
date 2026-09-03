@@ -363,9 +363,13 @@ namespace vkBasalt {
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
             }
 
-            pLogicalSwapchain->computePasses.push_back(std::make_shared<FrameAnalyzer>(
+            auto fa = std::make_shared<FrameAnalyzer>(
                 pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages,
-                pLogicalSwapchain->format, pLogicalSwapchain->colorSpace));
+                pLogicalSwapchain->format, pLogicalSwapchain->colorSpace);
+            if (pConfig->getOption<bool>("scopesEnabled", false)) {
+                fa->setEnabled(true);
+            }
+            pLogicalSwapchain->computePasses.push_back(fa);
             Logger::debug("created compute passes (FrameAnalyzer)");
         }
 

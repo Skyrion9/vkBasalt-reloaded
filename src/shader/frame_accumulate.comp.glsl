@@ -10,6 +10,7 @@ layout(set = 0, binding = 0) uniform sampler2D inputImage;
 layout(set = 0, binding = 1) buffer HistBuffer  { uint histData[1024]; };
 layout(set = 0, binding = 2) buffer WaveBuffer  { uint waveData[65536]; };
 layout(set = 0, binding = 3) buffer VecBuffer   { uint vecData[65536]; };
+layout(set = 0, binding = 4) buffer ActiveFlag  { uint scopeActive; };
 
 layout(push_constant) uniform PushConstants {
     uint width;
@@ -18,6 +19,8 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 void main() {
+    if (scopeActive == 0u) return;
+    
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     if (pixel.x >= int(pc.width) || pixel.y >= int(pc.height)) return;
 

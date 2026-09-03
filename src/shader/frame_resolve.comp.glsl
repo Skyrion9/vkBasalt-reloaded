@@ -13,6 +13,7 @@ layout(set = 0, binding = 2) buffer VecBuffer   { uint vecData[65536]; };
 layout(set = 0, binding = 3, rgba8) uniform writeonly image2D histImage;
 layout(set = 0, binding = 4, rgba8) uniform writeonly image2D waveImage;
 layout(set = 0, binding = 5, rgba8) uniform writeonly image2D vecImage;
+layout(set = 0, binding = 6) buffer ActiveFlag  { uint scopeActive; };
 
 layout(push_constant) uniform PushConstants {
     uint width;
@@ -29,6 +30,8 @@ vec3 heatMap(float v) {
 }
 
 void main() {
+    if (scopeActive == 0u) return;
+
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
     if (coord.x >= 256 || coord.y >= 256) return;
 
