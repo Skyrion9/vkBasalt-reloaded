@@ -187,8 +187,67 @@ namespace vkBasalt {
             return stbi_write_hdr(path.c_str(), width, height, dstChannels, linearPixels.data()) != 0;
         } else if (format == "exr") {
             const char* err = nullptr;
-            // save_as_fp16 = 1 ensures true 16 bit half-float HDR preservation
-            int ret = SaveEXR(linearPixels.data(), width, height, dstChannels, 1, path.c_str(), &err);
+            
+            EXRHeader header;
+            InitEXRHeader(&header);
+            
+            EXRImage image;
+            InitEXRImage(&image);
+            
+            image.num_channels = 3;
+            image.width = width;
+            image.height = height;
+            
+            // Separate interleaved pixels into planar channels for tinyexr
+            std::vector<float> channelR(pixelCount), channelG(pixelCount), channelB(pixelCount);
+            for (size_t i = 0; i < pixelCount; i++) {
+                channelR[i] = linearPixels[i * 3 + 0];
+                channelG[i] = linearPixels[i * 3 + 1];
+                channelB[i] = linearPixels[i * 3 + 2];
+            }
+            
+            float* image_ptr[3];
+            // OpenEXR standard channel order is B, G, R
+            image_ptr[0] = channelB.data();
+            image_ptr[1] = channelG.data();
+            image_ptr[2] = channelR.data();
+            image.images = (unsigned char**)image_ptr;
+            
+            header.num_channels = 3;
+            header.channels = (EXRChannelInfo*)malloc(sizeof(EXRChannelInfo) * 3);
+            snprintf(header.channels[0].name, 256, "B");
+            snprintf(header.channels[1].name, 256, "G");
+            snprintf(header.channels[2].name, 256, "R");
+            
+            header.pixel_types = (int*)malloc(sizeof(int) * 3);
+            header.requested_pixel_types = (int*)malloc(sizeof(int) * 3);
+            for (int i = 0; i < 3; i++) {
+                header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
+                header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_HALF; // 16 bit half-float
+            }
+            
+            // Explicitly set Rec.709/sRGB chromaticities to prevent viewers from misinterpreting the color space. Format: 8 floats (red_xy, green_xy, blue_xy, white_xy)
+            float chromaticities[8] = {
+                0.6400f, 0.3300f, // Red
+                0.3000f, 0.6000f, // Green
+                0.1500f, 0.0600f, // Blue
+                0.3127f, 0.3290f  // White (D65)
+            };
+            
+            header.num_custom_attributes = 1;
+            header.custom_attributes = (EXRAttribute*)malloc(sizeof(EXRAttribute));
+            snprintf(header.custom_attributes[0].name, 256, "chromaticities");
+            snprintf(header.custom_attributes[0].type, 256, "chromaticities");
+            header.custom_attributes[0].value = (unsigned char*)chromaticities;
+            header.custom_attributes[0].size = sizeof(chromaticities);
+            
+            int ret = SaveEXRImageToFile(&image, &header, path.c_str(), &err);
+            
+            free(header.channels);
+            free(header.pixel_types);
+            free(header.requested_pixel_types);
+            free(header.custom_attributes);
+            
             if (ret != TINYEXR_SUCCESS) {
                 if (err) {
                     Logger::err(std::string("EXR write failed: ") + err);
