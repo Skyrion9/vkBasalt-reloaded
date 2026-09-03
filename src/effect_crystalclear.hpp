@@ -18,12 +18,12 @@ namespace vkBasalt
     {
     public:
         CrystalClearEffect(LogicalDevice*       pLogicalDevice,
-                        VkFormat             format,
-                        VkExtent2D           imageExtent,
-                        std::vector<VkImage> inputImages,
-                        std::vector<VkImage> outputImages,
-                        Config*              pConfig,
-                        VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
+                           VkFormat             format,
+                           VkExtent2D           imageExtent,
+                           std::vector<VkImage> inputImages,
+                           std::vector<VkImage> outputImages,
+                           Config*              pConfig,
+                           VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
         
         ~CrystalClearEffect();
 
