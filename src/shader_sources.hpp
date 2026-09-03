@@ -84,4 +84,12 @@ namespace vkBasalt
     const std::vector<uint32_t> nit_calibration_frag = {
 #include "nit_calibration.frag.h"
     };
+
+    const std::vector<uint32_t> auto_hdr_accumulate_comp = {
+#include "auto_hdr_accumulate.comp.h"
+    };
+
+    const std::vector<uint32_t> auto_hdr_reduce_comp = {
+#include "auto_hdr_reduce.comp.h"
+    };
 } // namespace vkBasalt

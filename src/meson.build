@@ -27,6 +27,7 @@ vkBasalt_src = [
     'compute_test_pass.cpp',
     'frame_analyzer.cpp',
     'effect_nit_calibration.cpp',
+    'auto_hdr_analyzer.cpp',
     'hdr_detect.cpp',
     'fake_swapchain.cpp',
     'format.cpp',
