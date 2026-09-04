@@ -1,9 +1,11 @@
 #include "imgui_overlay.hpp"
+#include "imgui_constants.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 
 #include <string>
+#include <algorithm>
 
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
@@ -78,6 +80,7 @@ namespace vkBasalt {
             if (ImGui::Checkbox("Enable HDR Calibration", &displayChecked)) {
                 m_pConfig->setOption("hdrCalibration", displayChecked ? "on" : "off");
                 m_pConfig->savePerGame();
+                invalidateScopeTextures();
                 g_triggerSoftReload = true;
             }
             ImGui::EndDisabled();
@@ -96,27 +99,42 @@ namespace vkBasalt {
             ImGui::Spacing();
 
             // Per game calibration toggle, as some native HDR games might need different numbers depending on implementation.
-            bool perGameCalib = m_pConfig->hasPerGameOption("sdrWhitePointNits") ||
-                                m_pConfig->hasPerGameOption("hdrPeakNits") ||
-                                m_pConfig->hasPerGameOption("hdrToneMapper");
-
-            if (ImGui::Checkbox("Only change calibration for this game", &perGameCalib)) {
-                if (perGameCalib) {
-                    // Lock in the current global values to the per game config immediately so the checkbox state sticks
-                    m_pConfig->setOption("sdrWhitePointNits", doubleToConfigString(m_pConfig->getOption<float>("sdrWhitePointNits", 203.0f)));
-                    m_pConfig->setOption("hdrPeakNits", doubleToConfigString(m_pConfig->getOption<float>("hdrPeakNits", 1000.0f)));
-                    m_pConfig->setOption("hdrToneMapper", m_pConfig->getOption<std::string>("hdrToneMapper", "hermite"));
-                    m_pConfig->savePerGame();
-                    g_triggerSoftReload = true;
-                } else {
-                    // Reverting to global, remove per game overrides
-                    m_pConfig->removePerGameOption("sdrWhitePointNits");
-                    m_pConfig->removePerGameOption("hdrPeakNits");
-                    m_pConfig->removePerGameOption("hdrToneMapper");
-                    m_pConfig->savePerGame();
-                    g_triggerSoftReload = true;
+            const auto& calibParams = NitCalibrationEffect::getCalibrationParams();
+            bool perGameCalib = false;
+            for (const auto& p : calibParams) {
+                if (m_pConfig->hasPerGameOption(p.key)) {
+                    perGameCalib = true;
+                    break;
                 }
             }
+
+        if (ImGui::Checkbox("Only change calibration for this game", &perGameCalib)) {
+            if (perGameCalib) {
+                for (const auto& p : calibParams) {
+                    std::string val;
+                    if (p.type == ParamType::Float) {
+                        val = doubleToConfigString(m_pConfig->getOption<float>(p.key, (float)p.defaultVal));
+                    } else if (p.type == ParamType::Combo) {
+                        val = m_pConfig->getOption<std::string>(p.key, p.comboOptions.empty() ? "" : p.comboOptions[(int)p.defaultVal]);
+                    } else if (p.type == ParamType::Bool) {
+                        val = m_pConfig->getOption<bool>(p.key, p.defaultVal > 0.5) ? "true" : "false";
+                    } else {
+                        val = std::to_string((int)m_pConfig->getOption<int>(p.key, (int)p.defaultVal));
+                    }
+                    m_pConfig->setOption(p.key, val);
+                }
+                m_pConfig->savePerGame();
+                invalidateScopeTextures();
+                g_triggerSoftReload = true;
+            } else {
+                for (const auto& p : calibParams) {
+                    m_pConfig->removePerGameOption(p.key);
+                }
+                m_pConfig->savePerGame();
+                invalidateScopeTextures();
+                g_triggerSoftReload = true;
+            }
+        }
             if (perGameCalib) {
                 ImGui::TextDisabled("Calibration changes will be saved to this game's config only.");
             }
@@ -132,8 +150,56 @@ namespace vkBasalt {
 
             ImGui::Spacing();
 
+            // Adaptive Scene Analysis toggle
+            {
+                ImGui::PushID("hdrAdaptive");
+                bool hdrAdaptive = m_pConfig->getOption<bool>("hdrAdaptive", true);
+                if (ImGui::Checkbox("Adaptive Scene Analysis", &hdrAdaptive)) {
+                    setConfigImmediate("hdrAdaptive", hdrAdaptive ? "true" : "false", perGameCalib);
+                    invalidateScopeTextures();
+                    g_triggerSoftReload = true;
+                }
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default")) {
+                        EffectParamDesc p; p.key = "hdrAdaptive"; p.type = ParamType::Bool; p.defaultVal = 1.0;
+                        resetParamToConfig(p, perGameCalib);
+                        invalidateScopeTextures();
+                        g_triggerSoftReload = true;
+                    }
+                    ImGui::EndPopup();
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+                    ImGui::SetTooltip("Analyzes scene luminance per-frame to dynamically adjust HDR expansion.\n"
+                                    "Prevents highlight blowout in bright scenes and boosts midtones in dark scenes.\n"
+                                    "Adds ~0.05ms GPU compute overhead.");
+                }
+                ImGui::PopID();
+            }
+
+            bool hdrAdaptive = m_pConfig->getOption<bool>("hdrAdaptive", true);
+            if (hdrAdaptive) {
+                ImGui::Indent(kIndentWidth);
+                drawAdaptiveSlider("hdrAdaptiveSpeed", "Adaptation Speed", "hdrAdaptiveSpeed", 0.1f, 0.01f, 2.0f, "%.2f",
+                    "How quickly the adaptation responds to scene changes.\n"
+                    "0.01 = very slow (~100s), 0.1 = slow (~10s), 0.5 = moderate (~2s), 2.0 = fast (~0.5s).\n"
+                    "Lower values prevent visible 'brightness pumping' but respond slower to scene transitions.", perGameCalib);
+
+                drawAdaptiveSlider("hdrAdaptivePeakScale", "Peak Stability", "hdrAdaptivePeakScale", 1.0f, 0.0f, 1.0f, "%.2f",
+                    "1.0 = fixed display peak (no pumping, recommended).\n"
+                    "0.0 = aggressive scene-based peak reduction (original behavior, causes visible adaptation).\n"
+                    "Intermediate values blend between the two.", perGameCalib);
+
+                drawAdaptiveSlider("hdrAdaptiveMidtoneRange", "Midtone Bias Range", "hdrAdaptiveMidtoneRange", 0.05f, 0.0f, 0.2f, "%.3f",
+                    "How much midtones are biased based on scene brightness.\n"
+                    "0.0 = no bias (fixed white point).\n"
+                    "0.05 = subtle +/-5%% bias (default).\n"
+                    "0.2 = aggressive +/-20%% bias.", perGameCalib);
+                ImGui::Unindent(kIndentWidth);
+            }
+
+            ImGui::Spacing();
+
             // Render calibration params from the declarative params
-            const auto& calibParams = NitCalibrationEffect::getCalibrationParams();
             for (const auto& p : calibParams) {
                 ImGui::PushID(p.key.c_str());
                 bool changed = false;
@@ -148,7 +214,7 @@ namespace vkBasalt {
                         }
                         if (strVal.empty()) currentIdx = (int)p.defaultVal;
 
-                        ImGui::PushItemWidth(250);
+                        ImGui::PushItemWidth(kSliderWidth);
                         if (ImGui::BeginCombo(p.label.c_str(), p.comboOptions[currentIdx].c_str())) {
                             for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
                                 bool is_sel = (currentIdx == (int)ci);
@@ -164,46 +230,49 @@ namespace vkBasalt {
 
                         if (changed) {
                             std::string modeStr = p.comboOptions[currentIdx];
-                            if (perGameCalib) {
-                                m_pConfig->setOption(p.key, modeStr);
-                                m_pConfig->savePerGame();
-                            } else {
-                                m_pConfig->setGlobalOption(p.key, modeStr);
-                                m_pConfig->saveGlobal();
-                            }
+                            setConfigImmediate(p.key, modeStr, perGameCalib);
+                            invalidateScopeTextures();
                             g_triggerSoftReload = true;
                         }
                         break;
                     }
                     case ParamType::Float: {
                         float val = m_pConfig->getOption<float>(p.key, (float)p.defaultVal);
-                        ImGui::PushItemWidth(250);
-                        if (ImGui::SliderFloat(p.label.c_str(), &val, (float)p.minVal, (float)p.maxVal, "%.0f")) {
+                        float step = (p.step > 0) ? (float)p.step : 1.0f;
+                        float range = (float)(p.maxVal - p.minVal);
+                        float dragSpeed = range / kDragSpeedDivisor;
+
+                        ImGui::PushItemWidth(kSliderWidth);
+                        if (ImGui::DragFloat(p.label.c_str(), &val, dragSpeed, (float)p.minVal, (float)p.maxVal, "%.0f")) {
                             changed = true;
+                        }
+                        if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
+                            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
+                            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
                         }
                         ImGui::PopItemWidth();
 
                         if (changed) {
                             val = std::clamp(val, (float)p.minVal, (float)p.maxVal);
-                            if (perGameCalib) {
-                                m_pConfig->setOption(p.key, doubleToConfigString(val));
-                                m_pConfig->savePerGame();
-                            } else {
-                                m_pConfig->setGlobalOption(p.key, doubleToConfigString(val));
-                                m_pConfig->saveGlobal();
-                            }
-                            m_hasUnsavedChanges = true;
-                            m_previewDirty = true;
-                            m_lastChangeTime = ImGui::GetTime();
-                            g_triggerSoftReload = true;
+                            setConfigDebounced(p.key, doubleToConfigString(val), perGameCalib);
                         }
                         break;
                     }
                     default: break;
                 }
 
-                // Tooltip from param description
-                if (ImGui::IsItemHovered() && !p.tooltip.empty()) {
+                // Right click context menu for reset
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default")) {
+                        resetParamToConfig(p, perGameCalib);
+                        invalidateScopeTextures();
+                        g_triggerSoftReload = true;
+                    }
+                    ImGui::EndPopup();
+                }
+
+                // Tooltip
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) && !p.tooltip.empty()) {
                     ImGui::SetTooltip("%s", p.tooltip.c_str());
                 }
 
@@ -220,8 +289,8 @@ namespace vkBasalt {
             FrameAnalyzer* analyzer = nullptr;
             if (m_pSwapchain) {
                 for (auto& pass : m_pSwapchain->computePasses) {
-                    if (pass->getName() == "frame_analyzer") {
-                        analyzer = static_cast<FrameAnalyzer*>(pass.get());
+                    if (pass->asFrameAnalyzer()) {
+                        analyzer = pass->asFrameAnalyzer();
                         break;
                     }
                 }
@@ -261,8 +330,8 @@ namespace vkBasalt {
 
                     float windowW = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x * 2.0f;
                     float imgSize = (windowW - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
-                    imgSize = std::min(imgSize, 512.0f);
-                    if (imgSize < 100.0f) imgSize = 256.0f;
+                    imgSize = std::min(imgSize, kScopeMaxSize);
+                    if (imgSize < kScopeMinSize) imgSize = kScopeFallbackSize;
 
                     // Row 1: Histogram | Waveform
                     ImGui::Text("Histogram (Brightness Distribution)");
