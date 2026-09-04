@@ -16,43 +16,6 @@
 
 namespace vkBasalt {
 
-    static const char* formatName(VkFormat format) {
-        switch (format) {
-            case VK_FORMAT_B8G8R8A8_UNORM:           return "B8G8R8A8 (8-bit SDR)";
-            case VK_FORMAT_B8G8R8A8_SRGB:            return "B8G8R8A8 sRGB (8-bit SDR)";
-            case VK_FORMAT_R8G8B8A8_UNORM:           return "R8G8B8A8 (8-bit SDR)";
-            case VK_FORMAT_R8G8B8A8_SRGB:            return "R8G8B8A8 sRGB (8-bit SDR)";
-            case VK_FORMAT_A2B10G10R10_UNORM_PACK32: return "A2B10G10R10 (10-bit HDR)";
-            case VK_FORMAT_A2R10G10B10_UNORM_PACK32: return "A2R10G10B10 (10-bit HDR)";
-            case VK_FORMAT_R16G16B16A16_SFLOAT:      return "RGBA16F (scRGB Linear)";
-            case VK_FORMAT_R16G16B16_SFLOAT:         return "RGB16F (scRGB Linear)";
-            case VK_FORMAT_R32G32B32A32_SFLOAT:      return "RGBA32F (Linear)";
-            case VK_FORMAT_R32G32B32_SFLOAT:         return "RGB32F (Linear)"; // Added
-            default:                                 return "Unknown";
-        }
-    }
-
-    static const char* colorSpaceName(VkColorSpaceKHR colorSpace) {
-        switch (colorSpace) {
-            case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:          return "sRGB";
-            case VK_COLOR_SPACE_HDR10_ST2084_EXT:            return "HDR10 PQ (ST 2084)";
-            case VK_COLOR_SPACE_HDR10_HLG_EXT:               return "HDR10 HLG";
-            case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:    return "scRGB Linear";
-            case VK_COLOR_SPACE_BT2020_LINEAR_EXT:           return "BT.2020 Linear";
-            case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:       return "Display P3 Linear";
-            case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:    return "Display P3 (sRGB Gamma)"; // Added
-            case VK_COLOR_SPACE_DCI_P3_NONLINEAR_EXT:        return "DCI-P3";                 // Added
-            case VK_COLOR_SPACE_BT709_LINEAR_EXT:            return "BT.709 Linear";          // Added
-            case VK_COLOR_SPACE_BT709_NONLINEAR_EXT:         return "BT.709";                 // Added
-            case VK_COLOR_SPACE_ADOBERGB_LINEAR_EXT:         return "AdobeRGB Linear";        // Added
-            case VK_COLOR_SPACE_ADOBERGB_NONLINEAR_EXT:      return "AdobeRGB";               // Added
-            case VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT: return "Extended sRGB";          // Added
-            case VK_COLOR_SPACE_DOLBYVISION_EXT:             return "Dolby Vision";
-            case VK_COLOR_SPACE_PASS_THROUGH_EXT:            return "Pass-Through";
-            default:                                         return "Unknown";
-        }
-    }
-
     void ImGuiOverlay::drawAutoHdrTab() {
         ImGui::Text("Auto HDR & Display Calibration");
         ImGui::Separator();
@@ -73,7 +36,6 @@ namespace vkBasalt {
                 } else {
                     ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.2f, 1.0f), "Game is outputting SDR");
                 }
-
                 ImGui::Spacing();
                 ImGui::TextDisabled("Source:  %s / %s", formatName(m_pSwapchain->sourceFormat), colorSpaceName(m_pSwapchain->sourceColorSpace));
                 ImGui::TextDisabled("Output:  %s / %s", formatName(m_pSwapchain->destFormat), colorSpaceName(m_pSwapchain->destColorSpace));

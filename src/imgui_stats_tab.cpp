@@ -20,60 +20,6 @@
 
 namespace vkBasalt {
 
-    static const char* vkFormatToString(VkFormat format)
-    {
-        switch (format)
-        {
-            case VK_FORMAT_B8G8R8A8_UNORM:                       return "B8G8R8A8_UNORM";
-            case VK_FORMAT_B8G8R8A8_SRGB:                        return "B8G8R8A8_SRGB";
-            case VK_FORMAT_R8G8B8A8_UNORM:                       return "R8G8B8A8_UNORM";
-            case VK_FORMAT_R8G8B8A8_SRGB:                        return "R8G8B8A8_SRGB";
-            case VK_FORMAT_A2B10G10R10_UNORM_PACK32:             return "A2B10G10R10_UNORM (HDR10)";
-            case VK_FORMAT_A2R10G10B10_UNORM_PACK32:             return "A2R10G10B10_UNORM (HDR10)";
-            case VK_FORMAT_R16G16B16A16_SFLOAT:                  return "R16G16B16A16_SFLOAT (scRGB)";
-            case VK_FORMAT_R16G16B16_SFLOAT:                     return "R16G16B16_SFLOAT (scRGB)";
-            case VK_FORMAT_R32G32B32A32_SFLOAT:                  return "R32G32B32A32_SFLOAT";
-            default:                                             return "Other / Unknown";
-        }
-    }
-
-    static const char* vkColorSpaceToString(VkColorSpaceKHR colorSpace)
-    {
-        switch (colorSpace)
-        {
-            case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:              return "sRGB Non-Linear";
-            case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:        return "Display P3 Non-Linear";
-            case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:        return "Extended sRGB Linear (scRGB)";
-            case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:           return "Display P3 Linear";
-            case VK_COLOR_SPACE_DCI_P3_NONLINEAR_EXT:            return "DCI-P3 Non-Linear";
-            case VK_COLOR_SPACE_BT709_LINEAR_EXT:                return "BT.709 Linear";
-            case VK_COLOR_SPACE_BT709_NONLINEAR_EXT:             return "BT.709 Non-Linear";
-            case VK_COLOR_SPACE_BT2020_LINEAR_EXT:               return "BT.2020 Linear";
-            case VK_COLOR_SPACE_HDR10_ST2084_EXT:                return "HDR10 ST2084 (PQ)";
-            case VK_COLOR_SPACE_DOLBYVISION_EXT:                 return "Dolby Vision";
-            case VK_COLOR_SPACE_HDR10_HLG_EXT:                   return "HDR10 HLG";
-            case VK_COLOR_SPACE_ADOBERGB_LINEAR_EXT:             return "AdobeRGB Linear";
-            case VK_COLOR_SPACE_ADOBERGB_NONLINEAR_EXT:          return "AdobeRGB Non-Linear";
-            case VK_COLOR_SPACE_PASS_THROUGH_EXT:                return "Pass-Through";
-            case VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT:     return "Extended sRGB Non-Linear";
-            default:                                             return "Other / Unknown";
-        }
-    }
-
-    static const char* vkPresentModeToString(VkPresentModeKHR presentMode)
-    {
-        switch (presentMode)
-        {
-            case VK_PRESENT_MODE_IMMEDIATE_KHR:                  return "Immediate (No V-Sync)";
-            case VK_PRESENT_MODE_MAILBOX_KHR:                    return "Mailbox (Fast Sync)";
-            case VK_PRESENT_MODE_FIFO_KHR:                       return "FIFO (V-Sync)";
-            case VK_PRESENT_MODE_FIFO_RELAXED_KHR:               return "FIFO Relaxed (Adaptive V-Sync)";
-            case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:      return "Shared Demand Refresh";
-            case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:  return "Shared Continuous Refresh";
-            default:                                             return "Unknown";
-        }
-    }
-
     void ImGuiOverlay::drawStatsTab() {
         ImGui::Text("System & Display Statistics");
         ImGui::Separator();
@@ -106,14 +52,14 @@ namespace vkBasalt {
                 snprintf(resBuf, sizeof(resBuf), "%u x %u", m_pSwapchain->imageExtent.width, m_pSwapchain->imageExtent.height);
                 statRow("Resolution", resBuf);
 
-                statRow("Pixel Format", vkFormatToString(m_pSwapchain->format));
-                statRow("Color Space", vkColorSpaceToString(m_pSwapchain->colorSpace));
+                statRow("Pixel Format", formatName(m_pSwapchain->format));
+                statRow("Color Space", colorSpaceName(m_pSwapchain->colorSpace));
 
                 char imgBuf[16];
                 snprintf(imgBuf, sizeof(imgBuf), "%u", m_pSwapchain->imageCount);
                 statRow("Image Count", imgBuf);
 
-                statRow("Present Mode", vkPresentModeToString(m_pSwapchain->swapchainCreateInfo.presentMode));
+                statRow("Present Mode", presentModeName(m_pSwapchain->swapchainCreateInfo.presentMode));
                 statRow("Mutable Format", m_pDevice->supportsMutableFormat ? "Supported" : "Not Supported");
             } else {
                 ImGui::TextDisabled("No active swapchain.");

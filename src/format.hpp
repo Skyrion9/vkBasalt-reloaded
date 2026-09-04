@@ -47,6 +47,11 @@ namespace vkBasalt
     };
 
     ColorSpaceMode getColorSpaceMode(VkFormat format, VkColorSpaceKHR colorSpace);
+
+    // Readable names for Vulkan enums (used by UI tabs)
+    const char* formatName(VkFormat format);
+    const char* colorSpaceName(VkColorSpaceKHR colorSpace);
+    const char* presentModeName(VkPresentModeKHR presentMode);
 } // namespace vkBasalt
 
 #endif // FORMAT_HPP_INCLUDED
