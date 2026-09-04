@@ -36,6 +36,7 @@ vkBasalt_src = [
     'image.cpp',
     'image_view.cpp',
     'imgui_overlay.cpp',
+    'imgui_constants.cpp',
     'overlay_manager.cpp',
     'imgui_stats_tab.cpp',
     'imgui_style_tab.cpp',
