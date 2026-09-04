@@ -160,7 +160,7 @@ namespace vkBasalt {
                 // List active effect names
                 std::string effectNames;
                 for (size_t i = 0; i < m_pSwapchain->effects.size(); i++) {
-                    if (i > 0) effectNames += " → ";
+                    if (i > 0) effectNames += "->";
                     effectNames += m_pSwapchain->effects[i]->getName();
                 }
                 statRow("Chain Order", effectNames.empty() ? "None" : effectNames.c_str());
@@ -172,7 +172,7 @@ namespace vkBasalt {
                 snprintf(fakeImgBuf, sizeof(fakeImgBuf), "%zu images (%.1f MB)", fakeCount, poolMB);
                 statRow("Fake Image Pool", fakeImgBuf);
 
-                statRow("Auto HDR", m_pSwapchain->autoHdrActive ? "Active (SDR→HDR)" : "Inactive");
+                statRow("Auto HDR", m_pSwapchain->autoHdrActive ? "Active (SDR->HDR)" : "Inactive");
 
                 char computeBuf[16];
                 snprintf(computeBuf, sizeof(computeBuf), "%zu", m_pSwapchain->computePasses.size());
