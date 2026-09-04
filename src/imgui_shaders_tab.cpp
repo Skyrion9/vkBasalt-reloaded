@@ -27,10 +27,10 @@ namespace vkBasalt {
         return result;
     }
 
-    static const char* kBuiltInEffects[] = {
+    static constexpr auto kBuiltInEffects = std::to_array<const char*>({
         "fxaa", "cas", "deband", "smaa", "lut", "dls",
         "clarity", "clarityrcas", "crystalclear"
-    };
+    });
 
     // Effect category priority for auto sort
     static int getEffectSortPriority(const std::string& name) {
@@ -408,7 +408,11 @@ namespace vkBasalt {
 
     void ImGuiOverlay::drawEffectParamsPanel() {
         ImGui::BeginChild("##effect_params", ImVec2(0, 0), true);
-
+        if (m_cachedAllEffects.empty()) {
+            ImGui::TextWrapped("No effects available.");
+            ImGui::EndChild();
+            return;
+        }
         std::string selectedName = m_cachedAllEffects[m_selectedEffectIndex];
         bool inChain = std::find(m_cachedChainList.begin(), m_cachedChainList.end(), selectedName) != m_cachedChainList.end();
 
