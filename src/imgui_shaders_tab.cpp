@@ -1,4 +1,5 @@
 #include "imgui_overlay.hpp"
+#include "imgui_constants.hpp"
 #include "overlay_manager.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"
@@ -49,55 +50,11 @@ namespace vkBasalt {
         return 6;
     }
 
-    void ImGuiOverlay::resetParamToDefault(Effect* effect, const EffectParamDesc& p) {
-        switch (p.type) {
-            case ParamType::Combo:
-                if (!p.comboOptions.empty()) {
-                    int defIdx = std::clamp((int)p.defaultVal, 0, (int)p.comboOptions.size() - 1);
-                    m_pConfig->setOption(p.key, p.comboOptions[defIdx]);
-                    effect->setParam(p.key, (double)defIdx);
-                    setUIParam(p.key, (double)defIdx);
-                }
-                break;
-            case ParamType::FilePath:
-                m_pConfig->setOption(p.key, "");
-                break;
-            case ParamType::Bool:
-            case ParamType::Int:
-                effect->setParam(p.key, p.defaultVal);
-                m_pConfig->setOption(p.key, std::to_string((int)p.defaultVal));
-                setUIParam(p.key, p.defaultVal);
-                break;
-            case ParamType::Float:
-            default:
-                effect->setParam(p.key, p.defaultVal);
-                std::string vs = std::to_string(p.defaultVal);
-                std::replace(vs.begin(), vs.end(), ',', '.');
-                m_pConfig->setOption(p.key, vs);
-                setUIParam(p.key, p.defaultVal);
-                break;
-        }
-    }
-
-    void ImGuiOverlay::setParamDebounced(const std::string& key, const std::string& value) {
-        m_pConfig->setOption(key, value);
-        m_hasUnsavedChanges = true;
-        m_previewDirty = true;
-        m_lastChangeTime = ImGui::GetTime();
-    }
-
-    void ImGuiOverlay::setParamImmediate(const std::string& key, const std::string& value) {
-        m_pConfig->setOption(key, value);
-        m_hasUnsavedChanges = true;
-        g_triggerPreviewReload = true;
-    }
-
     void ImGuiOverlay::drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect) {
         auto paramContextMenu = [&]() {
             if (ImGui::BeginPopupContextItem()) {
                 if (ImGui::MenuItem("Reset to Default")) {
-                    resetParamToDefault(selectedEffect, *p);
-                    m_hasUnsavedChanges = true;
+                    resetParamToConfig(*p, true, selectedEffect);
                     g_triggerPreviewReload = true;
                 }
                 ImGui::EndPopup();
@@ -109,7 +66,7 @@ namespace vkBasalt {
                 float val = (float)getUIParam(p->key, selectedEffect);
                 float step = (p->step > 0) ? (float)p->step : 0.01f;
                 float range = (float)(p->maxVal - p->minVal);
-                float dragSpeed = range / 200.0f;
+                float dragSpeed = range / kDragSpeedDivisor;
                 bool changed = false;
                 ImGui::PushItemWidth(ImGui::CalcItemWidth());
                 if (ImGui::DragFloat(p->label.c_str(), &val, dragSpeed, (float)p->minVal, (float)p->maxVal, "%.3f"))
@@ -123,7 +80,7 @@ namespace vkBasalt {
                     val = std::clamp(val, (float)p->minVal, (float)p->maxVal);
                     setUIParam(p->key, (double)val);
                     selectedEffect->setParam(p->key, (double)val);
-                    setParamDebounced(p->key, doubleToConfigString(val));
+                    setConfigDebounced(p->key, doubleToConfigString(val), true);
                 }
                 paramContextMenu();
                 break;
@@ -132,7 +89,7 @@ namespace vkBasalt {
                 int val = (int)getUIParam(p->key, selectedEffect);
                 int step = (p->step > 0) ? (int)p->step : 1;
                 float range = (float)(p->maxVal - p->minVal);
-                float dragSpeed = std::max(0.05f, range / 200.0f);
+                float dragSpeed = std::max(0.05f, range / kDragSpeedDivisor);
                 bool changed = false;
                 ImGui::PushItemWidth(ImGui::CalcItemWidth());
                 if (ImGui::DragInt(p->label.c_str(), &val, dragSpeed, (int)p->minVal, (int)p->maxVal))
@@ -146,7 +103,7 @@ namespace vkBasalt {
                     val = std::clamp(val, (int)p->minVal, (int)p->maxVal);
                     setUIParam(p->key, (double)val);
                     selectedEffect->setParam(p->key, (double)val);
-                    setParamDebounced(p->key, std::to_string(val));
+                    setConfigDebounced(p->key, std::to_string(val), true);
                 }
                 paramContextMenu();
                 break;
@@ -156,7 +113,8 @@ namespace vkBasalt {
                 if (ImGui::Checkbox(p->label.c_str(), &val)) {
                     setUIParam(p->key, val ? 1.0 : 0.0);
                     selectedEffect->setParam(p->key, val ? 1.0 : 0.0);
-                    setParamImmediate(p->key, val ? "1" : "0");
+                    setConfigImmediate(p->key, val ? "1" : "0", true);
+                    g_triggerPreviewReload = true;
                 }
                 paramContextMenu();
                 break;
@@ -175,7 +133,8 @@ namespace vkBasalt {
                             if (p->key == "crystalclearPreset") {
                                 m_pConfig->setOption("crystalclearPresetApplied", "");
                             }
-                            setParamImmediate(p->key, p->comboOptions[ci]);
+                            setConfigImmediate(p->key, p->comboOptions[ci], true);
+                            g_triggerPreviewReload = true;
                         }
                         if (is_sel && justOpened) ImGui::SetItemDefaultFocus();
                     }
@@ -191,7 +150,7 @@ namespace vkBasalt {
                 ImGui::Text("%s", p->label.c_str());
                 ImGui::PushItemWidth(-1.0f);
                 if (ImGui::InputText("##filepath", pathBuf, sizeof(pathBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
-                    setParamDebounced(p->key, std::string(pathBuf));
+                    setConfigDebounced(p->key, std::string(pathBuf), true);
                 }
                 ImGui::PopItemWidth();
 
@@ -218,7 +177,7 @@ namespace vkBasalt {
                         m_browserCachedDir = m_browserDir;
                     }
 
-                    ImGui::BeginChild("##file_browser", ImVec2(0, 200), true);
+                    ImGui::BeginChild("##file_browser", ImVec2(0, kFileBrowserHeight), true);
                     ImGui::Text("Directory: %s", m_browserDir.c_str());
                     
                     for (const auto& entry : m_browserEntries) {
@@ -228,7 +187,8 @@ namespace vkBasalt {
                             }
                         } else if (entry.name.size() > 5 && entry.name.substr(entry.name.size() - 5) == ".cube") {
                             if (ImGui::Selectable(entry.name.c_str())) {
-                                setParamImmediate(p->key, entry.path);
+                                setConfigImmediate(p->key, entry.path, true);
+                                g_triggerPreviewReload = true;
                                 m_showBrowser = false;
                             }
                         }
@@ -252,7 +212,7 @@ namespace vkBasalt {
     }
 
     void ImGuiOverlay::drawChainPanel() {
-        ImGui::BeginChild("##shader_list", ImVec2(260, 0), true);
+        ImGui::BeginChild("##shader_list", ImVec2(kChainPanelWidth, 0), true);
 
         // Rebuild cache only when a reload trigger fired
         if (m_chainCacheDirty || g_triggerPreviewReload || g_triggerSoftReload || g_triggerRevertReload) {
@@ -325,7 +285,8 @@ namespace vkBasalt {
             bool checked = true;
             if (ImGui::Checkbox("##en", &checked)) {
                 chainList.erase(chainList.begin() + ci);
-                setParamImmediate("effects", serializeChain(chainList));
+                setConfigImmediate("effects", serializeChain(chainList), true);
+                g_triggerPreviewReload = true;
                 m_chainCacheDirty = true;
                 ImGui::PopID();
                 break; // List mutated, stop iterating
@@ -346,7 +307,8 @@ namespace vkBasalt {
             ImGui::BeginDisabled(ci == 0);
             if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci - 1);
-                setParamImmediate("effects", serializeChain(chainList));
+                setConfigImmediate("effects", serializeChain(chainList), true);
+                g_triggerPreviewReload = true;
                 m_chainCacheDirty = true;
             }
             ImGui::EndDisabled();
@@ -356,7 +318,8 @@ namespace vkBasalt {
             ImGui::BeginDisabled(ci == chainList.size() - 1);
             if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci + 1);
-                setParamImmediate("effects", serializeChain(chainList));
+                setConfigImmediate("effects", serializeChain(chainList), true);
+                g_triggerPreviewReload = true;
                 m_chainCacheDirty = true;
             }
             ImGui::EndDisabled();
@@ -376,7 +339,8 @@ namespace vkBasalt {
             if (ImGui::Checkbox("##en", &checked)) {
                 // Add to chain
                 chainList.push_back(allEffects[i]);
-                setParamImmediate("effects", serializeChain(chainList));
+                setConfigImmediate("effects", serializeChain(chainList), true);
+                g_triggerPreviewReload = true;
                 m_chainCacheDirty = true;
             }
             ImGui::SameLine();
@@ -399,7 +363,8 @@ namespace vkBasalt {
                             [](const std::string& a, const std::string& b) {
                                 return getEffectSortPriority(a) < getEffectSortPriority(b);
                             });
-            setParamImmediate("effects", serializeChain(chainList));
+            setConfigImmediate("effects", serializeChain(chainList), true);
+            g_triggerPreviewReload = true;
             m_chainCacheDirty = true;
         }
 
@@ -439,8 +404,7 @@ namespace vkBasalt {
             ImGui::SameLine(ImGui::GetContentRegionAvail().x - resetWidth);
             if (ImGui::Button("Reset to Default")) {
                 const auto& resetParams = selectedEffect->getParamDescs();
-                for (const auto& p : resetParams) resetParamToDefault(selectedEffect, p);
-                m_hasUnsavedChanges = true;
+                for (const auto& p : resetParams) resetParamToConfig(p, true, selectedEffect);
                 g_triggerPreviewReload = true;
             }
         }
@@ -545,7 +509,7 @@ namespace vkBasalt {
                 bool open = ImGui::CollapsingHeader(cat.name, ImGuiTreeNodeFlags_DefaultOpen);
                 ImGui::PopStyleColor();
                 if (!open) continue;
-                ImGui::Indent(8.0f);
+                ImGui::Indent(kCategoryIndent);
                 for (const auto* p : cat.items) {
                     // Hide child params when their parent toggle is disabled. Quality gated params remain visible (grayed out) as UIX choice.
                     if (!p->parentKey.empty()) {
@@ -595,7 +559,7 @@ namespace vkBasalt {
 
                     ImGui::PopID();
                 }
-                ImGui::Unindent(8.0f);
+                ImGui::Unindent(kCategoryIndent);
             }
             m_justOpened = false;
         }

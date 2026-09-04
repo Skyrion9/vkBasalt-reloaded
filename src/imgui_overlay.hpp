@@ -47,13 +47,23 @@ namespace vkBasalt {
         void drawChainPanel();
         void drawEffectParamsPanel();
         void drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect);
+        void updateWindowLayout();
+        void drawFooterButtons();
+        void drawLegend();
         void applyKeybind(int field, ImGuiKey key);
         void destroyRenderResources();
         void disableScopesOnClose();
         void setScopesEnabled(bool enabled);
-        void resetParamToDefault(Effect* effect, const EffectParamDesc& p);
-        void setParamDebounced(const std::string& key, const std::string& value);
-        void setParamImmediate(const std::string& key, const std::string& value);
+        void invalidateScopeTextures();
+        void setConfigDebounced(const std::string& key, const std::string& value, bool perGame);
+        void setConfigImmediate(const std::string& key, const std::string& value, bool perGame);
+        void resetParamToConfig(const EffectParamDesc& p, bool perGame, Effect* effect = nullptr);
+        void drawAdaptiveSlider(const char* id, const char* label, const char* key,
+                                float defaultVal, float minVal, float maxVal,
+                                const char* fmt, const char* tooltip, bool perGameCalib);
+        void createRenderResources(VkFormat format);
+        void resolveScales();
+        void initImGuiBackend();
     
         double getUIParam(const std::string& key, Effect* effect);
         void setUIParam(const std::string& key, double val);

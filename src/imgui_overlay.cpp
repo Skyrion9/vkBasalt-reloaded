@@ -1,3 +1,5 @@
+#include "imgui_overlay.hpp"
+
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -14,9 +16,10 @@
 #include "logger.hpp"
 #include "keyboard_input_x11.hpp"
 #include "effect.hpp"
-#include "imgui_overlay.hpp"
-#include "imgui_theme.hpp"
+#include "effect_nit_calibration.hpp"
 #include "overlay_manager.hpp"
+#include "imgui_constants.hpp"
+#include "imgui_theme.hpp"
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
 #include "keyboard_input_wayland.hpp"
@@ -41,6 +44,100 @@ namespace vkBasalt {
         std::string s = std::to_string(val);
         std::replace(s.begin(), s.end(), ',', '.');
         return s;
+    }
+
+    void ImGuiOverlay::setConfigDebounced(const std::string& key, const std::string& value, bool perGame) {
+        if (perGame) {
+            m_pConfig->setOption(key, value);
+        } else {
+            m_pConfig->setGlobalOption(key, value);
+        }
+        m_hasUnsavedChanges = true;
+        m_previewDirty = true;
+        m_lastChangeTime = (float)ImGui::GetTime();
+    }
+
+    void ImGuiOverlay::setConfigImmediate(const std::string& key, const std::string& value, bool perGame) {
+        if (perGame) {
+            m_pConfig->setOption(key, value);
+        } else {
+            m_pConfig->setGlobalOption(key, value);
+        }
+        m_hasUnsavedChanges = true;
+    }
+
+    void ImGuiOverlay::resetParamToConfig(const EffectParamDesc& p, bool perGame, Effect* effect) {
+        std::string val;
+        if (p.type == ParamType::Float) {
+            val = doubleToConfigString(p.defaultVal);
+        } else if (p.type == ParamType::Combo) {
+            if (!p.comboOptions.empty()) {
+                int defIdx = std::clamp((int)p.defaultVal, 0, (int)p.comboOptions.size() - 1);
+                val = p.comboOptions[defIdx];
+            }
+        } else if (p.type == ParamType::Bool) {
+            val = (p.defaultVal > 0.5) ? "true" : "false";
+        } else if (p.type == ParamType::Int) {
+            val = std::to_string((int)p.defaultVal);
+        } else if (p.type == ParamType::FilePath) {
+            val = "";
+        }
+
+        setConfigImmediate(p.key, val, perGame);
+
+        if (effect) {
+            if (p.type == ParamType::Combo) {
+                if (!p.comboOptions.empty()) {
+                    int defIdx = std::clamp((int)p.defaultVal, 0, (int)p.comboOptions.size() - 1);
+                    effect->setParam(p.key, (double)defIdx);
+                    setUIParam(p.key, (double)defIdx);
+                }
+            } else {
+                effect->setParam(p.key, p.defaultVal);
+                setUIParam(p.key, p.defaultVal);
+            }
+        }
+    }
+
+    void ImGuiOverlay::drawAdaptiveSlider(const char* id, const char* label, const char* key,
+                                        float defaultVal, float minVal, float maxVal,
+                                        const char* fmt, const char* tooltip, bool perGameCalib) {
+        ImGui::PushID(id);
+        float val = m_pConfig->getOption<float>(key, defaultVal);
+        float step = 0.01f;
+        float range = maxVal - minVal;
+        float dragSpeed = range / kDragSpeedDivisor;
+        bool changed = false;
+
+        ImGui::PushItemWidth(kSliderWidth);
+        if (ImGui::DragFloat(label, &val, dragSpeed, minVal, maxVal, fmt)) {
+            changed = true;
+        }
+        if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
+        }
+        ImGui::PopItemWidth();
+
+        if (changed) {
+            val = std::clamp(val, minVal, maxVal);
+            setConfigDebounced(key, doubleToConfigString(val), perGameCalib);
+        }
+        if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem("Reset to Default")) {
+                EffectParamDesc p;
+                p.key = key;
+                p.type = ParamType::Float;
+                p.defaultVal = defaultVal;
+                resetParamToConfig(p, perGameCalib);
+                g_triggerSoftReload = true;
+            }
+            ImGui::EndPopup();
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+            ImGui::SetTooltip("%s", tooltip);
+        }
+        ImGui::PopID();
     }
 
     ImGuiOverlay::ImGuiOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, Config* pConfig)
@@ -85,29 +182,17 @@ namespace vkBasalt {
         }
     }
 
-    void ImGuiOverlay::initImGui(VkFormat format) {
-        if (m_isInitialized && m_format == format) {
-            return;
-        }
-
-        if (m_isInitialized) {
-            destroyRenderResources();
-            if (ImGui::GetCurrentContext()) { ImGui_ImplVulkan_Shutdown(); }
-            m_isInitialized = false;
-        }
-
-        m_format = format;
+    void ImGuiOverlay::createRenderResources(VkFormat format) {
         Logger::debug("initImGui: Creating RenderPass...");
-        
         VkAttachmentDescription attachment = {};
         attachment.format = format;
         attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; 
+        attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         // Must match the layout after our barrier in processFrame
-        attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; 
+        attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference color_attachment = {};
@@ -141,7 +226,9 @@ namespace vkBasalt {
 
         m_imageViews.resize(m_pSwapchain->imageCount, VK_NULL_HANDLE);
         m_framebuffers.resize(m_pSwapchain->imageCount, VK_NULL_HANDLE);
+    }
 
+    void ImGuiOverlay::resolveScales() {
         // Scale detection helper (always available, not tied to context creation)
         auto detectScale = [&]() -> float {
             float s = 1.0f;
@@ -156,7 +243,7 @@ namespace vkBasalt {
 #else
             s = getX11UIScale();
 #endif
-            return (s >= 0.5f) ? s : 1.0f;
+            return (s >= kMinScale) ? s : 1.0f;
         };
 
         // Resolve a scale value: explicit config > cached > auto-detect > fallback. Caches the result so it survives overlay destruction during swapchain rebuilds.
@@ -186,90 +273,103 @@ namespace vkBasalt {
         } else if (s_cachedFontScale > 0.0f) {
             m_fontScale = s_cachedFontScale;
         } else {
-            m_fontScale = 1.1f;
-            s_cachedFontScale = 1.1f;
+            m_fontScale = kDefaultFontScale;
+            s_cachedFontScale = kDefaultFontScale;
         }
         Logger::debug("fontScale: " + std::to_string(m_fontScale));
+    }
 
-        if (!ImGui::GetCurrentContext()) {
-            Logger::debug("initImGui: Creating ImGui Context...");
-            IMGUI_CHECKVERSION();
-            ImGui::CreateContext();
-            ImGuiIO& io = ImGui::GetIO();
-            io.IniFilename = nullptr;
-            io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    void ImGuiOverlay::initImGuiBackend() {
+        if (ImGui::GetCurrentContext()) return; // Context already exists from a previous overlay instance
 
-            // Apply UI scale to padding/spacing/widget sizes (only on context creation)
-            if (m_uiScale > 0.5f) {
-                ImGui::GetStyle().ScaleAllSizes(m_uiScale);
-            }
+        Logger::debug("initImGui: Creating ImGui Context...");
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-            // Apply font scale (uiScale * fontScale)
-            float effectiveFont = m_uiScale * m_fontScale;
-            if (effectiveFont > 1.01f) {
-                ImFontConfig fc;
-                fc.SizePixels = (float)(int)(13.0f * effectiveFont + 0.5f);
-                io.Fonts->AddFontDefault(&fc);
-            }
-
-            applyThemeFromConfig(m_pConfig);
-
-            if (!s_descriptorPool) {
-                Logger::debug("initImGui: Creating Descriptor Pool...");
-                VkDescriptorPoolSize pool_sizes[] = {
-                    { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-                    { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-                    { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-                    { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-                };
-                VkDescriptorPoolCreateInfo pool_info = {};
-                pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-                pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-                pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
-                pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
-                pool_info.pPoolSizes = pool_sizes;
-                m_pDevice->vkd.CreateDescriptorPool(m_pDevice->device, &pool_info, nullptr, &s_descriptorPool);
-            }
-            
-            if (!io.BackendRendererUserData) {
-                // Cache memory properties for ImGui to avoid loader PID checks
-                ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
-                Logger::debug("initImGui: Loading ImGui Vulkan functions via layer dispatch...");
-                
-                // Force ImGui to use vkBasalt's dispatch tables. If we don't do this, ImGui calls global libvulkan.so functions directly,
-                // which crashes because the VkPhysicalDevice handle is wrapped by the layer chain.
-                auto loader_func = [](const char* function_name, void* user_data) -> PFN_vkVoidFunction {
-                    LogicalDevice* dev = static_cast<LogicalDevice*>(user_data);
-                    if (!dev || dev->device == VK_NULL_HANDLE) return nullptr;
-                    PFN_vkVoidFunction func = dev->vkd.GetDeviceProcAddr(dev->device, function_name);
-                    if (!func) {
-                        func = dev->vki.GetInstanceProcAddr(dev->instance, function_name);
-                    }
-                    return func;
-                };
-                ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1, loader_func, m_pDevice);
-
-                Logger::debug("initImGui: Calling ImGui_ImplVulkan_Init...");
-                ImGui_ImplVulkan_InitInfo init_info = {};
-                init_info.Instance = m_pDevice->instance;
-                init_info.PhysicalDevice = m_pDevice->physicalDevice;
-                init_info.Device = m_pDevice->device;
-                init_info.QueueFamily = m_pDevice->queueFamilyIndex;
-                init_info.Queue = m_pDevice->queue;
-                init_info.DescriptorPool = s_descriptorPool;
-                
-                init_info.PipelineInfoMain.RenderPass = m_renderPass;
-                init_info.PipelineInfoMain.Subpass = 0;
-                init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-                
-                init_info.MinImageCount = 2;
-                init_info.ImageCount = std::max(2u, m_pSwapchain->imageCount); 
-                
-                ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
-                ImGui_ImplVulkan_Init(&init_info);
-                Logger::debug("initImGui: ImGui_ImplVulkan_Init returned successfully!");
-            }
+        // Apply UI scale to padding/spacing/widget sizes (only on context creation)
+        if (m_uiScale > 0.5f) {
+            ImGui::GetStyle().ScaleAllSizes(m_uiScale);
         }
+
+        // Apply font scale (uiScale * fontScale)
+        float effectiveFont = m_uiScale * m_fontScale;
+        if (effectiveFont > kFontScaleThreshold) {
+            ImFontConfig fc;
+            fc.SizePixels = (float)(int)(kBaseFontSize * effectiveFont + 0.5f);
+            io.Fonts->AddFontDefault(&fc);
+        }
+
+        applyThemeFromConfig(m_pConfig);
+
+        if (!s_descriptorPool) {
+            Logger::debug("initImGui: Creating Descriptor Pool...");
+            VkDescriptorPoolSize pool_sizes[] = {
+                { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+                { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+                { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+            };
+            VkDescriptorPoolCreateInfo pool_info = {};
+            pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+            pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
+            pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
+            pool_info.pPoolSizes = pool_sizes;
+            m_pDevice->vkd.CreateDescriptorPool(m_pDevice->device, &pool_info, nullptr, &s_descriptorPool);
+        }
+
+        if (!io.BackendRendererUserData) {
+            // Cache memory properties for ImGui to avoid loader PID checks
+            ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
+            Logger::debug("initImGui: Loading ImGui Vulkan functions via layer dispatch...");
+            // Force ImGui to use vkBasalt's dispatch tables. If we don't do this, ImGui calls global libvulkan.so functions directly,
+            // which crashes because the VkPhysicalDevice handle is wrapped by the layer chain.
+            auto loader_func = [](const char* function_name, void* user_data) -> PFN_vkVoidFunction {
+                LogicalDevice* dev = static_cast<LogicalDevice*>(user_data);
+                if (!dev || dev->device == VK_NULL_HANDLE) return nullptr;
+                PFN_vkVoidFunction func = dev->vkd.GetDeviceProcAddr(dev->device, function_name);
+                if (!func) {
+                    func = dev->vki.GetInstanceProcAddr(dev->instance, function_name);
+                }
+                return func;
+            };
+            ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1, loader_func, m_pDevice);
+            Logger::debug("initImGui: Calling ImGui_ImplVulkan_Init...");
+            ImGui_ImplVulkan_InitInfo init_info = {};
+            init_info.Instance = m_pDevice->instance;
+            init_info.PhysicalDevice = m_pDevice->physicalDevice;
+            init_info.Device = m_pDevice->device;
+            init_info.QueueFamily = m_pDevice->queueFamilyIndex;
+            init_info.Queue = m_pDevice->queue;
+            init_info.DescriptorPool = s_descriptorPool;
+            init_info.PipelineInfoMain.RenderPass = m_renderPass;
+            init_info.PipelineInfoMain.Subpass = 0;
+            init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+            init_info.MinImageCount = 2;
+            init_info.ImageCount = std::max(2u, m_pSwapchain->imageCount);
+            ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
+            ImGui_ImplVulkan_Init(&init_info);
+            Logger::debug("initImGui: ImGui_ImplVulkan_Init returned successfully!");
+        }
+    }
+
+    void ImGuiOverlay::initImGui(VkFormat format) {
+        if (m_isInitialized && m_format == format) {
+            return;
+        }
+        if (m_isInitialized) {
+            destroyRenderResources();
+            if (ImGui::GetCurrentContext()) { ImGui_ImplVulkan_Shutdown(); }
+            m_isInitialized = false;
+        }
+        m_format = format;
+
+        createRenderResources(format);
+        resolveScales();
+        initImGuiBackend();
 
         m_isInitialized = true;
         Logger::debug("initImGui: Finished successfully.");
@@ -475,31 +575,11 @@ namespace vkBasalt {
             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
     }
 
-    void ImGuiOverlay::drawUI() {
+    void ImGuiOverlay::updateWindowLayout() {
         ImGuiIO& io = ImGui::GetIO();
-        ImGuiStyle& style = ImGui::GetStyle();
-
-        if (!m_windowStateInitialized) {
-            m_windowWidth = m_pConfig->getOption<float>("overlayWidth", 0.0f);
-            m_windowSide = m_pConfig->getOption<std::string>("overlaySide", "left");
-            m_windowStateInitialized = true;
-        }
-
-        // Full height, user-resizable width, draggable with edge snapping
-        float initWidth = (m_windowWidth > 300.0f) ? m_windowWidth : 1080.0f;
-        ImGui::SetNextWindowSize(ImVec2(initWidth, io.DisplaySize.y), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(600, io.DisplaySize.y), ImVec2(FLT_MAX, io.DisplaySize.y));
-
-        // Initial position based on saved side (only on first use)
-        float initX = (m_windowSide == "right") ? (io.DisplaySize.x - initWidth) : 0.0f;
-        ImGui::SetNextWindowPos(ImVec2(initX, 0), ImGuiCond_FirstUseEver);
-
-        ImGui::Begin("vkBasalt-reloaded Configuration", nullptr,
-            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
         // Persist width on resize
         float currentWidth = ImGui::GetWindowWidth();
-
         if (m_lastWidth > 0.0f && std::fabs(currentWidth - m_lastWidth) > 1.0f) {
             m_windowWidth = currentWidth;
             m_pConfig->setGlobalOption("overlayWidth", doubleToConfigString(currentWidth));
@@ -510,21 +590,18 @@ namespace vkBasalt {
         // Edge Snapping for ImGui window placement
         ImVec2 currentPos = ImGui::GetWindowPos();
         float windowWidth = ImGui::GetWindowWidth();
-        
-        bool posChanged = (std::fabs(currentPos.x - m_lastWindowPos.x) > 0.5f || 
-                           std::fabs(currentPos.y - m_lastWindowPos.y) > 0.5f);
+        bool posChanged = (std::fabs(currentPos.x - m_lastWindowPos.x) > 0.5f ||
+                        std::fabs(currentPos.y - m_lastWindowPos.y) > 0.5f);
         bool mouseDown = ImGui::IsMouseDown(0);
 
         // State machine for dragging
         if (mouseDown) {
             if (posChanged) m_wasWindowMoving = true;
         } else {
-            // Mouse released handle snap if we were dragging
             if (m_wasWindowMoving) {
-                float snapThreshold = 150.0f;
+                float snapThreshold = kSnapThreshold;
                 bool inLeftZone = currentPos.x < snapThreshold;
                 bool inRightZone = (currentPos.x + windowWidth) > (io.DisplaySize.x - snapThreshold);
-                
                 if (inLeftZone) {
                     ImGui::SetWindowPos(ImVec2(0, 0));
                     m_windowSide = "left";
@@ -541,10 +618,9 @@ namespace vkBasalt {
         }
 
         // Draw snap indicators
-        float snapThreshold = 150.0f;
+        float snapThreshold = kSnapThreshold;
         bool inLeftZone = currentPos.x < snapThreshold;
         bool inRightZone = (currentPos.x + windowWidth) > (io.DisplaySize.x - snapThreshold);
-
         if (m_wasWindowMoving && (inLeftZone || inRightZone)) {
             ImDrawList* drawList = ImGui::GetForegroundDrawList();
             ImVec4 snapColor(0.3f, 0.6f, 1.0f, 0.15f);
@@ -558,87 +634,17 @@ namespace vkBasalt {
                 drawList->AddRect(ImVec2(rightX, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y), ImGui::ColorConvertFloat4ToU32(borderColor), 0.0f, 0, 2.0f);
             }
         }
-
         m_lastWindowPos = currentPos;
+    }
 
-        // Shift + Left/Right to cycle tabs pendingTab is only set for 1 frame SetSelected shouldn't persist
-        int pendingTab = -1;
-
-        if (m_forceSelectTab) {
-            pendingTab = m_activeTab;
-            m_forceSelectTab = false;
-        }
-        
-        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 5 : m_activeTab - 1;
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 5) ? 0 : m_activeTab + 1;
-        }
-
-        // Footer height = separator + single button row + bypass status line + 2 legend lines.
-        float footerHeight = 1.0f                                      // separator line
-            + style.ItemSpacing.y * 2                                  // spacing around separator
-            + ImGui::GetFrameHeightWithSpacing()                       // button row
-            + (ImGui::GetTextLineHeightWithSpacing() * 3)              // bypass status + 2 legend lines
-            + style.ItemSpacing.y;                                     // bottom padding
-
-        ImGui::BeginChild("##content_area", ImVec2(0, -footerHeight), false);
-
-        if (ImGui::BeginTabBar("##main_tabs", ImGuiTabBarFlags_None)) {
-            ImVec4 tabTextColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-            ImGui::PushStyleColor(ImGuiCol_Text, tabTextColor);
-
-            if (ImGui::BeginTabItem("Shaders", nullptr, (pendingTab == 0) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 0;
-                drawShadersTab();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Auto HDR", nullptr, (pendingTab == 1) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 1;
-                drawAutoHdrTab();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Stats", nullptr, (pendingTab == 2) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 2;
-                drawStatsTab();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Settings", nullptr, (pendingTab == 3) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 3;
-                drawSettingsTab();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Presets", nullptr, (pendingTab == 4) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 4;
-                drawPresetsTab();
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Style", nullptr, (pendingTab == 5) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
-                m_activeTab = 5;
-                drawStyleTab();
-                ImGui::EndTabItem();
-            }
-            ImGui::PopStyleColor();
-            ImGui::EndTabBar();
-
-            // Auto HDR tab owns the scopes. Enable on entry, disable on exit.
-            if (m_activeTab == 1 && m_lastScopeTab != 1) {
-                setScopesEnabled(true);
-            } else if (m_activeTab != 1 && m_lastScopeTab == 1) {
-                setScopesEnabled(false);
-            }
-            m_lastScopeTab = m_activeTab;
-        }
-        ImGui::EndChild();
-
-        // Footer
-        ImGui::Separator();
+    void ImGuiOverlay::drawFooterButtons() {
+        ImGuiStyle& style = ImGui::GetStyle();
 
         if (m_activeTab == 0) { // Shaders tab
             if (ImGui::Button("Save & Apply")) {
-                // Resolve selected effect by name, not by index into the active chain
-                std::vector<std::string> effectNames = m_pConfig->getOption<std::vector<std::string>>("effects", {});
-                if (m_pSwapchain && m_selectedEffectIndex < effectNames.size()) {
-                    std::string selectedName = effectNames[m_selectedEffectIndex];
+                // Resolve selected effect by name from the full cached list (includes inactive effects)
+                if (m_pSwapchain && m_selectedEffectIndex < m_cachedAllEffects.size()) {
+                    std::string selectedName = m_cachedAllEffects[m_selectedEffectIndex];
                     for (auto& eff : m_pSwapchain->effects) {
                         if (eff->getName() == selectedName) {
                             const auto& params = eff->getParamDescs();
@@ -679,9 +685,13 @@ namespace vkBasalt {
             }
         } else if (m_activeTab == 1) { // Auto HDR tab
             if (ImGui::Button("Apply HDR Changes")) {
-                bool perGameCalib = m_pConfig->hasPerGameOption("sdrWhitePointNits") ||
-                                    m_pConfig->hasPerGameOption("hdrPeakNits") ||
-                                    m_pConfig->hasPerGameOption("hdrToneMapper");
+                bool perGameCalib = false;
+                for (const auto& p : NitCalibrationEffect::getCalibrationParams()) {
+                    if (m_pConfig->hasPerGameOption(p.key)) {
+                        perGameCalib = true;
+                        break;
+                    }
+                }
                 if (perGameCalib) {
                     m_pConfig->savePerGame();
                 } else {
@@ -718,51 +728,159 @@ namespace vkBasalt {
             ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.1f, 1.0f),
                 "Remember to save your config if you want to keep these changes! Click Close again to dismiss.");
         }
+    }
 
-        // Legend (dynamic keybinds)
+    void ImGuiOverlay::drawLegend() {
         std::string kbToggle  = m_pConfig->getOption<std::string>("toggleKey", "Insert");
         std::string kbReload  = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
         std::string kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         std::string kbScreenshot = m_pConfig->getOption<std::string>("screenshotKey", "Delete");
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         // Show global effects state in legend (always reserve the line height to prevent layout shift)
         if (!g_effectsEnabled) {
             ImGui::TextColored(ImVec4(0.9f, 0.4f, 0.3f, 1.0f), "Effects are BYPASSED (press %s to re-enable)", kbToggle.c_str());
         } else {
             ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
         }
-        ImGui::Text("[Tab/Arrows] Navigate    [Enter] Edit    [Left/Right] Adjust    [Shift+Left/Right] Switch tab    [/] Search");
-        ImGui::Text("[Space] Toggle checkbox    [Esc] Close    [%s] Toggle    [%s] Reload    [%s] Overlay    [%s] Screenshot",
+        ImGui::Text("[Tab/Arrows]-Navigate  [Enter]-Edit  [Left/Right]Adjust  [Shift+Left/Right]Switch tab  [Shift+Up/Down]Scroll");
+        ImGui::Text("[Space]Toggle checkbox  [Esc]Close  [%s]Toggle  [%s]Reload  [%s]Overlay  [%s]Screenshot  [/] Search",
                     kbToggle.c_str(), kbReload.c_str(), kbOverlay.c_str(), kbScreenshot.c_str());
         ImGui::PopStyleColor();
+    }
+
+    void ImGuiOverlay::drawUI() {
+        ImGuiIO& io = ImGui::GetIO();
+        ImGuiStyle& style = ImGui::GetStyle();
+
+        if (!m_windowStateInitialized) {
+            m_windowWidth = m_pConfig->getOption<float>("overlayWidth", 0.0f);
+            m_windowSide = m_pConfig->getOption<std::string>("overlaySide", "left");
+            m_windowStateInitialized = true;
+        }
+
+        // Full height, user resizable width, draggable with edge snapping
+        float initWidth = (m_windowWidth > 300.0f) ? m_windowWidth : kDefaultWindowWidth;
+        ImGui::SetNextWindowSize(ImVec2(initWidth, io.DisplaySize.y), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(kMinWindowWidth, io.DisplaySize.y), ImVec2(FLT_MAX, io.DisplaySize.y));
+
+        // Initial position based on saved side (only on first use)
+        float initX = (m_windowSide == "right") ? (io.DisplaySize.x - initWidth) : 0.0f;
+        ImGui::SetNextWindowPos(ImVec2(initX, 0), ImGuiCond_FirstUseEver);
+
+        ImGui::Begin("vkBasalt-reloaded Configuration", nullptr,
+                    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+        updateWindowLayout();
+
+        // Shift + Left/Right to cycle tabs pendingTab is only set for 1 frame SetSelected shouldn't persist
+        int pendingTab = -1;
+        if (m_forceSelectTab) {
+            pendingTab = m_activeTab;
+            m_forceSelectTab = false;
+        }
+        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 5 : m_activeTab - 1;
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 5) ? 0 : m_activeTab + 1;
+        }
+
+        // Footer height = separator + single button row + bypass status line + 2 legend lines.
+        float footerHeight = 1.0f                                     // separator line
+                        + style.ItemSpacing.y * 2                     // spacing around separator
+                        + ImGui::GetFrameHeightWithSpacing()          // button row
+                        + (ImGui::GetTextLineHeightWithSpacing() * 3) // bypass status + 2 legend lines
+                        + style.ItemSpacing.y;                        // bottom padding
+
+        ImGui::BeginChild("##content_area", ImVec2(0, -footerHeight), false);
+        if (ImGui::BeginTabBar("##main_tabs", ImGuiTabBarFlags_None)) {
+            ImVec4 tabTextColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_Text, tabTextColor);
+            if (ImGui::BeginTabItem("Shaders", nullptr, (pendingTab == 0) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 0;
+                drawShadersTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Auto HDR", nullptr, (pendingTab == 1) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 1;
+                drawAutoHdrTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Stats", nullptr, (pendingTab == 2) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 2;
+                drawStatsTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Settings", nullptr, (pendingTab == 3) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 3;
+                drawSettingsTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Presets", nullptr, (pendingTab == 4) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 4;
+                drawPresetsTab();
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Style", nullptr, (pendingTab == 5) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+                m_activeTab = 5;
+                drawStyleTab();
+                ImGui::EndTabItem();
+            }
+            ImGui::PopStyleColor();
+            ImGui::EndTabBar();
+
+            // Auto HDR tab owns the scopes. Enable and register on entry, disable and unregister on exit.
+            if (m_activeTab == 1 && m_lastScopeTab != 1) {
+                setScopesEnabled(true);
+            } else if (m_activeTab != 1 && m_lastScopeTab == 1) {
+                setScopesEnabled(false);
+                // Don't reorder this call before the tab bar rendering without verifying the above invariant.
+                invalidateScopeTextures();
+            }
+            m_lastScopeTab = m_activeTab;
+        }
+        ImGui::EndChild();
+
+        // Footer
+        ImGui::Separator();
+        drawFooterButtons();
+        drawLegend();
 
         // Live Preview Debounce applies to all tabs
         if (m_previewDirty && m_hasUnsavedChanges) {
             float elapsed = ImGui::GetTime() - m_lastChangeTime;
-            if (elapsed > 0.25f) {
+            if (elapsed > kDebounceDelay) {
                 g_triggerPreviewReload = true;
                 m_previewDirty = false;
             }
         }
-
         ImGui::End();
     }
 
     void ImGuiOverlay::setScopesEnabled(bool enabled) {
         if (!m_pSwapchain) return;
         for (auto& pass : m_pSwapchain->computePasses) {
-            if (pass->getName() == "frame_analyzer" && pass->isEnabled() != enabled) {
+            // asFrameAnalyzer() returns non null only for FrameAnalyzer instances, call isEnabled() on the base pass pointer to avoid needing full FrameAnalyzer definition here.
+            if (pass->asFrameAnalyzer() && pass->isEnabled() != enabled) {
                 pass->setEnabled(enabled);
                 break;
             }
         }
     }
 
+    void ImGuiOverlay::invalidateScopeTextures() {
+        if (m_scopeTexturesRegistered) {
+            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[0]);
+            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[1]);
+            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[2]);
+            m_scopeTexturesRegistered = false;
+            m_lastAnalyzerPtr = nullptr;
+        }
+    }
+
     void ImGuiOverlay::disableScopesOnClose() {
         setScopesEnabled(false);
+        invalidateScopeTextures();
         m_lastScopeTab = -1;
-        m_scopeTexturesRegistered = false;
-        m_lastAnalyzerPtr = nullptr;
     }
 
     void ImGuiOverlay::toggleOverlay() {
