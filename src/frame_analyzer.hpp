@@ -32,10 +32,12 @@ namespace vkBasalt
             m_enabled = enabled; 
             if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0; 
         }
-        void setOverlayVisible(bool visible) { 
+        void setOverlayVisible(bool visible) override { 
             m_overlayVisible = visible; 
             if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0; 
         }
+
+        FrameAnalyzer* asFrameAnalyzer() override { return this; }
 
     private:
         LogicalDevice* m_pDevice;

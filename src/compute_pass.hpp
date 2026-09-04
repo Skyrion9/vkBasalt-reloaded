@@ -1,10 +1,13 @@
 #pragma once
 #include "vulkan_include.hpp"
+
 #include <cstdint>
+#include <string>
 
 namespace vkBasalt
 {
     struct LogicalDevice;
+    class FrameAnalyzer; // Forward declaration for type safe downcast
 
     // Created during buildEffectChain (per-swapchain), updatePass() called every frame before recording (per frame data)
     // recordCommands() called inside writeCommandBuffers after effects, Destroyed with the swapchain
@@ -21,6 +24,12 @@ namespace vkBasalt
 
         virtual void setEnabled(bool enabled) { m_enabled = enabled; }
         virtual bool isEnabled() const { return m_enabled; }
+
+        // Propagate overlay visibility (e.g. to skip GPU work when UI is hidden).
+        virtual void setOverlayVisible(bool) {}
+
+        // Type safe downcast for FrameAnalyzer
+        virtual FrameAnalyzer* asFrameAnalyzer() { return nullptr; }
 
         // Name for UI / config lookup.
         virtual std::string getName() const = 0;

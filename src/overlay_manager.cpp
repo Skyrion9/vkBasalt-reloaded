@@ -10,7 +10,6 @@
 #include <string>
 
 #include "imgui_overlay.hpp"
-#include "frame_analyzer.hpp"
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"
@@ -59,13 +58,10 @@ namespace vkBasalt {
             return false;
         }
 
-        // Propagate overlay visibility to FrameAnalyzer so it can skip GPU work when UI is hidden
+        // Propagate overlay visibility to all compute passes so they can skip GPU work when UI is hidden
         bool overlayOpen = overlayIt->second->isOverlayOpen();
         for (auto& pass : pSwapchain->computePasses) {
-            if (pass->getName() == "frame_analyzer") {
-                static_cast<FrameAnalyzer*>(pass.get())->setOverlayVisible(overlayOpen);
-                break;
-            }
+            pass->setOverlayVisible(overlayOpen);
         }
 
         VkCommandBuffer overlayCmdBuf = m_commandBuffersMap[swapchain][imageIndex];
