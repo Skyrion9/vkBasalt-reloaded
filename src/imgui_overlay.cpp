@@ -301,73 +301,91 @@ namespace vkBasalt {
         }
 #endif
 
-    if (m_isOpen) {
-        if (isWayland) {
-            // Event-based: feed queued key events directly to ImGui
-            feedWaylandKeyEventsToImGui();
-            if (wasSlashTypedWayland()) m_focusSearch = true;
-        } else {
-            auto checkKey = [&](uint32_t keysym) -> bool {
-                return isKeyPressedX11(keysym);
-            };
+        if (m_isOpen) {
+            if (isWayland) {
+                // Event-based: feed queued key events directly to ImGui
+                feedWaylandKeyEventsToImGui();
+                if (wasSlashTypedWayland()) m_focusSearch = true;
+                
+                if (isKeyPressedWayland(0xFF55) || (isKeyPressedWayland(0xFFE1) && isKeyPressedWayland(0xFF52))) io.MouseWheel += 1.0f; // PageUp or Shift+Up
+                if (isKeyPressedWayland(0xFF56) || (isKeyPressedWayland(0xFFE1) && isKeyPressedWayland(0xFF54))) io.MouseWheel -= 1.0f; // PageDown or Shift+Down
+            } else {
+                auto checkKey = [&](uint32_t keysym) -> bool {
+                    return isKeyPressedX11(keysym);
+                };
+                io.AddKeyEvent(ImGuiKey_Tab,        checkKey(0xFF09));
+                io.AddKeyEvent(ImGuiKey_LeftArrow,  checkKey(0xFF51));
+                io.AddKeyEvent(ImGuiKey_UpArrow,    checkKey(0xFF52));
+                io.AddKeyEvent(ImGuiKey_RightArrow, checkKey(0xFF53));
+                io.AddKeyEvent(ImGuiKey_DownArrow,  checkKey(0xFF54));
+                io.AddKeyEvent(ImGuiKey_Space,      checkKey(0x0020));
+                io.AddKeyEvent(ImGuiKey_Enter,      checkKey(0xFF0D));
+                io.AddKeyEvent(ImGuiKey_Escape,     checkKey(0xFF1B));
+                io.AddKeyEvent(ImGuiKey_Backspace,  checkKey(0xFF08));
+                io.AddKeyEvent(ImGuiKey_Delete,     checkKey(0xFFFF));
+                io.AddKeyEvent(ImGuiKey_Home,       checkKey(0xFF50));
+                io.AddKeyEvent(ImGuiKey_End,        checkKey(0xFF57));
+                io.AddKeyEvent(ImGuiKey_PageUp,     checkKey(0xFF55));
+                io.AddKeyEvent(ImGuiKey_PageDown,   checkKey(0xFF56));
+                io.AddKeyEvent(ImGuiKey_LeftShift,  checkKey(0xFFE1));
+                io.AddKeyEvent(ImGuiKey_RightShift, checkKey(0xFFE2));
+                io.AddKeyEvent(ImGuiKey_LeftCtrl,   checkKey(0xFFE3));
+                io.AddKeyEvent(ImGuiKey_RightCtrl,  checkKey(0xFFE4));
+                io.AddKeyEvent(ImGuiKey_LeftAlt,    checkKey(0xFFE9));
+                io.AddKeyEvent(ImGuiKey_RightAlt,   checkKey(0xFFEA));
+                for (int i = 0; i < 26; i++) {
+                    bool down = checkKey(0x0061 + i);
+                    io.AddKeyEvent((ImGuiKey)((int)ImGuiKey_A + i), down);
+                }
+                static bool prevSearch = false;
+                bool searchDown = checkKey(0x002F) || checkKey(0x0066);
+                if (searchDown && !prevSearch) m_focusSearch = true;
+                prevSearch = searchDown;
+                bool periodDown = checkKey(0x002E);
+                bool minusDown  = checkKey(0x002D);
+                io.AddKeyEvent(ImGuiKey_Period, periodDown);
+                io.AddKeyEvent(ImGuiKey_Minus,  minusDown);
+                static bool prevKeys[12] = {};
+                for (int i = 0; i <= 9; i++) {
+                    bool down = checkKey(0x0030 + i) || checkKey(0xFFB0 + i);
+                    io.AddKeyEvent((ImGuiKey)((int)ImGuiKey_0 + i), down);
+                    if (down && !prevKeys[i]) io.AddInputCharacter((unsigned int)('0' + i));
+                    prevKeys[i] = down;
+                }
+                if (periodDown && !prevKeys[10]) io.AddInputCharacter('.');
+                prevKeys[10] = periodDown;
+                if (minusDown && !prevKeys[11]) io.AddInputCharacter('-');
+                prevKeys[11] = minusDown;
 
-            io.AddKeyEvent(ImGuiKey_Tab,        checkKey(0xFF09));
-            io.AddKeyEvent(ImGuiKey_LeftArrow,  checkKey(0xFF51));
-            io.AddKeyEvent(ImGuiKey_UpArrow,    checkKey(0xFF52));
-            io.AddKeyEvent(ImGuiKey_RightArrow, checkKey(0xFF53));
-            io.AddKeyEvent(ImGuiKey_DownArrow,  checkKey(0xFF54));
-            io.AddKeyEvent(ImGuiKey_Space,      checkKey(0x0020));
-            io.AddKeyEvent(ImGuiKey_Enter,      checkKey(0xFF0D));
-            io.AddKeyEvent(ImGuiKey_Escape,     checkKey(0xFF1B));
-            io.AddKeyEvent(ImGuiKey_Backspace,  checkKey(0xFF08));
-            io.AddKeyEvent(ImGuiKey_Delete,     checkKey(0xFFFF));
-            io.AddKeyEvent(ImGuiKey_Home,       checkKey(0xFF50));
-            io.AddKeyEvent(ImGuiKey_End,        checkKey(0xFF57));
-            io.AddKeyEvent(ImGuiKey_PageUp,     checkKey(0xFF55));
-            io.AddKeyEvent(ImGuiKey_PageDown,   checkKey(0xFF56));
+                // PageUp / Shift+Up scrolls up, PageDown / Shift+Down scrolls down
+                static bool prevPageUp = false, prevPageDown = false;
+                static bool prevShiftUp = false, prevShiftDown = false;
+                
+                bool pageUp = checkKey(0xFF55);
+                bool pageDown = checkKey(0xFF56);
+                bool shiftUp = checkKey(0xFFE1) && checkKey(0xFF52);   // Shift + Up
+                bool shiftDown = checkKey(0xFFE1) && checkKey(0xFF54); // Shift + Down
 
-            for (int i = 0; i < 26; i++) {
-                bool down = checkKey(0x0061 + i);
-                io.AddKeyEvent((ImGuiKey)((int)ImGuiKey_A + i), down);
+                if (pageUp && !prevPageUp) io.MouseWheel += 3.0f;
+                if (pageDown && !prevPageDown) io.MouseWheel -= 3.0f;
+                if (shiftUp && !prevShiftUp) io.MouseWheel += 1.0f;
+                if (shiftDown && !prevShiftDown) io.MouseWheel -= 1.0f;
+
+                prevPageUp = pageUp;
+                prevPageDown = pageDown;
+                prevShiftUp = shiftUp;
+                prevShiftDown = shiftDown;
             }
-
-            static bool prevSearch = false;
-            bool searchDown = checkKey(0x002F) || checkKey(0x0066);
-            if (searchDown && !prevSearch) m_focusSearch = true;
-            prevSearch = searchDown;
-
-            bool periodDown = checkKey(0x002E);
-            bool minusDown  = checkKey(0x002D);
-            io.AddKeyEvent(ImGuiKey_Period, periodDown);
-            io.AddKeyEvent(ImGuiKey_Minus,  minusDown);
-
-            static bool prevKeys[12] = {};
-            for (int i = 0; i <= 9; i++) {
-                bool down = checkKey(0x0030 + i) || checkKey(0xFFB0 + i);
-                io.AddKeyEvent((ImGuiKey)((int)ImGuiKey_0 + i), down);
-                if (down && !prevKeys[i]) io.AddInputCharacter((unsigned int)('0' + i));
-                prevKeys[i] = down;
-            }
-            if (periodDown && !prevKeys[10]) io.AddInputCharacter('.');
-            prevKeys[10] = periodDown;
-            if (minusDown && !prevKeys[11]) io.AddInputCharacter('-');
-            prevKeys[11] = minusDown;
         }
-    }
-
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
-    if (isWayland) {
-        updateWaylandImGuiIO(m_cursorScale);
-        return;
-    }
+        if (isWayland) {
+            updateWaylandImGuiIO(m_cursorScale);
+            return;
+        }
 #endif
+
     // X11/XWayland coordinates are already in the swapchains pixel space. Don't multiply by UI scale here thats only needed for native Wayland.
     updateX11ImGuiIO(m_isOpen, 1.0f);
-
-#ifdef VK_USE_PLATFORM_WAYLAND_KHR
-    // XQueryPointer can't detect scroll wheel (Buttons 4/5 are momentary). Gamescope sends scroll events to the Wayland surface even for XWayland clients.
-    ImGui::GetIO().MouseWheel += consumeWaylandMouseWheel();
-#endif
     }
 
     void ImGuiOverlay::processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height) {
