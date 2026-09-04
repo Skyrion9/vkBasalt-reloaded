@@ -661,14 +661,14 @@ namespace vkBasalt
 
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
     {
-        // Hold lock only for map lookups and hotkey processing. Release before GPU work.
         std::shared_ptr<LogicalDevice> pLogicalDevice;
         // Only copy the swapchains we actually present (typically 1-3), not the entire map
         std::vector<std::pair<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>>> localSwapchains;
         {
-            scoped_lock l(globalLock);
+            std::unique_lock<std::mutex> l(globalLock);
             if (processHotkeysAndReloads(pConfig, swapchainMap, g_overlayManager)) {
                 LogicalDevice* pDev = deviceMap[GetKey(queue)].get();
+                l.unlock(); // Release lock before blocking GPU work to prevent deadlock with CreateSwapchainKHR
                 return pDev->vkd.QueuePresentKHR(queue, pPresentInfo);
             }
 
@@ -945,21 +945,26 @@ namespace vkBasalt
     {
         if (!swapchain)
             return;
-
         scoped_lock l(globalLock);
-        // we need to delete the infos of the oldswapchain
         
-        Logger::trace("vkDestroySwapchainKHR " + convertToString(swapchain));
-
-        // Cleanup rebuild fence before destroying the swapchain
-        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
-        if (swapchainMap[swapchain]->rebuildFence != VK_NULL_HANDLE) {
-            pLogicalDevice->vkd.DestroyFence(pLogicalDevice->device, swapchainMap[swapchain]->rebuildFence, nullptr);
-            swapchainMap[swapchain]->rebuildFence = VK_NULL_HANDLE;
+        auto it = swapchainMap.find(swapchain);
+        if (it == swapchainMap.end()) {
+            // Swapchain not tracked by us, just pass through
+            LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+            pLogicalDevice->vkd.DestroySwapchainKHR(device, swapchain, pAllocator);
+            return;
         }
 
-        swapchainMap[swapchain]->destroy();
-        swapchainMap.erase(swapchain);
+        // we need to delete the infos of the oldswapchain
+        Logger::trace("vkDestroySwapchainKHR " + convertToString(swapchain));
+        // Cleanup rebuild fence before destroying the swapchain
+        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+        if (it->second->rebuildFence != VK_NULL_HANDLE) {
+            pLogicalDevice->vkd.DestroyFence(pLogicalDevice->device, it->second->rebuildFence, nullptr);
+            it->second->rebuildFence = VK_NULL_HANDLE;
+        }
+        it->second->destroy();
+        swapchainMap.erase(it);
 
         // Cleanup Overlay Resources
         g_overlayManager.destroyOverlay(pLogicalDevice, swapchain);
