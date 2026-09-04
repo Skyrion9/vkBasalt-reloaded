@@ -41,12 +41,16 @@ namespace vkBasalt {
 
     // Defined in basalt.cpp
     extern bool g_vramReclaimedForCurrentBypass;
+    extern bool g_passthroughActive;
+    extern bool g_passthroughTimerActive;
 
     bool isHdrOutputNeeded(Config* pConfig, LogicalSwapchain* pLogicalSwapchain) {
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
         if (srcCsm == ColorSpaceMode::SDR_SRGB) {
             std::string autoHdr = pConfig->getOption<std::string>("autoHdr", "on");
-            return (autoHdr == "on" || autoHdr == "true" || autoHdr == "1") && pLogicalSwapchain->autoHdrActive;
+            bool configEnabled = (autoHdr == "on" || autoHdr == "true" || autoHdr == "1");
+            // Only allocate the HDR slice if the display actually confirmed HDR support (autoHdrActive) top prevent VRAM waste on non-HDR displays.
+            return configEnabled && pLogicalSwapchain->autoHdrActive;
         } else {
             std::string hdrMode = pConfig->getOption<std::string>("hdrCalibration", "off");
             return hdrMode == "on" || hdrMode == "true" || hdrMode == "1";
@@ -67,6 +71,12 @@ namespace vkBasalt {
 
     static void buildDefaultNoEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig) {
         std::vector<std::shared_ptr<Effect>> noEffectChain;
+        if (pLogicalSwapchain->fakeImages.size() < pLogicalSwapchain->imageCount) {
+            Logger::err("buildDefaultNoEffectChain: fakeImages pool too small (" +
+                        std::to_string(pLogicalSwapchain->fakeImages.size()) + " < " +
+                        std::to_string(pLogicalSwapchain->imageCount) + "). Skipping.");
+            return;
+        }
         if (pLogicalSwapchain->autoHdrActive) {
             std::vector<VkImage> slice0Images(
                 pLogicalSwapchain->fakeImages.begin(),
@@ -161,11 +171,14 @@ namespace vkBasalt {
         return (lastI % 2 == 1) ? 2 : 1;
     }
 
+    // Ping pong buffering: slice 0 = game render target (readonly), slices 1 and 2 alternate as effect output buffers.
+    static constexpr uint32_t kMaxPingPongSlices = 3;
+
     static uint32_t getRequiredSlices(uint32_t effectCount, bool supportsMutable) {
         if (effectCount == 0) return 1; // fallback transfer reads slice 0
         if (effectCount == 1) return supportsMutable ? 1 : 2;
-        if (effectCount == 2) return supportsMutable ? 2 : 3;
-        return 3; // ping-pong: slices 0, 1, 2
+        if (effectCount == 2) return supportsMutable ? 2 : kMaxPingPongSlices;
+        return kMaxPingPongSlices;
     }
 
     void buildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
@@ -379,6 +392,10 @@ namespace vkBasalt {
         // Only create semaphores on initial setup. Rebuilds preserve them as imageCount is fixed for a given swapchain.
         if (pLogicalSwapchain->semaphores.empty()) {
             pLogicalSwapchain->semaphores = createSemaphores(pLogicalDevice, pLogicalSwapchain->imageCount);
+            if (pLogicalSwapchain->semaphores.size() != pLogicalSwapchain->imageCount) {
+                Logger::err("Failed to create all semaphores: expected " + std::to_string(pLogicalSwapchain->imageCount) +
+                            ", got " + std::to_string(pLogicalSwapchain->semaphores.size()));
+            }
             Logger::debug("created semaphores");
         }
 
@@ -418,15 +435,23 @@ namespace vkBasalt {
                             bool waitForIdle)
     {
         Logger::debug("Rebuilding effects for swapchain...");
-
         if (waitForIdle) {
             pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         }
 
         uint32_t totalEffectCount = calculateTotalEffectCount(pConfig, pLogicalSwapchain);
-
         uint32_t requiredSlices = getRequiredSlices(totalEffectCount, pLogicalDevice->supportsMutableFormat);
         uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
+
+        // If the fake image pool is empty (e.g., passthrough mode reclaimed VRAM), Can't build any command buffers. Force a swapchain rebuild to reallocate the pool.
+        if (pLogicalSwapchain->fakeImages.empty()) {
+            Logger::debug("Effect pool is empty (passthrough active). Forcing swapchain rebuild to reallocate...");
+            g_passthroughActive = false;
+            g_passthroughTimerActive = false;
+            pLogicalSwapchain->forceSwapchainRebuild = true;
+            pLogicalSwapchain->passthroughEligible = false;
+            return;
+        }
 
         // Chain GREW beyond allocated pool, game holds old VkImage handles, so we must force the game to recreate its swapchain.
         if (requiredFakeImageCount > pLogicalSwapchain->fakeImages.size()) {
