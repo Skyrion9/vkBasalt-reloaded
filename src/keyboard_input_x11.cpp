@@ -7,6 +7,8 @@
 #include <imgui.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
+#include <X11/extensions/XInput2.h>
+#include <dlfcn.h>
 
 // Undefine X11 macros that collide with identifiers in the rest of the codebase (e.g. logger.hpp has an enum member called None, which X11/X.h #defines as 0L)
 #undef None
@@ -19,6 +21,67 @@ namespace vkBasalt
     static Display* g_gameDisplay = nullptr;
     static Window g_gameWindow = 0;
     static Display* g_fallbackDisplay = nullptr; // Cached for Wayland games in Gamescope
+
+    // XInput2 dynamic loading for scroll wheel polling
+    typedef Status (*PFN_XIQueryVersion)(Display*, int*, int*);
+    typedef int (*PFN_XISelectEvents)(Display*, Window, XIEventMask*, int);
+
+    static void* s_libXi = nullptr;
+    static PFN_XIQueryVersion s_XIQueryVersion = nullptr;
+    static PFN_XISelectEvents s_XISelectEvents = nullptr;
+
+    static Display* g_scrollDisplay = nullptr;
+    static int xi2_opcode = 0;
+
+    static bool initX11Scroll() {
+        if (g_scrollDisplay) return true;
+        if (s_libXi == nullptr) {
+            s_libXi = dlopen("libXi.so.6", RTLD_LAZY | RTLD_NOLOAD);
+            if (!s_libXi) s_libXi = dlopen("libXi.so.6", RTLD_LAZY);
+            if (!s_libXi) {
+                s_libXi = (void*)-1; // Mark as failed to avoid retrying
+                return false;
+            }
+            s_XIQueryVersion = (PFN_XIQueryVersion)dlsym(s_libXi, "XIQueryVersion");
+            s_XISelectEvents = (PFN_XISelectEvents)dlsym(s_libXi, "XISelectEvents");
+        }
+        if (s_libXi == (void*)-1 || !s_XIQueryVersion || !s_XISelectEvents) return false;
+
+        const char* disVar = getenv("DISPLAY");
+        if (!disVar) return false;
+
+        // Open a dedicated connection so our event queue is completely separate from the game's
+        g_scrollDisplay = XOpenDisplay(disVar);
+        if (!g_scrollDisplay) return false;
+
+        int event, error;
+        if (!XQueryExtension(g_scrollDisplay, "XInputExtension", &xi2_opcode, &event, &error)) {
+            XCloseDisplay(g_scrollDisplay);
+            g_scrollDisplay = nullptr;
+            return false;
+        }
+
+        int major = 2, minor = 0;
+        if (s_XIQueryVersion(g_scrollDisplay, &major, &minor) == BadRequest) {
+            XCloseDisplay(g_scrollDisplay);
+            g_scrollDisplay = nullptr;
+            return false;
+        }
+
+        Window root = DefaultRootWindow(g_scrollDisplay);
+        unsigned char mask_bits[XIMaskLen(XI_RawButtonPress)] = { 0 };
+        XISetMask(mask_bits, XI_RawButtonPress);
+
+        XIEventMask evmask;
+        evmask.deviceid = XIAllMasterDevices;
+        evmask.mask_len = sizeof(mask_bits);
+        evmask.mask = mask_bits;
+
+        s_XISelectEvents(g_scrollDisplay, root, &evmask, 1);
+        XFlush(g_scrollDisplay);
+        Logger::debug("X11 Scroll: XInput2 RawButtonPress initialized on dedicated connection.");
+        return true;
+    }
 
     void initX11Input(void* display_ptr, void* window_ptr) {
         g_gameDisplay = (Display*)display_ptr;
@@ -126,7 +189,6 @@ namespace vkBasalt
     void updateX11ImGuiIO(bool overlayOpen, float scale) {
         if (!ImGui::GetCurrentContext()) return;
         ImGuiIO& io = ImGui::GetIO();
-        
         Display* dpy = g_gameDisplay;
         Window win = g_gameWindow;
         if (!dpy) {
@@ -139,7 +201,6 @@ namespace vkBasalt
             dpy = g_fallbackDisplay;
             win = DefaultRootWindow(dpy);
         }
-
         Window root, child;
         int root_x, root_y, win_x, win_y;
         unsigned int mask;
@@ -148,6 +209,24 @@ namespace vkBasalt
             io.MouseDown[0] = (mask & Button1Mask) != 0; // Left
             io.MouseDown[1] = (mask & Button3Mask) != 0; // Right
             io.MouseDown[2] = (mask & Button2Mask) != 0; // Middle
+        }
+
+        // Poll scroll wheel via XInput2 Raw Events on a dedicated connection.
+        if (initX11Scroll()) {
+            XEvent ev;
+            while (XPending(g_scrollDisplay) > 0) {
+                XNextEvent(g_scrollDisplay, &ev);
+                if (ev.type == GenericEvent && ev.xcookie.extension == xi2_opcode) {
+                    if (XGetEventData(g_scrollDisplay, &ev.xcookie)) {
+                        if (ev.xcookie.evtype == XI_RawButtonPress) {
+                            XIRawEvent* raw = (XIRawEvent*)ev.xcookie.data;
+                            if (raw->detail == 4) io.MouseWheel += 1.0f;
+                            else if (raw->detail == 5) io.MouseWheel -= 1.0f;
+                        }
+                        XFreeEventData(g_scrollDisplay, &ev.xcookie);
+                    }
+                }
+            }
         }
     }
 } // namespace vkBasalt
