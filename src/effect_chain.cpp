@@ -478,6 +478,13 @@ namespace vkBasalt {
 
         // Chain same size, rebuild in-place using existing pool. The game's cached VkImage handles remain valid.
         Logger::debug("Effect chain fits in existing pool. Rebuilding in-place...");
+
+        // Move old compute passes to the graveyard instead of destroying them immediately. The GPU may still be executing the previous frames overlay command buffer,
+        //  which samples from the scope images. Destroying them now would frui ninja the viewports. The graveyard is cleared when the swapchain is destroyed.
+        for (auto& pass : pLogicalSwapchain->computePasses) {
+            pLogicalSwapchain->computePassGraveyard.push_back(pass);
+        }
+
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
                                                    pLogicalSwapchain->commandBuffersEffect.size(),

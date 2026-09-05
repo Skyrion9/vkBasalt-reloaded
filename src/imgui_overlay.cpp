@@ -869,9 +869,10 @@ namespace vkBasalt {
 
     void ImGuiOverlay::invalidateScopeTextures() {
         if (m_scopeTexturesRegistered) {
-            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[0]);
-            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[1]);
-            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[2]);
+            // Defer removal: the GPU may still be executing a command buffer that uses these descriptor sets. We'll safely remove them when the overlay is closed.
+            for (int i = 0; i < 3; i++) {
+                m_pendingScopeTextureRemovals.push_back(m_scopeTextureIDs[i]);
+            }
             m_scopeTexturesRegistered = false;
             m_lastAnalyzerPtr = nullptr;
         }
@@ -880,6 +881,14 @@ namespace vkBasalt {
     void ImGuiOverlay::disableScopesOnClose() {
         setScopesEnabled(false);
         invalidateScopeTextures();
+        
+        // Safe to remove deferred textures now: the overlay is closing, so it will submit an empty command buffer.
+        // The GPU will finish the previous frames work, safe to free the descriptor sets and the associated VkImages (which are in the swapchain graveyard).
+        for (uint64_t texId : m_pendingScopeTextureRemovals) {
+            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)texId);
+        }
+        m_pendingScopeTextureRemovals.clear();
+        
         m_lastScopeTab = -1;
     }
 

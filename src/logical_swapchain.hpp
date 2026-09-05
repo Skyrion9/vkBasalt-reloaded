@@ -61,6 +61,9 @@ namespace vkBasalt
         bool                                 pendingRebuild = false;
 
         std::vector<std::shared_ptr<ComputePass>> computePasses;
+        // Graveyard for deferred destruction. Keeps old FrameAnalyzers alive until the swapchain  is destroyed.
+        // This prevents the GPU from reading freed memory if a soft reload occurs, while  the previous frame's overlay command buffer is still in flight.
+        std::vector<std::shared_ptr<ComputePass>> computePassGraveyard;
         uint32_t computeSrcSlice = 0; // which slice compute passes read from
 
         void destroy();

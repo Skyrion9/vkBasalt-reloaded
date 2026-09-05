@@ -115,6 +115,7 @@ namespace vkBasalt {
         bool m_windowStateInitialized = false;
 
         std::array<ImTextureID, 3> m_scopeTextureIDs = {};
+        std::vector<ImTextureID> m_pendingScopeTextureRemovals;
         bool m_scopeTexturesRegistered = false;
         void* m_lastAnalyzerPtr = nullptr;
 
