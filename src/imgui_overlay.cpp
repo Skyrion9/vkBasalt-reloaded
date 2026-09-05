@@ -50,18 +50,23 @@ namespace vkBasalt {
         if (perGame) {
             m_pConfig->setOption(key, value);
         } else {
+            m_pConfig->removePerGameOption(key);
             m_pConfig->setGlobalOption(key, value);
         }
         m_hasUnsavedChanges = true;
         m_previewDirty = true;
-        m_lastChangeTime = (float)ImGui::GetTime();
+        m_lastChangeTime = ImGui::GetTime();
     }
 
     void ImGuiOverlay::setConfigImmediate(const std::string& key, const std::string& value, bool perGame) {
         if (perGame) {
             m_pConfig->setOption(key, value);
+            m_pConfig->savePerGame();
         } else {
+            m_pConfig->removePerGameOption(key);
             m_pConfig->setGlobalOption(key, value);
+            m_pConfig->savePerGame();
+            m_pConfig->saveGlobal();
         }
         m_hasUnsavedChanges = true;
     }

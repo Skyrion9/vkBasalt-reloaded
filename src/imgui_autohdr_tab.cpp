@@ -67,12 +67,13 @@ namespace vkBasalt {
 
         ImGui::Spacing();
 
+        bool isNativeHdr = gameIsHDR;
+        bool isAutoHdrActive = m_pSwapchain && m_pSwapchain->autoHdrActive;
+        bool hdrCalibConfig = m_pConfig->getOption<bool>("hdrCalibration", false);
+
         if (ImGui::CollapsingHeader("HDR Calibration", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::TextDisabled("White point and peak brightness scaling for Auto HDR. Optionally usable for native HDR games.");
             ImGui::Spacing();
-            bool isNativeHdr = gameIsHDR;
-            bool isAutoHdrActive = m_pSwapchain && m_pSwapchain->autoHdrActive;
-            bool hdrCalibConfig = m_pConfig->getOption<bool>("hdrCalibration", false);
             bool displayChecked = isAutoHdrActive || hdrCalibConfig;
             bool isDisabled = isAutoHdrActive || (!isNativeHdr && !isAutoHdrActive);
 
@@ -149,6 +150,12 @@ namespace vkBasalt {
                                 detected.peakBrightnessNits, detected.sdrWhitePointNits);
 
             ImGui::Spacing();
+            
+            bool isCalibrationActive = isAutoHdrActive || (isNativeHdr && hdrCalibConfig);
+            if (!isCalibrationActive) {
+                ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "Calibration is currently INACTIVE (Effect not in chain)");
+            }
+            ImGui::BeginDisabled(!isCalibrationActive);
 
             // Adaptive Scene Analysis toggle
             {
@@ -275,12 +282,11 @@ namespace vkBasalt {
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) && !p.tooltip.empty()) {
                     ImGui::SetTooltip("%s", p.tooltip.c_str());
                 }
-
                 ImGui::Spacing();
                 ImGui::PopID();
             }
+            ImGui::EndDisabled(); // Close the isCalibrationActive block
         }
-
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
