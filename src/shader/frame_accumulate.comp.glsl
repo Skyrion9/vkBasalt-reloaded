@@ -29,12 +29,16 @@ void main() {
     
     vec3 linear = decodeToLinear(raw.rgb);
 
-    // Luma coefficients depend on the color space primaries
-    vec3 lumaCoeffs = vec3(0.2126, 0.7152, 0.0722); // Rec.709 / sRGB / scRGB
-    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
-        lumaCoeffs = vec3(0.2627, 0.6780, 0.0593); // Rec.2020
-    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
-        lumaCoeffs = vec3(0.2289, 0.6917, 0.0793); // Display P3 (SMPTE RP 431-2)
+    // Luma coefficients depend on the color space primaries. scRGB uses Rec.709 primaries, so it correctly falls through to the default.
+    vec3 lumaCoeffs = LUMA_REC709;
+    
+    if (colorSpaceMode == CSP_HDR10_PQ || 
+        colorSpaceMode == CSP_HDR_HLG || 
+        colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
+        lumaCoeffs = LUMA_REC2020;
+    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || 
+               colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
+        lumaCoeffs = LUMA_P3;
     }
     float luma = dot(linear, lumaCoeffs);
 

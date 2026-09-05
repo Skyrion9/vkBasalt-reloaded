@@ -1,6 +1,4 @@
 #version 450
-#extension GL_GOOGLE_include_directive : enable
-#include "color_space.h"
 
 // Frame Analyzer: Resolve Pass reads accumulated SSBO data, normalizes, applies heat map, and writes to 256x256 output images.
 
