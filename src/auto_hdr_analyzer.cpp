@@ -87,13 +87,8 @@ namespace vkBasalt {
 
         // 2. Create Buffers
         m_histogramBuffer = createBuffer(256 * sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_histogramMemory);
-        // Use host visible memory for the 16 byte temporal buffer so we can safely initialize defaults
-        m_temporalBuffer = createBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_temporalMemory, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        void* mappedTemporal;
-        pLogicalDevice->vkd.MapMemory(pLogicalDevice->device, m_temporalMemory, 0, 16, 0, &mappedTemporal);
-        float temporalDefaults[4] = {0.5f, 0.18f, 0.0f, 0.0f}; // smoothedP99, smoothedAvg, padding
-        memcpy(mappedTemporal, temporalDefaults, 16);
-        pLogicalDevice->vkd.UnmapMemory(pLogicalDevice->device, m_temporalMemory);
+        // Temporal buffer must be DEVICE_LOCAL for fast GPU side feedback loop, we initialize it via CmdUpdateBuffer on the first frame.
+        m_temporalBuffer = createBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_temporalMemory, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         m_metricsBuffer = createBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_metricsMemory);
 
         // 3. Create Sampler
@@ -232,6 +227,25 @@ namespace vkBasalt {
     }
 
     void AutoHdrAnalyzer::recordCommands(VkCommandBuffer cmdBuf, VkImageView inputImageView, uint32_t imageIndex) {
+        // Initialize temporal buffer on first run using CmdUpdateBuffer (avoids PCIe staging buffer overhead)
+        if (!m_temporalInitialized) {
+            float temporalDefaults[4] = {0.5f, 0.18f, 0.0f, 0.0f}; // smoothedP99, smoothedAvg, padding
+            pLogicalDevice->vkd.CmdUpdateBuffer(cmdBuf, m_temporalBuffer, 0, 16, temporalDefaults);
+            
+            VkBufferMemoryBarrier initBarrier = {};
+            initBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            initBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            initBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            initBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            initBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            initBarrier.buffer = m_temporalBuffer;
+            initBarrier.offset = 0;
+            initBarrier.size = 16;
+            pLogicalDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &initBarrier, 0, nullptr);
+            
+            m_temporalInitialized = true;
+        }
+
         pLogicalDevice->vkd.CmdFillBuffer(cmdBuf, m_histogramBuffer, 0, VK_WHOLE_SIZE, 0);
 
         VkBufferMemoryBarrier histBarrier = {};

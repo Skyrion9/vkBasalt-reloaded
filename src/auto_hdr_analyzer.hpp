@@ -73,6 +73,8 @@ namespace vkBasalt {
         VkShaderModule m_accumulateModule = VK_NULL_HANDLE;
         VkShaderModule m_reduceModule = VK_NULL_HANDLE;
         
+        bool m_temporalInitialized = false;
+        
         uint32_t findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties);
         VkBuffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkDeviceMemory& memory, VkMemoryPropertyFlags memProps = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     };
