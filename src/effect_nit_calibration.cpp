@@ -111,10 +111,6 @@ namespace vkBasalt
         // Determine if adaptive analyzer should be created before setting spec data
         m_hdrAdaptive = pConfig->getOption<bool>("hdrAdaptive", true);
         bool willCreateAnalyzer = m_hdrAdaptive && (autoHdrActive || getColorSpaceMode(sourceFormat, sourceColorSpace) != ColorSpaceMode::SDR_SRGB);
-
-        // Pass adaptive state to shader so it knows whether to read the metrics UBO
-        specData.hdrAdaptive = willCreateAnalyzer ? 1 : 0;
-        mapEntries.push_back({3, offsetof(NitCalibrationSpecData, hdrAdaptive), sizeof(int32_t)});
         
         m_specData = specData;
         m_specMapEntries = mapEntries;
@@ -127,12 +123,62 @@ namespace vkBasalt
         pVertexSpecInfo = nullptr;
         pFragmentSpecInfo = &m_specInfo;
         
-        // Create analyzer and add its descriptor set layout before init()
-        if (willCreateAnalyzer) {
-            int32_t srcCsmInt = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
-            m_autoHdrAnalyzer = std::make_unique<AutoHdrAnalyzer>(pLogicalDevice, imageExtent, inputImages.size(), pConfig, srcCsmInt);
-            this->descriptorSetLayouts.push_back(m_autoHdrAnalyzer->getMetricsSetLayout());
+    // Create analyzer or dummy metrics buffer and add its descriptor set layout before init()
+    if (willCreateAnalyzer) {
+        int32_t srcCsmInt = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
+        m_autoHdrAnalyzer = std::make_unique<AutoHdrAnalyzer>(pLogicalDevice, imageExtent, inputImages.size(), pConfig, srcCsmInt);
+        this->descriptorSetLayouts.push_back(m_autoHdrAnalyzer->getMetricsSetLayout());
+    } else {
+        // Create dummy metrics set layout
+        std::vector<VkDescriptorSetLayoutBinding> metBindings(1);
+        metBindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+        VkDescriptorSetLayoutCreateInfo metLayoutInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 1, metBindings.data()};
+        pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &metLayoutInfo, nullptr, &m_dummyMetricsSetLayout);
+        this->descriptorSetLayouts.push_back(m_dummyMetricsSetLayout);
+
+        // Create dummy metrics buffer (DEVICE_LOCAL for optimal GPU cache behavior)
+        VkBufferCreateInfo bufInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        bufInfo.size = 16;
+        bufInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        pLogicalDevice->vkd.CreateBuffer(pLogicalDevice->device, &bufInfo, nullptr, &m_dummyMetricsBuffer);
+        VkMemoryRequirements memReqs;
+        pLogicalDevice->vkd.GetBufferMemoryRequirements(pLogicalDevice->device, m_dummyMetricsBuffer, &memReqs);
+        VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        allocInfo.allocationSize = memReqs.size;
+        
+        auto findMemType = [&](uint32_t typeBits, VkMemoryPropertyFlags props) -> uint32_t {
+            for (uint32_t i = 0; i < pLogicalDevice->memoryProperties.memoryTypeCount; i++) {
+                if ((typeBits & (1 << i)) && (pLogicalDevice->memoryProperties.memoryTypes[i].propertyFlags & props) == props) return i;
+            }
+            return 0;
+        };
+        
+        allocInfo.memoryTypeIndex = findMemType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        pLogicalDevice->vkd.AllocateMemory(pLogicalDevice->device, &allocInfo, nullptr, &m_dummyMetricsMemory);
+        pLogicalDevice->vkd.BindBufferMemory(pLogicalDevice->device, m_dummyMetricsBuffer, m_dummyMetricsMemory, 0);
+        
+        // Store static values to upload via CmdUpdateBuffer on the first frame
+        m_dummyMetricsData[0] = pConfig->getOption<float>("sdrWhitePointNits", 203.0f) * 0.01f;
+        m_dummyMetricsData[1] = pConfig->getOption<float>("hdrPeakNits", 1000.0f) * 0.01f;
+        m_dummyMetricsData[2] = 1.0f;
+        m_dummyMetricsData[3] = 0.0f;
+
+        // Create descriptor pool and sets
+        VkDescriptorPoolSize poolSize = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)inputImages.size()};
+        VkDescriptorPoolCreateInfo poolInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, (uint32_t)inputImages.size(), 1, &poolSize};
+        pLogicalDevice->vkd.CreateDescriptorPool(pLogicalDevice->device, &poolInfo, nullptr, &m_dummyMetricsPool);
+
+        m_dummyMetricsSets.resize(inputImages.size());
+        std::vector<VkDescriptorSetLayout> layouts(inputImages.size(), m_dummyMetricsSetLayout);
+        VkDescriptorSetAllocateInfo allocSetInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, m_dummyMetricsPool, (uint32_t)inputImages.size(), layouts.data()};
+        pLogicalDevice->vkd.AllocateDescriptorSets(pLogicalDevice->device, &allocSetInfo, m_dummyMetricsSets.data());
+
+        VkDescriptorBufferInfo bufInfoDesc = {m_dummyMetricsBuffer, 0, VK_WHOLE_SIZE};
+        for (size_t i = 0; i < inputImages.size(); i++) {
+            VkWriteDescriptorSet write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_dummyMetricsSets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bufInfoDesc, nullptr};
+            pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &write, 0, nullptr);
         }
+    }
         
         // Init with destFormat so renderpass/framebuffers match the real HDR swapchain
         init(pLogicalDevice, destFormat, imageExtent, inputImages, outputImages, pConfig);
@@ -169,7 +215,12 @@ namespace vkBasalt
         }
     }
 
-    NitCalibrationEffect::~NitCalibrationEffect() {}
+    NitCalibrationEffect::~NitCalibrationEffect() {
+        if (m_dummyMetricsBuffer) pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, m_dummyMetricsBuffer, nullptr);
+        if (m_dummyMetricsMemory) pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, m_dummyMetricsMemory, nullptr);
+        if (m_dummyMetricsSetLayout) pLogicalDevice->vkd.DestroyDescriptorSetLayout(pLogicalDevice->device, m_dummyMetricsSetLayout, nullptr);
+        if (m_dummyMetricsPool) pLogicalDevice->vkd.DestroyDescriptorPool(pLogicalDevice->device, m_dummyMetricsPool, nullptr);
+    }
 
     void NitCalibrationEffect::updateEffect() {}
 
@@ -191,6 +242,24 @@ namespace vkBasalt
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+
+        // Initialize DEVICE_LOCAL dummy metrics buffer on first frame
+        if (!m_autoHdrAnalyzer && !m_dummyMetricsInitialized) {
+            pLogicalDevice->vkd.CmdUpdateBuffer(commandBuffer, m_dummyMetricsBuffer, 0, 16, m_dummyMetricsData);
+            
+            VkBufferMemoryBarrier initBarrier = {};
+            initBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            initBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            initBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            initBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            initBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            initBarrier.buffer = m_dummyMetricsBuffer;
+            initBarrier.offset = 0;
+            initBarrier.size = 16;
+            pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &initBarrier, 0, nullptr);
+            
+            m_dummyMetricsInitialized = true;
+        }
 
         // Run AutoHDR Analyzer (Compute passes)
         if (m_autoHdrAnalyzer) {
@@ -221,11 +290,14 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
             
-        // Bind Set 1 (Metrics SSBO) if adaptive
+        // Bind Set 1 (Metrics SSBO)
         if (m_autoHdrAnalyzer) {
             VkDescriptorSet metricSet = m_autoHdrAnalyzer->getMetricsDescriptorSet(imageIndex);
             pLogicalDevice->vkd.CmdBindDescriptorSets(
                 commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &metricSet, 0, nullptr);
+        } else {
+            pLogicalDevice->vkd.CmdBindDescriptorSets(
+                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &m_dummyMetricsSets[imageIndex], 0, nullptr);
         }
         
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);

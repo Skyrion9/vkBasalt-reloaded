@@ -26,6 +26,7 @@ namespace vkBasalt {
         
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         void updateEffect() override;
+        const std::vector<EffectParamDesc>& getParamDescs() const override { return getCalibrationParams(); }
         
         std::string getName() const override { return "nitcalibration"; }
         static const std::vector<EffectParamDesc>& getCalibrationParams();
@@ -41,13 +42,22 @@ namespace vkBasalt {
             int32_t toneMapperMode;
             int32_t sourceColorSpace;
             int32_t destColorSpace;
-            int32_t hdrAdaptive;
         };
 
         NitCalibrationSpecData m_specData;
         std::vector<VkSpecializationMapEntry> m_specMapEntries;
         VkSpecializationInfo m_specInfo;
         std::unique_ptr<AutoHdrAnalyzer> m_autoHdrAnalyzer;
+
+        // Dummy metrics buffer for when adaptive is off
+        VkDescriptorSetLayout m_dummyMetricsSetLayout = VK_NULL_HANDLE;
+        VkBuffer m_dummyMetricsBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory m_dummyMetricsMemory = VK_NULL_HANDLE;
+        VkDescriptorPool m_dummyMetricsPool = VK_NULL_HANDLE;
+        std::vector<VkDescriptorSet> m_dummyMetricsSets;
+        
+        float m_dummyMetricsData[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        bool m_dummyMetricsInitialized = false;
         bool m_hdrAdaptive = true;
     };
 } // namespace vkBasalt
