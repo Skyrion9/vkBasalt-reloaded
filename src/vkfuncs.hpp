@@ -24,6 +24,7 @@
     FORVKFUNC(CmdDispatch) \
     FORVKFUNC(CmdDraw) \
     FORVKFUNC(CmdFillBuffer) \
+    FORVKFUNC(CmdUpdateBuffer) \
     FORVKFUNC(CmdEndRenderPass) \
     FORVKFUNC(CmdPipelineBarrier) \
     FORVKFUNC(CmdCopyImageToBuffer) \
