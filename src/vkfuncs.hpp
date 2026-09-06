@@ -22,6 +22,7 @@
     FORVKFUNC(CmdCopyBufferToImage) \
     FORVKFUNC(CmdCopyImage) \
     FORVKFUNC(CmdDispatch) \
+    FORVKFUNC(CmdDispatchIndirect) \
     FORVKFUNC(CmdDraw) \
     FORVKFUNC(CmdFillBuffer) \
     FORVKFUNC(CmdUpdateBuffer) \
