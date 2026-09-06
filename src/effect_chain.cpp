@@ -71,6 +71,15 @@ namespace vkBasalt {
 
     static void buildDefaultNoEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig) {
         std::vector<std::shared_ptr<Effect>> noEffectChain;
+
+        // Free old no effect command buffers before allocating new ones to prevent leaks
+        if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
+            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
+                                                pLogicalSwapchain->commandBuffersNoEffect.size(),
+                                                pLogicalSwapchain->commandBuffersNoEffect.data());
+            pLogicalSwapchain->commandBuffersNoEffect.clear();
+        }
+
         if (pLogicalSwapchain->fakeImages.size() < pLogicalSwapchain->imageCount) {
             Logger::err("buildDefaultNoEffectChain: fakeImages pool too small (" +
                         std::to_string(pLogicalSwapchain->fakeImages.size()) + " < " +
@@ -104,18 +113,29 @@ namespace vkBasalt {
     }
 
     void rebuildFallbackChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig) {
+        // Wait for GPU to finish executing the previous frame's command buffers before freeing them. Freeing in flight command buffers
+        //  is undefined behavior, causes crashes when AutoHDR is toggled or the last effect is removed.
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
+
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
+                                                pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
             pLogicalSwapchain->commandBuffersEffect.clear();
         }
         if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
+                                                pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
             pLogicalSwapchain->commandBuffersNoEffect.clear();
         }
-        pLogicalSwapchain->effects.clear();
+
+        // Move compute passes to the graveyard instead of destroying them immediately. The overlay may still hold scope texture descriptor
+        // sets referencing images owned by the FrameAnalyzer. Destroying them now would cause use after free.
+        for (auto& pass : pLogicalSwapchain->computePasses) {
+            pLogicalSwapchain->computePassGraveyard.push_back(pass);
+        }
         pLogicalSwapchain->computePasses.clear();
+
+        pLogicalSwapchain->effects.clear();
         pLogicalSwapchain->defaultTransfer.reset();
         pLogicalSwapchain->defaultHdrEffect.reset();
         buildDefaultNoEffectChain(pLogicalDevice, pLogicalSwapchain, pConfig);
@@ -479,8 +499,11 @@ namespace vkBasalt {
         // Chain same size, rebuild in-place using existing pool. The game's cached VkImage handles remain valid.
         Logger::debug("Effect chain fits in existing pool. Rebuilding in-place...");
 
-        // Move old compute passes to the graveyard instead of destroying them immediately. The GPU may still be executing the previous frames overlay command buffer,
-        //  which samples from the scope images. Destroying them now would frui ninja the viewports. The graveyard is cleared when the swapchain is destroyed.
+        // Reset the default chain so it picks up new config values (tone mapper, white point, peak nits, etc.)
+        pLogicalSwapchain->defaultTransfer.reset();
+        pLogicalSwapchain->defaultHdrEffect.reset();
+
+        // Move old compute passes to the graveyard instead of destroying them immediately.
         for (auto& pass : pLogicalSwapchain->computePasses) {
             pLogicalSwapchain->computePassGraveyard.push_back(pass);
         }
