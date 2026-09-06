@@ -26,19 +26,27 @@ layout(push_constant) uniform PushConstants {
     float deltaTime;
 } pc;
 
-shared uint sharedTotal;
 shared uint sharedPrefix[256];
+shared float sharedWeighted[256];
 
 void main() {
     uint tid = gl_LocalInvocationID.x;
     
-    if (tid == 0) sharedTotal = 0;
+    uint val = bins[tid];
+    sharedPrefix[tid] = val;
     barrier();
     
-    atomicAdd(sharedTotal, bins[tid]);
-    barrier();
+    // Inclusive prefix sum (Hillis Steele scan)
+    for (uint offset = 1; offset < 256; offset *= 2) {
+        uint temp = 0;
+        if (tid >= offset) temp = sharedPrefix[tid - offset];
+        barrier();
+        sharedPrefix[tid] += temp;
+        barrier();
+    }
+
+    uint totalPixels = sharedPrefix[255];
     
-    uint totalPixels = sharedTotal;
     if (totalPixels == 0) {
         if (tid == 0) {
             metrics.adaptiveWhite = targetWhite;
@@ -48,41 +56,56 @@ void main() {
         return;
     }
     
-    uint val = bins[tid];
-    sharedPrefix[tid] = val;
+    // Parallel weighted sum reduction (avoids serial 256-iteration loop on thread 0)
+    float binLuma = (float(tid) + 0.5) / 256.0;
+    float linearLuma = binLuma / (1.0 - binLuma);
+    
+    sharedWeighted[tid] = float(bins[tid]) * linearLuma;
     barrier();
     
-    // Inclusive prefix sum (Blelloch scan)
-    for (uint offset = 1; offset < 256; offset *= 2) {
-        uint temp = 0;
-        if (tid >= offset) temp = sharedPrefix[tid - offset];
-        barrier();
-        sharedPrefix[tid] += temp;
+    for (uint offset = 128; offset > 0; offset >>= 1) {
+        if (tid < offset) {
+            sharedWeighted[tid] += sharedWeighted[tid + offset];
+        }
         barrier();
     }
     
     if (tid == 0) {
         uint targetP99 = uint(float(totalPixels) * 0.99);
-        float p99Luma = 1.0;
-        float weightedSum = 0.0;
+        float p99Luma = 0.0;
         
+        // Thread 0 finds P99 (256 iterations is trivial)
         for (int i = 0; i < 256; i++) {
-            weightedSum += float(bins[i]) * (float(i) / 255.0);
-            if (sharedPrefix[i] >= targetP99 && p99Luma == 1.0) {
-                p99Luma = float(i) / 255.0;
+            if (sharedPrefix[i] >= targetP99) {
+                float bL = (float(i) + 0.5) / 256.0;
+                p99Luma = bL / (1.0 - bL);
+                break;
             }
         }
-        float avgLuma = weightedSum / float(totalPixels);
+        float avgLuma = sharedWeighted[0] / float(totalPixels);
+
+        // Guard against uninitialized DEVICE_LOCAL memory (NaN or out of range garbage). This handles the edge case where the first acquired swapchain image is not index 0.
+        bool temporalValid = (temporal.smoothedP99 == temporal.smoothedP99) &&
+                             (temporal.smoothedAvg == temporal.smoothedAvg) &&
+                             (temporal.smoothedP99 >= 0.0 && temporal.smoothedP99 <= 100.0) &&
+                             (temporal.smoothedAvg >= 0.0 && temporal.smoothedAvg <= 100.0);
+
+        if (!temporalValid) {
+            temporal.smoothedP99 = p99Luma;
+            temporal.smoothedAvg = avgLuma;
+        } else {
+            float alpha = 1.0 - exp(-pc.deltaTime * adaptationSpeed);
+            temporal.smoothedP99 = temporal.smoothedP99 + alpha * (p99Luma - temporal.smoothedP99);
+            temporal.smoothedAvg = temporal.smoothedAvg + alpha * (avgLuma - temporal.smoothedAvg);
+        }
         
-        float alpha = 1.0 - exp(-pc.deltaTime * adaptationSpeed);
-        float newP99 = temporal.smoothedP99 + alpha * (p99Luma - temporal.smoothedP99);
-        float newAvg = temporal.smoothedAvg + alpha * (avgLuma - temporal.smoothedAvg);
+        // Normalize average luma relative to SDR white to determine midtone bias
+        float avgRatio = clamp(temporal.smoothedAvg / targetWhite, 0.0, 2.0);
+        float midtoneBias = mix(1.0 + midtoneRange, 1.0 - midtoneRange, smoothstep(0.5, 1.5, avgRatio));
         
-        temporal.smoothedP99 = newP99;
-        temporal.smoothedAvg = newAvg;
-        
-        float midtoneBias = mix(1.0 + midtoneRange, 1.0 - midtoneRange, smoothstep(0.2, 0.8, newAvg));
-        float sceneIntensity = mix(1.0, 0.2, smoothstep(0.5, 1.0, newP99));
+        // Normalize P99 relative to targetPeak to determine scene intensity
+        float peakRatio = clamp(temporal.smoothedP99 / targetPeak, 0.0, 1.0);
+        float sceneIntensity = mix(1.0, 0.2, smoothstep(0.5, 1.0, peakRatio));
         float finalIntensity = mix(sceneIntensity, 1.0, peakScale);
         
         metrics.adaptiveWhite = targetWhite * midtoneBias;

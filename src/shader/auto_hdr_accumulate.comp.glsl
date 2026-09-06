@@ -26,19 +26,21 @@ void main() {
         vec4 raw = textureLod(inputImage, uv, 0.0);
         vec3 linear = decodeToLinear(raw.rgb);
         
-        // Use correct luma coefficients based on source color space scRGB and SDR use Rec.709 primaries. P3 uses P3 primaries. PQ/HLG/BT.2020 use Rec.2020.
         vec3 lumaCoeffs = LUMA_REC709;
         if (colorSpaceMode == CSP_HDR10_PQ || 
             colorSpaceMode == CSP_HDR_HLG || 
             colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
             lumaCoeffs = LUMA_REC2020;
         } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || 
-                colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
+                   colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
             lumaCoeffs = LUMA_P3;
         }
             
         float luma = dot(linear, lumaCoeffs);
-        uint bin = uint(clamp(luma, 0.0, 1.0) * 255.0);
+        
+        // HDR aware - map [0, infinity] to [0, 1] using Reinhard compression. Prevents HDR highlights (e.g. 10.0 linear = 1000 nits) from clamping into the final bin.
+        float mappedLuma = luma / (1.0 + luma);
+        uint bin = min(uint(mappedLuma * 256.0), 255u);
         
         atomicAdd(sharedBins[bin], 1);
     }
