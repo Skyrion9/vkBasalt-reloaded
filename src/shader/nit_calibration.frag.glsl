@@ -5,7 +5,6 @@ layout(set = 0, binding = 0) uniform sampler2D img;
 layout(constant_id = 0) const float sdrWhitePoint = 203.0;
 layout(constant_id = 1) const float hdrPeakNits = 1000.0;
 layout(constant_id = 2) const int autoHdrEnabled = 0;
-layout(constant_id = 3) const int hdrAdaptive = 1; // Default ON
 
 layout(set = 1, binding = 0) readonly buffer AdaptiveMetrics {
     float adaptiveWhite;
@@ -175,90 +174,80 @@ void main() {
     float luma = dot(linear, lumaCoeffs);
     float mappedLuma = luma;
 
-    if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
-        float satFactor = 1.0;
-        if (autoHdrEnabled == 1 && sourceColorSpace == CSP_SDR_SRGB) {
-            float targetWhite = (hdrAdaptive == 1) ? metrics.adaptiveWhite : sdrWhitePoint * 0.01;
-            float targetPeak  = (hdrAdaptive == 1) ? metrics.adaptivePeak  : hdrPeakNits * 0.01;
+    if (autoHdrEnabled == 1 && sourceColorSpace == CSP_SDR_SRGB) {
+        // Autohdr path (SDR -> HDR) Source is SDR. 1.0 in linear space = SDR white. Expand it to targetWhite and targetPeak.
+        float targetWhite = metrics.adaptiveWhite;
+        float targetPeak  = metrics.adaptivePeak;
 
+        if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
+            float satFactor = 1.0;
+            
             // Specular weighting: achromatic pixels (light sources) expand to full peak, chromatic pixels (surfaces) expand to a lower ceiling.
             vec3  chromaVec    = linear - vec3(luma);
-            float chroma       = length(chromaVec);
-            float chromaRatio  = chroma / max(luma, 0.0001);
+            float chromaLen    = length(chromaVec);
+            float chromaRatio  = chromaLen / max(luma, 0.0001);
             float achromWeight = 1.0 - clamp(chromaRatio, 0.0, 1.0);
             float chromaticCeiling = min(targetWhite * 3.0, targetPeak);
             float effectivePeak = mix(chromaticCeiling, targetPeak, achromWeight);
 
-            float A = effectivePeak - 1.0; float C = 0.1; float D = 0.2; float E = 0.7;
-            float num = fma(A, luma * luma, luma);
-            float den = fma(C, luma * luma, fma(D, luma, E));
-            mappedLuma = num / max(den, 0.0001);
+            if (hdrToneMapperMode == HDR_TM_QUALITY) {
+                // Corrected Rational Reinhard: maps 0->0, 1.0->targetWhite, inf->effectivePeak
+                float num = luma * effectivePeak * targetWhite;
+                float den = luma * targetWhite + (effectivePeak - targetWhite);
+                mappedLuma = num / max(den, 0.0001);
+            } else { // HDR_TM_HERMITE
+                if (luma <= 1.0) {
+                    // Hermite spline on domain [0, 1.0] for SDR->HDR expansion.
+                    float t = luma;
+                    float m0 = targetWhite;
+                    float m1 = max(0.0, (effectivePeak - targetWhite) * 0.25); // Headroom influence
+                    float t2 = t * t;
+                    float t3 = t2 * t;
+                    float h10 = t3 - 2.0 * t2 + t;
+                    float h01 = -2.0 * t3 + 3.0 * t2;
+                    float h11 = t3 - t2;
+                    mappedLuma = h10 * m0 + h01 * targetWhite + h11 * m1;
+                } else {
+                    // Fallback to Rational Reinhard for SDR highlights > 1.0 to prevent crushing. Maintains C0 continuity at exactly 1.0 while preserving infinite headroom.
+                    float num = luma * effectivePeak * targetWhite;
+                    float den = luma * targetWhite + (effectivePeak - targetWhite);
+                    mappedLuma = num / max(den, 0.0001);
+                }
+            }
 
             float invSatRange = 1.0 / max(effectivePeak - targetWhite, 0.0001);
             float t = clamp((mappedLuma - targetWhite) * invSatRange, 0.0, 1.0);
             satFactor = 1.0 - 0.15 * (t * t * (3.0 - 2.0 * t));
+            
+            float expansionRatio = mappedLuma / max(luma, 0.0001);
+            vec3 expandedChroma = chromaVec * expansionRatio;
+            linear = mappedLuma + expandedChroma * satFactor;
+            linear = achromaticGamutClip(linear, mappedLuma, targetPeak);
         } else {
-            float targetWhite = (hdrAdaptive == 1) ? metrics.adaptiveWhite : sdrWhitePoint * 0.01;
-            float targetPeak  = (hdrAdaptive == 1) ? metrics.adaptivePeak  : hdrPeakNits * 0.01;
-            float knee = targetWhite;
-
-            if (luma <= knee) {
-                mappedLuma = luma * (targetWhite / knee);
-            } else if (hdrToneMapperMode == HDR_TM_HERMITE) {
-                // BT.2390-style cubic Hermite spline Maps [knee, sourceMax] -> [targetWhite, targetPeak] with C¹ continuity at the knee.
-                // Tangent at knee matches the lower linear segment (slope = targetWhite/knee). Tangent at sourceMax is 0 (smooth roll-off to peak).
-                float sourceMax = 100.0; // 10,000 nits (PQ absolute maximum)
-                float dx = sourceMax - knee;
-                float invRange = 1.0 / dx;
-                float t = clamp((luma - knee) * invRange, 0.0, 1.0);
-                float headroom = targetPeak - targetWhite;
-                float slope = targetWhite / knee;
-                float m0_dx = slope * dx;
-                // Cubic Hermite in Horner form: ((a3*t + a2)*t + a1)*t + a0
-                float a3 = -2.0 * headroom + m0_dx;
-                float a2 =  3.0 * headroom - 2.0 * m0_dx;
-                float a1 =  m0_dx;
-                mappedLuma = ((a3 * t + a2) * t + a1) * t + targetWhite;
-            } else {
-                // Rational Reinhard with matched slope (C¹ continuous)
-                float excess   = luma - knee;
-                float headroom = targetPeak - targetWhite;
-                float denom    = excess + (headroom * knee / targetWhite);
-                mappedLuma     = targetWhite + (headroom * excess) / denom;
-            }
-
-            float invSatRange = 1.0 / max(targetPeak - targetWhite, 0.0001);
-            float t = clamp((mappedLuma - targetWhite) * invSatRange, 0.0, 1.0);
-            satFactor = 1.0 - 0.10 * (t * t * (3.0 - 2.0 * t));
-        }
-        // Scale chroma by the luminance expansion ratio to preserve chromaticity
-        float expansionRatio = mappedLuma / max(luma, 0.0001);
-        vec3 chroma = (linear - luma) * expansionRatio;
-
-        // Apply Hunt effect compression to the expanded chroma
-        linear = mappedLuma + chroma * satFactor;
-        linear = achromaticGamutClip(linear, mappedLuma, hdrPeakNits / 100.0);
-
-    } else {
-        // HDR_TM_FAST
-        if (autoHdrEnabled == 1 && sourceColorSpace == CSP_SDR_SRGB) {
-            float targetWhite = sdrWhitePoint / 100.0;
-            float targetPeak  = hdrPeakNits / 100.0;
-            
-            // Continuous quadratic: f(x) = x * ((peak - white)*x + white). Maps 0->0, slope at 0 is 'white' (preserves dark/midtone levels), 1->peak.
-            float curve = fma(targetPeak - targetWhite, luma, targetWhite);
-            mappedLuma = luma * curve;
-            vec3 uniformlyScaled = linear * curve;
-            
-            // Fast Hunt effect approximation based on input luma
+            // HDR_TM_FAST
+            float num = targetPeak * luma * targetWhite;
+            float den = luma * (targetPeak - targetWhite) + targetWhite;
+            mappedLuma = num / max(den, 0.0001);
+            float expansion = mappedLuma / max(luma, 0.0001);
+            linear *= expansion;
             float satFactor = 1.0 - 0.10 * (luma * luma);
-            linear = mix(vec3(mappedLuma), uniformlyScaled, satFactor);
-        } else {
-            float gain = sdrWhitePoint / 203.0;
-            linear *= gain;
-            mappedLuma = luma * gain;
+            linear = mix(vec3(mappedLuma), linear, satFactor);
+            linear = maxRgbPeakClamp(linear, targetPeak);
         }
-        linear = maxRgbPeakClamp(linear, hdrPeakNits / 100.0);
+    } else {
+        // Native HDR path (HDR -> HDR) Source is already HDR. The game has already tone mapped. Assuming the game's SDR white is at 203 nits (2.03 in linear space), 
+        // which is standard for HDR10. We apply a gain to match the user's desired white point, and clamp to the configured peak nits.
+        float gain = metrics.adaptiveWhite / 2.03;
+        linear *= gain;
+        mappedLuma = luma * gain;
+
+        if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
+            // Achromatic gamut clipping for high-end tone mappers (preserves hue)
+            linear = achromaticGamutClip(linear, mappedLuma, metrics.adaptivePeak);
+        } else {
+            // Fast MaxRGB clamp (can shift hue on extreme highlights)
+            linear = maxRgbPeakClamp(linear, metrics.adaptivePeak);
+        }
     }
 
     vec3 encoded = encodeDest(linear);
