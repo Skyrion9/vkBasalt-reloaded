@@ -215,6 +215,8 @@ namespace vkBasalt
             case VK_FORMAT_R64G64_SFLOAT:
             case VK_FORMAT_R64G64B64_SFLOAT:
             case VK_FORMAT_R64G64B64A64_SFLOAT:
+            case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+            case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
                 return true;
             default:
                 return false;
