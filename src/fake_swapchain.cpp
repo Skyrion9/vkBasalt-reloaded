@@ -35,7 +35,7 @@ namespace vkBasalt
         VkImageCreateInfo imageCreateInfo;
         imageCreateInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageCreateInfo.pNext         = (unormFormat == srgbFormat) ? nullptr : &imageFormatListCreateInfo;
-        imageCreateInfo.flags         = 0;
+        imageCreateInfo.flags         = (unormFormat != srgbFormat) ? VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT : 0;
         imageCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
         imageCreateInfo.format        = swapchainCreateInfo.imageFormat;
         imageCreateInfo.extent.width  = swapchainCreateInfo.imageExtent.width;
@@ -46,7 +46,7 @@ namespace vkBasalt
         imageCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
         imageCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
         imageCreateInfo.usage         = swapchainCreateInfo.imageUsage | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                | VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // TODO what usage do we need?
+                                                                       | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT; // for compute effects (CMAA2 etc.)
         imageCreateInfo.sharingMode           = swapchainCreateInfo.imageSharingMode;
         imageCreateInfo.queueFamilyIndexCount = swapchainCreateInfo.queueFamilyIndexCount;
         imageCreateInfo.pQueueFamilyIndices   = swapchainCreateInfo.pQueueFamilyIndices;
