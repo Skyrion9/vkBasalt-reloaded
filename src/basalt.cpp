@@ -638,12 +638,11 @@ namespace vkBasalt
 
         uint32_t totalEffectCount = calculateTotalEffectCount(pConfig.get(), pLogicalSwapchain);
 
-        // Ping pong cap at 3 slices (game input + 2 working buffers) regardless of chain length
+        // Ping pong cap at 2 slices (game input + 1 working buffer) regardless of chain length
         uint32_t requiredSlices;
         if (totalEffectCount == 0) requiredSlices = 1;
         else if (totalEffectCount == 1) requiredSlices = pLogicalDevice->supportsMutableFormat ? 1 : 2;
-        else if (totalEffectCount == 2) requiredSlices = pLogicalDevice->supportsMutableFormat ? 2 : 3;
-        else requiredSlices = 3;
+        else requiredSlices = 2;
 
         uint32_t fakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 

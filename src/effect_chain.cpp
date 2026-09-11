@@ -188,17 +188,14 @@ namespace vkBasalt {
         if (effectCount == 0) return 0;
         if (effectCount == 1) return 1;
         uint32_t lastI = effectCount - 1;
-        return (lastI % 2 == 1) ? 2 : 1;
+        return (lastI % 2 == 1) ? 0 : 1;
     }
 
-    // Ping pong buffering: slice 0 = game render target (readonly), slices 1 and 2 alternate as effect output buffers.
-    static constexpr uint32_t kMaxPingPongSlices = 3;
-
+    // Ping pong buffering: slices 0 and 1 strictly alternate. Slice 0 is the game's initial render target.
     static uint32_t getRequiredSlices(uint32_t effectCount, bool supportsMutable) {
-        if (effectCount == 0) return 1; // fallback transfer reads slice 0
+        if (effectCount == 0) return 1; 
         if (effectCount == 1) return supportsMutable ? 1 : 2;
-        if (effectCount == 2) return supportsMutable ? 2 : kMaxPingPongSlices;
-        return kMaxPingPongSlices;
+        return 2; 
     }
 
     void buildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
@@ -232,14 +229,14 @@ namespace vkBasalt {
             {
                 Logger::debug("current effectString " + effectStrings[i]);
 
-                // Ping-pong slice 0 is the game's render target (read only). Effects alternate between slices 1 and 2 after the first read.
+                // Ping-pong slice 0 is the game's render target. Effects strictly alternate between slices 0 and 1.
                 uint32_t srcSlice, dstSlice;
                 if (i == 0) {
                     srcSlice = 0;
                     dstSlice = 1;
                 } else {
-                    srcSlice = (i % 2 == 1) ? 1 : 2;
-                    dstSlice = (i % 2 == 1) ? 2 : 1;
+                    srcSlice = (i % 2 == 1) ? 1 : 0;
+                    dstSlice = (i % 2 == 1) ? 0 : 1;
                 }
 
                 std::vector<VkImage> firstImages(

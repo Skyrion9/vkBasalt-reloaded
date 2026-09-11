@@ -146,6 +146,28 @@ namespace vkBasalt
                 }
             }
 
+            // Restore Slice 0 (the game's render target) to PRESENT_SRC_KHR so the game's next vkAcquireNextImageKHR doesn't fail
+            // validation due to a layout mismatch, use UNDEFINED as oldLayout to safely discard contents and avoid validation errors.
+            if (pLogicalSwapchain && !pLogicalSwapchain->fakeImages.empty()) {
+                VkImageMemoryBarrier restoreBarrier = {};
+                restoreBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                restoreBarrier.srcAccessMask        = VK_ACCESS_SHADER_READ_BIT     | VK_ACCESS_SHADER_WRITE_BIT
+                                                      | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                restoreBarrier.dstAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+                restoreBarrier.oldLayout            = VK_IMAGE_LAYOUT_UNDEFINED;
+                restoreBarrier.newLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                restoreBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                restoreBarrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                restoreBarrier.image                = pLogicalSwapchain->fakeImages[i]; // Slice 0 for this frame index
+                restoreBarrier.subresourceRange     = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+                pLogicalDevice->vkd.CmdPipelineBarrier(
+                    commandBuffers[i],
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                    0, 0, nullptr, 0, nullptr, 1, &restoreBarrier);
+            }
+
             // Prepare the second barrier to transition depth back to the game
             memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
