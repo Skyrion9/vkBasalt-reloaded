@@ -69,12 +69,13 @@ vkBasalt_src = [
 ]
 
 x11_dep = dependency('x11')
+xrandr_dep = dependency('xrandr')
 wayland_client_dep = dependency('wayland-client')
 xkbcommon_dep = dependency('xkbcommon')
 vulkan_dep = dependency('vulkan')
 tinyexr_dep = subproject('tinyexr').get_variable('tinyexr_dep')
 
-# --- Wayland Protocol Generation ---
+# Wayland Protocol Generation
 wayland_protocols_dep = dependency('wayland-protocols')
 wayland_scanner_dep = dependency('wayland-scanner')
 
@@ -123,8 +124,7 @@ conf_paths.set_quoted('DATADIR', join_paths(get_option('prefix'), get_option('da
 configure_file(output: 'config_paths.hpp',
                configuration : conf_paths)
 
-# X11/X.h contains macro definitions (e.g. None) that conflict with the
-# rest of the codebase when Meson --unity=on merges translation units.
+# X11/X.h contains macro definitions (e.g. None) that conflict with the rest of the codebase when Meson --unity=on merges translation units.
 # Isolating it in a static_library prevents the collision.
 keyboard_input_x11_lib = static_library('keyboard_input_x11',
     'keyboard_input_x11.cpp',
@@ -137,7 +137,7 @@ shared_library(meson.project_name().to_lower(),
     vkBasalt_src, shader_include,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
-    dependencies : [x11_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep, vulkan_dep, tinyexr_dep],
+    dependencies : [x11_dep, xrandr_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep, vulkan_dep, tinyexr_dep],
     gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)

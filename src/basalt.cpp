@@ -12,6 +12,7 @@
 
 #define VK_USE_PLATFORM_XLIB_KHR
 #include <X11/Xlib.h>
+#include <X11/extensions/Xrandr.h>
 #include <vulkan/vulkan_xlib.h>
 #undef None
 #undef Bool
@@ -80,6 +81,49 @@ namespace vkBasalt
 
     std::mutex globalLock;
     static OverlayManager g_overlayManager;
+
+    // Platform surface tracking to map VkSurfaceKHR to physical monitor connectors
+    struct SurfacePlatformInfo {
+        enum class Type { Xlib, Wayland, Unknown } type = Type::Unknown;
+        void* display = nullptr;
+        void* window = nullptr;
+        std::string monitor_name;
+    };
+    std::unordered_map<VkSurfaceKHR, SurfacePlatformInfo> g_surfaceMap;
+
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+    static std::string getX11MonitorName(Display* dpy, Window win) {
+        if (!dpy || !win) return "";
+        int x = 0, y = 0;
+        Window child;
+        XWindowAttributes win_attrs;
+        if (!XGetWindowAttributes(dpy, win, &win_attrs)) return "";
+        
+        XTranslateCoordinates(dpy, win, DefaultRootWindow(dpy), 0, 0, &x, &y, &child);
+        int win_center_x = x + (win_attrs.width / 2);
+        int win_center_y = y + (win_attrs.height / 2);
+
+        int nmonitors = 0;
+        XRRMonitorInfo* monitors = XRRGetMonitors(dpy, DefaultRootWindow(dpy), 1, &nmonitors);
+        std::string monitor_name = "";
+
+        if (monitors) {
+            for (int i = 0; i < nmonitors; ++i) {
+                if (win_center_x >= monitors[i].x && win_center_x < (monitors[i].x + monitors[i].width) &&
+                    win_center_y >= monitors[i].y && win_center_y < (monitors[i].y + monitors[i].height)) {
+                    char* atom_name = XGetAtomName(dpy, monitors[i].name);
+                    if (atom_name) {
+                        monitor_name = atom_name;
+                        XFree(atom_name);
+                    }
+                    break;
+                }
+            }
+            XRRFreeMonitors(monitors);
+        }
+        return monitor_name;
+    }
+#endif
 
     // Bypass(effect toggle) VRAM Reclaim Timer State
     std::chrono::steady_clock::time_point g_effectsDisabledTime;
@@ -435,7 +479,19 @@ namespace vkBasalt
             (PFN_vkCreateXlibSurfaceKHR)dispatchTable.GetInstanceProcAddr(instance, "vkCreateXlibSurfaceKHR");
         if (fpCreateXlibSurfaceKHR)
         {
-            return fpCreateXlibSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
+            VkResult res = fpCreateXlibSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
+            if (res == VK_SUCCESS) {
+                SurfacePlatformInfo info;
+                info.type = SurfacePlatformInfo::Type::Xlib;
+                info.display = (void*)pCreateInfo->dpy;
+                info.window = (void*)pCreateInfo->window;
+                info.monitor_name = getX11MonitorName(pCreateInfo->dpy, pCreateInfo->window);
+                if (!info.monitor_name.empty()) {
+                    Logger::info("X11 Surface mapped to monitor: " + info.monitor_name);
+                }
+                g_surfaceMap[*pSurface] = info;
+            }
+            return res;
         }
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
@@ -489,6 +545,21 @@ namespace vkBasalt
         pLogicalSwapchain->sourceColorSpace    = pCreateInfo->imageColorSpace;
         pLogicalSwapchain->destFormat          = pCreateInfo->imageFormat;
         pLogicalSwapchain->destColorSpace      = pCreateInfo->imageColorSpace;
+
+        // Platform monitor detection: Map surface to physical connector name
+        auto surfIt = g_surfaceMap.find(pCreateInfo->surface);
+        if (surfIt != g_surfaceMap.end()) {
+            pLogicalSwapchain->monitorName = surfIt->second.monitor_name;
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+            // Re-evaluate X11 position in case window moved since surface creation
+            if (surfIt->second.type == SurfacePlatformInfo::Type::Xlib) {
+                std::string currentMonitor = getX11MonitorName((Display*)surfIt->second.display, (Window)surfIt->second.window);
+                if (!currentMonitor.empty()) {
+                    pLogicalSwapchain->monitorName = currentMonitor;
+                }
+            }
+#endif
+        }
 
         // Auto HDR: Mutate real swapchain to HDR10 if display supports it and config is enabled
         std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
@@ -940,6 +1011,20 @@ namespace vkBasalt
         return result;
     }
 
+    VKAPI_ATTR void VKAPI_CALL vkBasalt_DestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks* pAllocator)
+    {
+        if (!surface) return;
+        scoped_lock l(globalLock);
+        
+        // Clean up platform surface tracking to prevent memory leaks and stale handle reuse
+        g_surfaceMap.erase(surface);
+
+        InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
+        if (dispatchTable.DestroySurfaceKHR) {
+            dispatchTable.DestroySurfaceKHR(instance, surface, pAllocator);
+        }
+    }
+
     VKAPI_ATTR void VKAPI_CALL vkBasalt_DestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator)
     {
         if (!swapchain)
@@ -1223,6 +1308,7 @@ extern "C"
     GETPROCADDR(GetSwapchainImagesKHR); \
     GETPROCADDR(QueuePresentKHR); \
     GETPROCADDR(DestroySwapchainKHR); \
+    GETPROCADDR(DestroySurfaceKHR); \
 \
     if (vkBasalt::pConfig->getOption<std::string>("depthCapture", "off") == "on") \
     { \
