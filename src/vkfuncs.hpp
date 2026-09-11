@@ -1,5 +1,6 @@
 #define VK_INSTANCE_FUNCS \
     FORVKFUNC(DestroyInstance) \
+    FORVKFUNC(DestroySurfaceKHR) \
     FORVKFUNC(EnumerateDeviceExtensionProperties) \
     FORVKFUNC(GetInstanceProcAddr) \
     FORVKFUNC(GetPhysicalDeviceFormatProperties) \
@@ -19,6 +20,7 @@
     FORVKFUNC(CmdBindDescriptorSets) \
     FORVKFUNC(CmdBindPipeline) \
     FORVKFUNC(CmdBlitImage) \
+    FORVKFUNC(CmdCopyBuffer) \
     FORVKFUNC(CmdCopyBufferToImage) \
     FORVKFUNC(CmdCopyImage) \
     FORVKFUNC(CmdDispatch) \
@@ -75,6 +77,7 @@
     FORVKFUNC(GetImageMemoryRequirements) \
     FORVKFUNC(GetPipelineCacheData) \
     FORVKFUNC(GetSwapchainImagesKHR) \
+    FORVKFUNC(SetHdrMetadataEXT) \
     FORVKFUNC(MapMemory) \
     FORVKFUNC(QueuePresentKHR) \
     FORVKFUNC(QueueSubmit) \
