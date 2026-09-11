@@ -10,6 +10,7 @@
 
 namespace vkBasalt
 {
+    class AutoHdrAnalyzer; // Forward declaration to satisfy RTTI free polymorphic access
     enum class ParamType { Float, Int, Bool, Combo, FilePath };
 
     struct EffectParamDesc {
@@ -50,6 +51,9 @@ namespace vkBasalt
             static const std::vector<EffectParamDesc> empty;
             return empty;
         }
+
+        virtual void updateHdrMetadata(VkSwapchainKHR swapchain) {}
+        virtual AutoHdrAnalyzer* getAutoHdrAnalyzer() { return nullptr; }
 
         // Gets current live value of a parameter by key.
         virtual double getParam(const std::string& key) const {
