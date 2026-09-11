@@ -20,7 +20,9 @@ void main() {
     sharedBins[gl_LocalInvocationIndex] = 0;
     barrier();
 
-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    // Opt: stride 2 sampling, each thread group covers a 32x32 screen area but only samples 16x16 pixels.
+    // This reduces read bandwidth by 4x with negligible impact on luminance statistics.
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy) * 2;
     if (pixel.x < int(width) && pixel.y < int(height)) {
         vec2 uv = (vec2(pixel) + 0.5) * vec2(invWidth, invHeight);
         vec4 raw = textureLod(inputImage, uv, 0.0);

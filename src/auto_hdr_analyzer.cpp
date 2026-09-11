@@ -263,8 +263,9 @@ namespace vkBasalt {
         pLogicalDevice->vkd.CmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_accumulatePipeline);
         pLogicalDevice->vkd.CmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_accumulateLayout, 0, 1, &m_accumulateSets[imageIndex], 0, nullptr);
         
-        uint32_t groupCountX = (m_extent.width + 15) / 16;
-        uint32_t groupCountY = (m_extent.height + 15) / 16;
+        // opt: Half resolution dispatch for stride 2 sampling in the shader
+        uint32_t groupCountX = ((m_extent.width / 2) + 15) / 16;
+        uint32_t groupCountY = ((m_extent.height / 2) + 15) / 16;
         pLogicalDevice->vkd.CmdDispatch(cmdBuf, groupCountX, groupCountY, 1);
 
         VkBufferMemoryBarrier accToRedBarrier = {};
