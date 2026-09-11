@@ -1,129 +1,230 @@
 #include "hdr_detect.hpp"
 
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <vector>
+#include <unistd.h>
+#include <sys/stat.h>
+
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <algorithm>
-#include <cmath>
+#include <string>
+#include <charconv>
 
+#include "config.hpp"
 #include "logger.hpp"
+
 
 namespace vkBasalt {
 
-namespace fs = std::filesystem;
+    static bool fileExists(const char* path) {
+        struct stat st;
+        return stat(path, &st) == 0;
+    }
 
-    // KDE Plasma 6 stores HDR calibration in ~/.config/kscreen/*.json with per display HDR calibration. We'll do a simple string search since we don't want to add a JSON dependency.
-    static bool tryReadKdeCalibration(DisplayHdrInfo& info) {
+    static bool readFileToString(const char* path, std::string& outStr) {
+        FILE* f = fopen(path, "rb");
+        if (!f) return false;
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (size <= 0) { fclose(f); return false; }
+        outStr.resize(size);
+        size_t read = fread(&outStr[0], 1, size, f);
+        fclose(f);
+        return read == (size_t)size;
+    }
+
+    // Helper to extract a float value from a JSON block near a specific key
+    static float extractJsonFloat(const std::string& block, const std::string& key) {
+        size_t pos = block.find(key);
+        if (pos == std::string::npos) return -1.0f;
+        pos = block.find(':', pos);
+        if (pos == std::string::npos) return -1.0f;
+        
+        float val = -1.0f;
+        const char* start = block.c_str() + pos + 1;
+        const char* end = block.c_str() + block.size();
+        std::from_chars(start, end, val);
+        return val;
+    }
+
+    // Helper to extract a string value from a JSON block near a specific key
+    static std::string extractJsonString(const std::string& block, const std::string& key) {
+        size_t pos = block.find(key);
+        if (pos == std::string::npos) return "";
+        pos = block.find('"', pos + key.length());
+        if (pos == std::string::npos) return "";
+        size_t end = block.find('"', pos + 1);
+        if (end == std::string::npos) return "";
+        return block.substr(pos + 1, end - pos - 1);
+    }
+
+    static std::vector<DisplayHdrInfo> parseKdeOutputs() {
+        std::vector<DisplayHdrInfo> displays;
         const char* home = std::getenv("HOME");
-        if (!home) return false;
+        if (!home) return displays;
 
-        float peak = -1.0f;
-        float white = -1.0f;
-
-        // Priority 1: kwinoutputconfig.json - KDE Plasma 6 stores per output HDR calibration here.
+        // Try kwinoutputconfig.json first (Plasma 6)
         std::string kwinOutputPath = std::string(home) + "/.config/kwinoutputconfig.json";
-        if (fs::exists(kwinOutputPath)) {
-            std::ifstream file(kwinOutputPath);
-            if (file.good()) {
-                std::string content((std::istreambuf_iterator<char>(file)),
-                                    std::istreambuf_iterator<char>());
-
-                // Find the output with "highDynamicRange": true (the active HDR display) and extract maxPeakBrightnessOverride and sdrBrightness from it. We look for the HDR enabled block specifically.
-                size_t hdrPos = content.find("\"highDynamicRange\": true");
-                if (hdrPos == std::string::npos) {
-                    hdrPos = content.find("\"highDynamicRange\":true");
-                }
-
-                if (hdrPos != std::string::npos) {
-                    // Search backwards and forwards from the HDR block for the values maxPeakBrightnessOverride
-                    size_t pos = content.find("\"maxPeakBrightnessOverride\"", hdrPos > 500 ? hdrPos - 500 : 0);
-                    if (pos != std::string::npos && pos < hdrPos + 1000) {
-                        pos = content.find(':', pos);
-                        if (pos != std::string::npos) {
-                            peak = std::atof(content.c_str() + pos + 1);
+        if (fileExists(kwinOutputPath.c_str())) {
+            std::string content;
+            if (readFileToString(kwinOutputPath.c_str(), content)) {
+                size_t pos = 0;
+                // Robust JSON object extractor that tracks brace depth while respecting string boundaries
+                while (pos < content.length()) {
+                    size_t startBrace = content.find('{', pos);
+                    if (startBrace == std::string::npos) break;
+                    
+                    int depth = 1;
+                    size_t endBrace = startBrace + 1;
+                    bool inString = false;
+                    
+                    // Find matching closing brace
+                    while (endBrace < content.length() && depth > 0) {
+                        char c = content[endBrace];
+                        if (c == '"' && (endBrace == 0 || content[endBrace-1] != '\\')) {
+                            inString = !inString;
+                        } else if (!inString) {
+                            if (c == '{') depth++;
+                            else if (c == '}') depth--;
                         }
+                        if (depth > 0) endBrace++;
                     }
-
-                    pos = content.find("\"sdrBrightness\"", hdrPos > 500 ? hdrPos - 500 : 0);
-                    if (pos != std::string::npos && pos < hdrPos + 1000) {
-                        pos = content.find(':', pos);
-                        if (pos != std::string::npos) {
-                            white = std::atof(content.c_str() + pos + 1);
+                    
+                    if (depth == 0) {
+                        std::string block = content.substr(startBrace, endBrace - startBrace + 1);
+                        
+                        // Check if it's a leaf object (no nested objects) to avoid parsing parent wrappers
+                        bool isLeaf = true;
+                        bool inStr = false;
+                        for (size_t i = 1; i < block.length() - 1; ++i) {
+                            char c = block[i];
+                            if (c == '"' && (i == 0 || block[i-1] != '\\')) inStr = !inStr;
+                            else if (!inStr && c == '{') { isLeaf = false; break; }
                         }
+                        
+                        if (isLeaf) {
+                            size_t hdrKey = block.find("\"highDynamicRange\"");
+                            if (hdrKey != std::string::npos) {
+                                size_t colon = block.find(':', hdrKey);
+                                if (colon != std::string::npos) {
+                                    size_t valStart = block.find_first_not_of(" \t\r\n", colon + 1);
+                                    if (valStart != std::string::npos && block.compare(valStart, 4, "true") == 0) {
+                                        DisplayHdrInfo info;
+                                        info.name = extractJsonString(block, "\"name\"");
+                                        info.peakBrightnessNits = extractJsonFloat(block, "\"maxPeakBrightnessOverride\"");
+                                        info.sdrWhitePointNits = extractJsonFloat(block, "\"sdrBrightness\"");
+                                        
+                                        if (info.peakBrightnessNits <= 0) info.peakBrightnessNits = 1000.0f;
+                                        if (info.sdrWhitePointNits <= 0) info.sdrWhitePointNits = 203.0f;
+                                        
+                                        info.detected = true;
+                                        info.source = "kde";
+                                        
+                                        if (!info.name.empty()) {
+                                            displays.push_back(info);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        pos = endBrace + 1;
+                    } else {
+                        pos = startBrace + 1; // Malformed JSON, advance to prevent infinite loop
                     }
                 }
             }
         }
 
-        // Priority 2: kwinrc [Windows_HDR], fallback if kwinoutputconfig.json didn't have the values.
-        if (peak < 0 || white < 0) {
+        // Fallback to kwinrc (Plasma 5 or older configs)
+        if (displays.empty()) {
             std::string kwinrcPath = std::string(home) + "/.config/kwinrc";
-            if (fs::exists(kwinrcPath)) {
-                std::ifstream file(kwinrcPath);
-                if (file.good()) {
-                    std::string line;
+            if (fileExists(kwinrcPath.c_str())) {
+                FILE* f = fopen(kwinrcPath.c_str(), "r");
+                if (f) {
+                    char line[512];
                     bool inHdrSection = false;
-                    while (std::getline(file, line)) {
-                        if (line.find("[Windows_HDR]") != std::string::npos) {
+                    float peak = -1.0f, white = -1.0f;
+                    while (fgets(line, sizeof(line), f)) {
+                        if (strstr(line, "[Windows_HDR]")) {
                             inHdrSection = true;
                             continue;
                         }
                         if (inHdrSection && line[0] == '[') {
-                            break; // New section, stop
+                            break;
                         }
                         if (inHdrSection) {
-                            if (peak < 0 && line.find("MaxLuminance=") == 0) {
-                                peak = std::atof(line.c_str() + 13);
+                            if (peak < 0 && strncmp(line, "MaxLuminance=", 13) == 0) {
+                                std::from_chars(line + 13, line + sizeof(line), peak);
                             }
-                            if (white < 0 && line.find("Reference=") == 0) {
-                                white = std::atof(line.c_str() + 10);
+                            if (white < 0 && strncmp(line, "Reference=", 10) == 0) {
+                                std::from_chars(line + 10, line + sizeof(line), white);
                             }
                         }
+                    }
+                    fclose(f);
+                    
+                    if (peak > 0 || white > 0) {
+                        DisplayHdrInfo info;
+                        info.name = "kwinrc_default";
+                        info.peakBrightnessNits = peak > 0 ? peak : 1000.0f;
+                        info.sdrWhitePointNits = white > 0 ? white : 203.0f;
+                        info.detected = true;
+                        info.source = "kde";
+                        displays.push_back(info);
                     }
                 }
             }
         }
 
-        if (peak > 0 || white > 0) {
-            if (peak > 0) info.peakBrightnessNits = peak;
-            if (white > 0) info.sdrWhitePointNits = white;
-            info.detected = true;
-            info.source = "kde";
-            Logger::info("HDR calibration from KDE Plasma: peak=" + std::to_string((int)info.peakBrightnessNits) +
-                        " nits, white=" + std::to_string((int)info.sdrWhitePointNits) + " nits");
-            return true;
-        }
-
-        return false;
+        return displays;
     }
 
-    DisplayHdrInfo detectDisplayHdrCalibration() {
-        static DisplayHdrInfo cachedInfo;
-        static bool detected = false;
-        
-        if (detected) return cachedInfo;
+    std::vector<DisplayHdrInfo> getAllDetectedHdrDisplays() {
+        static std::vector<DisplayHdrInfo> cachedDisplays;
+        static bool parsed = false;
+        if (!parsed) {
+            cachedDisplays = parseKdeOutputs();
+            parsed = true;
+        }
+        return cachedDisplays;
+    }
 
-        DisplayHdrInfo info;
+    DisplayHdrInfo detectDisplayHdrCalibration(Config* pConfig, const std::string& monitorName) {
+        std::vector<DisplayHdrInfo> displays = getAllDetectedHdrDisplays();
 
-        // Priority 1: KDE Plasma calibration (hopefully) user calibrated values, does everyone calibrate??
-        if (tryReadKdeCalibration(info)) {
-            cachedInfo = info;
-            detected = true;
-            return cachedInfo;
+        // 1. If we have a platform detected monitor name, try to match it exactly first
+        if (!monitorName.empty()) {
+            for (const auto& d : displays) {
+                if (d.name == monitorName) {
+                    Logger::info("Using platform-detected HDR display: " + d.name);
+                    return d;
+                }
+            }
         }
 
-        // Priority 2: Fallback defaults
+        // 2. Check if user explicitly selected a target display in the UI
+        std::string targetName = pConfig ? pConfig->getOption<std::string>("targetHdrDisplay", "auto") : "auto";
+        
+        if (targetName != "auto" && targetName != "default") {
+            for (const auto& d : displays) {
+                if (d.name == targetName) {
+                    Logger::info("Using user-selected HDR display: " + d.name);
+                    return d;
+                }
+            }
+        }
+        
+        // 3. Auto-select, return the first detected HDR display
+        if (!displays.empty()) {
+            Logger::info("Auto-selected HDR display: " + displays[0].name);
+            return displays[0];
+        }
+        
+        // 4. Fallback defaults
+        DisplayHdrInfo info;
         info.source = "default";
-        Logger::info("HDR calibration: using fallback defaults (peak=" +
-                    std::to_string(info.peakBrightnessNits) + ", white=" +
-                    std::to_string(info.sdrWhitePointNits) + ")");
-        cachedInfo = info;
-        detected = true;
-        return cachedInfo;
+        Logger::info("HDR calibration: using fallback defaults");
+        return info;
     }
 
 } // namespace vkBasalt

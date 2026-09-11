@@ -1,16 +1,23 @@
 #pragma once
 #include <string>
+#include <vector>
 
 namespace vkBasalt {
 
-struct DisplayHdrInfo {
-    float sdrWhitePointNits = 203.0f;
-    float peakBrightnessNits = 1000.0f;
-    bool detected = false;
-    std::string source; // "kde" or "default"
-};
+    struct DisplayHdrInfo {
+        std::string name;
+        std::string monitorName;
+        float peakBrightnessNits = 1000.0f;
+        float sdrWhitePointNits = 203.0f;
+        bool detected = false;
+        std::string source = "default";
+    };
 
-// Attempts to detect display HDR calibration from the system (KDE Plasma config -> fallback defaults.)
-DisplayHdrInfo detectDisplayHdrCalibration();
+    class Config; // Forward declaration
+
+    DisplayHdrInfo detectDisplayHdrCalibration(Config* pConfig = nullptr, const std::string& monitorName = "");
+
+    // Returns a list of all detected HDR displays for the UI dropdown
+    std::vector<DisplayHdrInfo> getAllDetectedHdrDisplays();
 
 } // namespace vkBasalt

@@ -60,9 +60,28 @@ namespace vkBasalt
         loadGlobal();
         loadPerGame();
 
+        // Migration: hdrCalibration -> hdrCalibrationMode
+        auto migrateMap = [](std::unordered_map<std::string, std::string>& m) {
+            auto it = m.find("hdrCalibration");
+            if (it != m.end()) {
+                // Only set the new key if the user hasn't already explicitly configured it
+                if (m.find("hdrCalibrationMode") == m.end()) {
+                    // Match the exact boolean aliases accepted by Config::parseOption()
+                    const std::string& val = it->second;
+                    bool wasOn = (val == "True" || val == "true" || val == "1" || 
+                                  val == "on"   || val == "yes"  || val == "Yes");
+                    m["hdrCalibrationMode"] = wasOn ? "manual" : "off";
+                }
+                // Unconditionally erase the deprecated key from memory so it doesn't get written back to disk on the next UI save.
+                m.erase(it);
+            }
+        };
+        migrateMap(m_global);
+        migrateMap(m_game);
+
         // Populate missing HDR calibration defaults from system detection for existing users
         if (m_global.find("sdrWhitePointNits") == m_global.end() || m_global.find("hdrPeakNits") == m_global.end()) {
-            DisplayHdrInfo detected = detectDisplayHdrCalibration();
+            DisplayHdrInfo detected = detectDisplayHdrCalibration(this);
             if (m_global.find("sdrWhitePointNits") == m_global.end()) {
                 m_global["sdrWhitePointNits"] = std::to_string((int)detected.sdrWhitePointNits);
             }
@@ -125,8 +144,7 @@ namespace vkBasalt
     void Config::createDefaultGlobal() {
         std::ofstream out(m_globalPath);
         if (!out.good()) return;
-
-        DisplayHdrInfo defaultDetected = detectDisplayHdrCalibration();
+        DisplayHdrInfo defaultDetected = detectDisplayHdrCalibration(this);
 
         out << "# vkBasalt-reloaded global config (baseline)\n";
         out << "# Per-game configs override these values.\n\n";
