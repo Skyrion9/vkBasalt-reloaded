@@ -119,8 +119,8 @@ void main() {
         finalColor += (dither - 0.5) * 0.0039215686 * min(hdrNorm, 1.0) * ditherScale;
     }
 
-    // Encode back to target color space, then clamp appropriately
+    // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
     vec3 encodedColor = encodeFromLinear(finalColor);
-    vec3 outColor = isHDR ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
+    vec3 outColor = max(encodedColor, 0.0);
     fragColor = vec4(outColor, centerColor.a);
 }

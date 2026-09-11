@@ -172,8 +172,8 @@ void main()
     //shift the color by dither_shift
     res += dither_shift_RGB;
 
-    // Encode back to target color space, then clamp appropriately
+    // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
     vec3 encodedColor = encodeFromLinear(res);
-    vec3 finalColor = isHDR ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
+    vec3 finalColor = max(encodedColor, 0.0);
     fragColor = vec4(finalColor, ori_alpha.a);
 }

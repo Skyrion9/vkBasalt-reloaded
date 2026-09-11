@@ -33,9 +33,10 @@ void main()
     // wraps all internal texture fetches in decodeToLinear().
     vec4 fxaaColor = FxaaPixelShader(textureCoord, zero, img, img, img, fxaaQualityRcpFrame, zero, zero, zero, fxaaQualitySubpix, fxaaQualityEdgeThreshold, fxaaQualityEdgeThresholdMin, 8.0, 0.125, 0.05, zero);
     
-    // Encode the linear light result back to the target swapchain color space.
+    // Encode the linear light result back to the target swapchain color space.We only clamp the lower bound. 
+    // The GPU automatically clamps 8 bit UNORM formats to 1.0 on write, while preserving >1.0 benefits HDR.
     vec3 encodedColor = encodeFromLinear(fxaaColor.rgb);
-    vec3 outColor = isHDR ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
+    vec3 outColor = max(encodedColor, 0.0);
     
     fragColor = vec4(outColor, fxaaColor.a);
 }

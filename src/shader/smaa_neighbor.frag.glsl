@@ -26,9 +26,9 @@ void main()
 {
     vec4 smaaColor = SMAANeighborhoodBlendingPS(textureCoord, offset, colorImg, blendTex);
     
-    // Encode back to target color space, then clamp appropriately
+    // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
     vec3 encodedColor = encodeFromLinear(smaaColor.rgb);
-    vec3 outColor = isHDR ? max(encodedColor, 0.0) : clamp(encodedColor, 0.0, 1.0);
+    vec3 outColor = max(encodedColor, 0.0);
     
     fragColor = vec4(outColor, smaaColor.a);
 }

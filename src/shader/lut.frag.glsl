@@ -54,7 +54,7 @@ void main()
     // Encode back to target color space
     vec3 finalEncoded = encodeFromLinear(finalLinear);
     
-    // Clamp appropriately
-    vec3 outColor = isHDR ? max(finalEncoded, 0.0) : clamp(finalEncoded, 0.0, 1.0);
+    // Lower bound clamped, upper bound left to hardware/AutoHDR.
+    vec3 outColor = max(finalEncoded, 0.0);
     fragColor = vec4(outColor, rawColor.a);
 }
