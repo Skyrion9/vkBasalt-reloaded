@@ -282,6 +282,7 @@ namespace vkBasalt
 
         bool supportsMutableFormat = false;
         bool supportsSwapchainColorspace = false;
+        bool supportsHdrMetadata = false;
         for (VkExtensionProperties properties : extensionProperties)
         {
             if (properties.extensionName == std::string("VK_KHR_swapchain_mutable_format"))
@@ -293,6 +294,11 @@ namespace vkBasalt
             {
                 Logger::debug("device supports VK_EXT_swapchain_colorspace");
                 supportsSwapchainColorspace = true;
+            }
+            else if (properties.extensionName == std::string("VK_EXT_hdr_metadata"))
+            {
+                Logger::debug("device supports VK_EXT_hdr_metadata");
+                supportsHdrMetadata = true;
             }
         }
 
@@ -316,6 +322,11 @@ namespace vkBasalt
         {
             Logger::debug("activating swapchain_colorspace");
             addUniqueCString(enabledExtensionNames, "VK_EXT_swapchain_colorspace");
+        }
+        if (supportsHdrMetadata)
+        {
+            Logger::debug("activating hdr_metadata");
+            addUniqueCString(enabledExtensionNames, "VK_EXT_hdr_metadata");
         }
         if (deviceProps.apiVersion < VK_API_VERSION_1_2 || instanceVersionMap[GetKey(physicalDevice)] < VK_API_VERSION_1_2)
         {
@@ -347,6 +358,7 @@ namespace vkBasalt
         pLogicalDevice->queueFamilyIndex      = 0;
         pLogicalDevice->commandPool           = VK_NULL_HANDLE;
         pLogicalDevice->supportsMutableFormat = supportsMutableFormat;
+        pLogicalDevice->supportsHdrMetadata = supportsHdrMetadata;
         pLogicalDevice->physicalDeviceProperties = deviceProps;
 
         fillDispatchTableDevice(*pDevice, gdpa, &pLogicalDevice->vkd);
@@ -522,9 +534,13 @@ namespace vkBasalt
 
         // Injecting VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR flag breaks direct scanout (zero-copy presentation) on Linux compositors.
         // However, if Auto HDR mutates the format, we MUST set it so the game can still create SDR views on the HDR images.
-        modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
-                                      | VK_IMAGE_USAGE_SAMPLED_BIT 
+        modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+                                      | VK_IMAGE_USAGE_SAMPLED_BIT
                                       | VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // Required for screenshot readback
+        // Storage usage is needed when compute effects write directly to real swapchain images (mutable format path). Can cause vkCreateSwapchainKHR to fail on drivers that don't support it on swapchains.
+        if (pLogicalDevice->supportsMutableFormat) {
+            modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
+        }
 
         imageFormatListCreateInfo.sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR;
         imageFormatListCreateInfo.pNext           = modifiedCreateInfo.pNext;
@@ -949,6 +965,11 @@ namespace vkBasalt
                 for (auto& pass : pLogicalSwapchain->computePasses)
                 {
                     pass->updatePass();
+                }
+                
+                // Update dynamic HDR metadata based on scene analysis.
+                if (pLogicalSwapchain->nitCalibrationEffect) {
+                    pLogicalSwapchain->nitCalibrationEffect->updateHdrMetadata(swapchain);
                 }
             }
 
