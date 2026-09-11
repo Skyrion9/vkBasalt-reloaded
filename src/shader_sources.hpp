@@ -92,4 +92,9 @@ namespace vkBasalt
     const std::vector<uint32_t> auto_hdr_reduce_comp = {
 #include "auto_hdr_reduce.comp.h"
     };
+
+    const std::vector<uint32_t> hdr_debug_pattern_comp = { 
+#include "hdr_debug_pattern.comp.h" 
+    };
+
 } // namespace vkBasalt

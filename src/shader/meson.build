@@ -20,7 +20,8 @@ shader_src = [
     'frame_resolve.comp.glsl',
     'nit_calibration.frag.glsl',
     'auto_hdr_accumulate.comp.glsl',
-    'auto_hdr_reduce.comp.glsl'
+    'auto_hdr_reduce.comp.glsl',
+    'hdr_debug_pattern.comp.glsl',
 ]
 
 glsl_compiler   = find_program('glslang', 'glslangValidator')
