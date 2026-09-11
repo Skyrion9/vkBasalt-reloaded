@@ -29,6 +29,7 @@ vkBasalt_src = [
     'effect_nit_calibration.cpp',
     'auto_hdr_analyzer.cpp',
     'hdr_detect.cpp',
+    'display_info.cpp',
     'fake_swapchain.cpp',
     'format.cpp',
     'framebuffer.cpp',
