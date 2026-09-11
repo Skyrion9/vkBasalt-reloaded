@@ -9,6 +9,7 @@ namespace vkBasalt
         effects.clear();
         defaultTransfer.reset();
         defaultHdrEffect.reset();
+        nitCalibrationEffect = nullptr;
 
         if (!commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(

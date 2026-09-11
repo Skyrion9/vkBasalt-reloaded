@@ -65,6 +65,8 @@ namespace vkBasalt
         // This prevents the GPU from reading freed memory if a soft reload occurs, while  the previous frame's overlay command buffer is still in flight.
         std::vector<std::shared_ptr<ComputePass>> computePassGraveyard;
         uint32_t computeSrcSlice = 0; // which slice compute passes read from
+        Effect* nitCalibrationEffect = nullptr;
+        std::string monitorName; // Platform detected physical connector (e.g., "DP-1")
 
         void destroy();
     };
