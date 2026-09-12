@@ -1,9 +1,15 @@
 #include "effect_nit_calibration.hpp"
-#include "shader_sources.hpp"
-#include "logger.hpp"
+
 #include <vulkan/vulkan_core.h>
+
 #include <algorithm>
 #include <cstring>
+#include <cmath>
+
+#include "effect_hdr_debug.hpp"
+#include "shader_sources.hpp"
+#include "hdr_detect.hpp"
+
 
 namespace vkBasalt 
 {
@@ -43,29 +49,44 @@ namespace vkBasalt
         return params;
     }
 
-    NitCalibrationEffect::NitCalibrationEffect(LogicalDevice* pLogicalDevice, 
+    NitCalibrationEffect::NitCalibrationEffect(LogicalDevice* pLogicalDevice,
                                                VkFormat sourceFormat, VkFormat destFormat, VkExtent2D imageExtent,
                                                std::vector<VkImage> inputImages, std::vector<VkImage> outputImages,
-                                               Config* pConfig, 
+                                               Config* pConfig,
                                                VkColorSpaceKHR sourceColorSpace, VkColorSpaceKHR destColorSpace,
-                                               bool autoHdrActive) {
+                                               bool autoHdrActive,
+                                               const std::string& monitorName) {
         Logger::debug("Creating HDR Output Effect");
         vertexCode = full_screen_triangle_vert;
         fragmentCode = nit_calibration_frag;
         
         m_pConfigRef = pConfig;
         m_autoHdrActive = autoHdrActive;
+        m_monitorName = monitorName;
         
+        // Determine calibration mode for native HDR passthrough
+        std::string calibMode = pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
+        bool isPassthrough = (calibMode == "passthrough");
+        int32_t applyGainVal = (autoHdrActive || !isPassthrough) ? 1 : 0;
+        int32_t analyzerCalibMode = autoHdrActive ? 0 : (isPassthrough ? 1 : 0);
+
         // Read config, apply defaults, clamp, write to specData by offset, and build mapEntries
         NitCalibrationSpecData specData = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
         mapEntries.reserve(getParamDescs().size() + 3); // +3 for autoHdr, source/dest colorspace
-
         const auto& params = getParamDescs();
+        
+        // Fetch system-detected display values to use as intelligent fallbacks
+        DisplayHdrInfo detected = detectDisplayHdrCalibration(pConfig, monitorName);
+        
         for (const auto& p : params) {
             if (p.specId < 0) continue;
-            
             double def = p.defaultVal;
+            
+            // Override hardcoded defaults with system-detected values if available and not 0 since it might be default
+            if (p.key == "sdrWhitePointNits" && detected.detected && detected.sdrWhitePointNits > 0.0f) def = detected.sdrWhitePointNits;
+            if (p.key == "hdrPeakNits" && detected.detected && detected.peakBrightnessNits > 0.0f) def = detected.peakBrightnessNits;
+            
             double val;
             
             if (p.type == ParamType::Combo) {
@@ -102,6 +123,9 @@ namespace vkBasalt
         specData.autoHdrEnabled = autoHdrActive ? 1 : 0;
         mapEntries.push_back({2, offsetof(NitCalibrationSpecData, autoHdrEnabled), sizeof(int32_t)});
         
+        specData.applyGain = applyGainVal;
+        mapEntries.push_back({3, offsetof(NitCalibrationSpecData, applyGain), sizeof(int32_t)});
+        
         specData.sourceColorSpace = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
         mapEntries.push_back({65534, offsetof(NitCalibrationSpecData, sourceColorSpace), sizeof(int32_t)});
         
@@ -126,7 +150,7 @@ namespace vkBasalt
     // Create analyzer or dummy metrics buffer and add its descriptor set layout before init()
     if (willCreateAnalyzer) {
         int32_t srcCsmInt = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
-        m_autoHdrAnalyzer = std::make_unique<AutoHdrAnalyzer>(pLogicalDevice, imageExtent, inputImages.size(), pConfig, srcCsmInt);
+        m_autoHdrAnalyzer = std::make_unique<AutoHdrAnalyzer>(pLogicalDevice, imageExtent, inputImages.size(), pConfig, srcCsmInt, analyzerCalibMode, monitorName);
         this->descriptorSetLayouts.push_back(m_autoHdrAnalyzer->getMetricsSetLayout());
     } else {
         // Create dummy metrics set layout
@@ -156,12 +180,6 @@ namespace vkBasalt
         allocInfo.memoryTypeIndex = findMemType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         pLogicalDevice->vkd.AllocateMemory(pLogicalDevice->device, &allocInfo, nullptr, &m_dummyMetricsMemory);
         pLogicalDevice->vkd.BindBufferMemory(pLogicalDevice->device, m_dummyMetricsBuffer, m_dummyMetricsMemory, 0);
-        
-        // Store static values to upload via CmdUpdateBuffer on the first frame
-        m_dummyMetricsData[0] = pConfig->getOption<float>("sdrWhitePointNits", 203.0f) * 0.01f;
-        m_dummyMetricsData[1] = pConfig->getOption<float>("hdrPeakNits", 1000.0f) * 0.01f;
-        m_dummyMetricsData[2] = 1.0f;
-        m_dummyMetricsData[3] = 0.0f;
 
         // Create descriptor pool and sets
         VkDescriptorPoolSize poolSize = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)inputImages.size()};
@@ -224,6 +242,50 @@ namespace vkBasalt
 
     void NitCalibrationEffect::updateEffect() {}
 
+    void NitCalibrationEffect::updateHdrMetadata(VkSwapchainKHR swapchain) {
+        if (!pLogicalDevice->supportsHdrMetadata) return;
+        
+        float peak = 0.0f, white = 0.0f;
+        bool updated = false;
+
+        // Debug Tool Override
+        if (g_hdrDebugToolActive.load()) {
+            peak = HdrDebugEffect::s_debugPeakNits.load();
+            white = HdrDebugEffect::s_debugWhiteNits.load();
+            
+            // Always push in debug mode to ensure rapid A/B testing updates
+            updated = true; 
+        } 
+        else if (m_autoHdrAnalyzer) {
+            updated = m_autoHdrAnalyzer->getUpdatedMetadata(peak, white);
+        }
+
+        if (updated) {
+            // KWin Sanitization (prevents fatal protocol errors and NaN crashes)
+            if (std::isnan(peak) || peak <= 0.0f) peak = 1000.0f;
+            if (std::isnan(white) || white <= 0.0f) white = 203.0f;
+            
+            peak = std::max(peak, 1.0f);
+            white = std::max(white, 0.1f);
+            if (white >= peak) white = peak * 0.5f;
+            float minLum = 0.0001f;
+            if (minLum >= peak) minLum = peak * 0.0001f;
+
+            VkHdrMetadataEXT hdrMeta = {};
+            hdrMeta.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
+            hdrMeta.displayPrimaryRed   = {0.708f, 0.292f};
+            hdrMeta.displayPrimaryGreen = {0.170f, 0.797f};
+            hdrMeta.displayPrimaryBlue  = {0.131f, 0.046f};
+            hdrMeta.whitePoint          = {0.3127f, 0.3290f};
+            hdrMeta.maxLuminance        = peak;
+            hdrMeta.minLuminance        = minLum;
+            hdrMeta.maxContentLightLevel    = peak;
+            hdrMeta.maxFrameAverageLightLevel = white;
+
+            pLogicalDevice->vkd.SetHdrMetadataEXT(pLogicalDevice->device, 1, &swapchain, &hdrMeta);
+        }
+    }
+
     void NitCalibrationEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) {
         // Barrier 1: Acquire inputImages for reading (Compute + Fragment)
         VkImageMemoryBarrier memoryBarrier = {};
@@ -245,7 +307,16 @@ namespace vkBasalt
 
         // Initialize DEVICE_LOCAL dummy metrics buffer on first frame
         if (!m_autoHdrAnalyzer && !m_dummyMetricsInitialized) {
-            pLogicalDevice->vkd.CmdUpdateBuffer(commandBuffer, m_dummyMetricsBuffer, 0, 16, m_dummyMetricsData);
+            DisplayHdrInfo detected = detectDisplayHdrCalibration(m_pConfigRef, m_monitorName);
+            float fallbackWhite = (detected.detected && detected.sdrWhitePointNits > 0.0f) ? detected.sdrWhitePointNits : 203.0f;
+            float fallbackPeak = (detected.detected && detected.peakBrightnessNits > 0.0f) ? detected.peakBrightnessNits : 1000.0f;
+            float dummyData[4] = {
+                m_pConfigRef->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
+                m_pConfigRef->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
+                1.0f,
+                0.0f
+            };
+            pLogicalDevice->vkd.CmdUpdateBuffer(commandBuffer, m_dummyMetricsBuffer, 0, 16, dummyData);
             
             VkBufferMemoryBarrier initBarrier = {};
             initBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;

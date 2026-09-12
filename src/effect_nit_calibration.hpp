@@ -11,17 +11,19 @@
 #include "format.hpp"
 #include "auto_hdr_analyzer.hpp"
 
+
 namespace vkBasalt {
 
     class NitCalibrationEffect : public SimpleEffect 
     {
     public:
-        NitCalibrationEffect(LogicalDevice* pLogicalDevice, 
+        NitCalibrationEffect(LogicalDevice* pLogicalDevice,
                              VkFormat sourceFormat, VkFormat destFormat, VkExtent2D imageExtent,
                              std::vector<VkImage> inputImages, std::vector<VkImage> outputImages,
-                             Config* pConfig, 
+                             Config* pConfig,
                              VkColorSpaceKHR sourceColorSpace, VkColorSpaceKHR destColorSpace,
-                             bool autoHdrActive);
+                             bool autoHdrActive,
+                             const std::string& monitorName = "");
         ~NitCalibrationEffect() override;
         
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
@@ -31,14 +33,19 @@ namespace vkBasalt {
         std::string getName() const override { return "nitcalibration"; }
         static const std::vector<EffectParamDesc>& getCalibrationParams();
 
+        void updateHdrMetadata(VkSwapchainKHR swapchain) override;
+        AutoHdrAnalyzer* getAutoHdrAnalyzer() override { return m_autoHdrAnalyzer.get(); }
+
     private:
         Config* m_pConfigRef;
         bool m_autoHdrActive;
+        std::string m_monitorName;
 
         struct NitCalibrationSpecData {
             float sdrWhitePoint;
             float hdrPeakNits;
             int32_t autoHdrEnabled;
+            int32_t applyGain;
             int32_t toneMapperMode;
             int32_t sourceColorSpace;
             int32_t destColorSpace;
@@ -56,7 +63,6 @@ namespace vkBasalt {
         VkDescriptorPool m_dummyMetricsPool = VK_NULL_HANDLE;
         std::vector<VkDescriptorSet> m_dummyMetricsSets;
         
-        float m_dummyMetricsData[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         bool m_dummyMetricsInitialized = false;
         bool m_hdrAdaptive = true;
     };

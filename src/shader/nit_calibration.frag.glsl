@@ -2,9 +2,10 @@
 
 layout(set = 0, binding = 0) uniform sampler2D img;
 
-layout(constant_id = 0) const float sdrWhitePoint = 203.0;
-layout(constant_id = 1) const float hdrPeakNits = 1000.0;
-layout(constant_id = 2) const int autoHdrEnabled = 0;
+layout(constant_id = 0) const float sdrWhitePoint  = 203.0;
+layout(constant_id = 1) const float hdrPeakNits    = 1000.0;
+layout(constant_id = 2) const int   autoHdrEnabled = 0;
+layout(constant_id = 3) const int   applyGain      = 1;     // 0=passthrough (game calibrated), 1=apply manual/auto gain
 
 layout(set = 1, binding = 0) readonly buffer AdaptiveMetrics {
     float adaptiveWhite;
@@ -92,6 +93,8 @@ const vec3 LUMA_REC709  = vec3(0.2126, 0.7152, 0.0722);
 const vec3 LUMA_REC2020 = vec3(0.2627, 0.6780, 0.0593);
 const vec3 LUMA_P3      = vec3(0.2289, 0.6917, 0.0793);
 
+const float SDR_WHITE_LINEAR = 2.03; // 203 nits / 100
+
 const mat3 MAT_709_TO_2020 = mat3(
     0.6274, 0.0691, 0.0164,
     0.3293, 0.9195, 0.0880,
@@ -175,7 +178,7 @@ void main() {
     float mappedLuma = luma;
 
     if (autoHdrEnabled == 1 && sourceColorSpace == CSP_SDR_SRGB) {
-        // Autohdr path (SDR -> HDR) Source is SDR. 1.0 in linear space = SDR white. Expand it to targetWhite and targetPeak.
+        // AutoHDR path (SDR -> HDR). Source is SDR. 1.0 in linear space = SDR white.
         float targetWhite = metrics.adaptiveWhite;
         float targetPeak  = metrics.adaptivePeak;
 
@@ -191,16 +194,21 @@ void main() {
             float effectivePeak = mix(chromaticCeiling, targetPeak, achromWeight);
 
             if (hdrToneMapperMode == HDR_TM_QUALITY) {
-                // Corrected Rational Reinhard: maps 0->0, 1.0->targetWhite, inf->effectivePeak
-                float num = luma * effectivePeak * targetWhite;
-                float den = luma * targetWhite + (effectivePeak - targetWhite);
-                mappedLuma = num / max(den, 0.0001);
+                if (luma <= 1.0) {
+                    mappedLuma = luma * targetWhite;
+                } else {
+                    float x = luma - 1.0;
+                    float W = targetWhite;
+                    float headroom = effectivePeak - W;
+                    float num = x * headroom * W;
+                    float den = x * W + headroom;
+                    mappedLuma = W + num / max(den, 0.0001);
+                }
             } else { // HDR_TM_HERMITE
                 if (luma <= 1.0) {
-                    // Hermite spline on domain [0, 1.0] for SDR->HDR expansion.
                     float t = luma;
                     float m0 = targetWhite;
-                    float m1 = max(0.0, (effectivePeak - targetWhite) * 0.25); // Headroom influence
+                    float m1 = (targetWhite * (effectivePeak - targetWhite)) / max(effectivePeak, 0.0001);
                     float t2 = t * t;
                     float t3 = t2 * t;
                     float h10 = t3 - 2.0 * t2 + t;
@@ -208,7 +216,6 @@ void main() {
                     float h11 = t3 - t2;
                     mappedLuma = h10 * m0 + h01 * targetWhite + h11 * m1;
                 } else {
-                    // Fallback to Rational Reinhard for SDR highlights > 1.0 to prevent crushing. Maintains C0 continuity at exactly 1.0 while preserving infinite headroom.
                     float num = luma * effectivePeak * targetWhite;
                     float den = luma * targetWhite + (effectivePeak - targetWhite);
                     mappedLuma = num / max(den, 0.0001);
@@ -225,9 +232,10 @@ void main() {
             linear = achromaticGamutClip(linear, mappedLuma, targetPeak);
         } else {
             // HDR_TM_FAST
-            float num = targetPeak * luma * targetWhite;
-            float den = luma * (targetPeak - targetWhite) + targetWhite;
-            mappedLuma = num / max(den, 0.0001);
+            float expanded = luma * targetWhite;
+            mappedLuma = expanded - (expanded * expanded) / (4.0 * targetPeak);
+            mappedLuma = min(mappedLuma, targetPeak);
+            
             float expansion = mappedLuma / max(luma, 0.0001);
             linear *= expansion;
             float satFactor = 1.0 - 0.10 * (luma * luma);
@@ -235,18 +243,26 @@ void main() {
             linear = maxRgbPeakClamp(linear, targetPeak);
         }
     } else {
-        // Native HDR path (HDR -> HDR) Source is already HDR. The game has already tone mapped. Assuming the game's SDR white is at 203 nits (2.03 in linear space), 
-        // which is standard for HDR10. We apply a gain to match the user's desired white point, and clamp to the configured peak nits.
-        float gain = metrics.adaptiveWhite / 2.03;
-        linear *= gain;
-        mappedLuma = luma * gain;
+        // Native HDR path (HDR -> HDR)
+        if (applyGain == 1) {
+            // Manual Calibration: Apply gain and scene-adaptive clipping
+            float gain = metrics.adaptiveWhite / SDR_WHITE_LINEAR;
+            linear *= gain;
+            mappedLuma = luma * gain;
+            
+            float peakLinear = metrics.adaptivePeak;
 
-        if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
-            // Achromatic gamut clipping for high-end tone mappers (preserves hue)
-            linear = achromaticGamutClip(linear, mappedLuma, metrics.adaptivePeak);
+            if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
+                linear = achromaticGamutClip(linear, mappedLuma, peakLinear);
+            } else {
+                linear = maxRgbPeakClamp(linear, peakLinear);
+            }
         } else {
-            // Fast MaxRGB clamp (can shift hue on extreme highlights)
-            linear = maxRgbPeakClamp(linear, metrics.adaptivePeak);
+            // Passthrough (Scene Analysis Only) The game is already calibrated. Don't do scene adaptive clipping,
+            // as clipping to the scene's P99 would crush highlights to grayscale. Only apply a hard safety clamp to the display's physical peak.
+            float physicalPeak = hdrPeakNits * 0.01; // Convert nits to linear space (1.0 = 100 nits)
+            linear = maxRgbPeakClamp(linear, physicalPeak);
+            mappedLuma = luma;
         }
     }
 
