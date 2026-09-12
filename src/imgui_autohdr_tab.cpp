@@ -34,21 +34,41 @@ namespace vkBasalt {
             gameIsHDR = (srcCsm != ColorSpaceMode::SDR_SRGB);
         }
 
-        if (ImGui::CollapsingHeader("Current Status", ImGuiTreeNodeFlags_DefaultOpen)) {
+        //  1 - Status + HDR toggle
+        if (ImGui::CollapsingHeader("Status", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (m_pSwapchain) {
+                // Compact status line with color indicator
                 if (gameIsHDR) {
-                    ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "Game is outputting HDR natively");
+                    ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "Game: Native HDR");
                 } else if (m_pSwapchain->autoHdrActive) {
-                    ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "Auto HDR is ACTIVE");
+                    ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "Game: SDR -> Auto HDR");
                 } else {
-                    ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.2f, 1.0f), "Game is outputting SDR");
+                    ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.2f, 1.0f), "Game: SDR");
                 }
-                ImGui::Spacing();
+                ImGui::SameLine();
+
+                // Auto HDR toggle inline
+                ImGui::BeginDisabled(gameIsHDR);
+                bool autoHdr = m_pConfig->getOption<bool>("autoHdr", true);
+                if (ImGui::Checkbox("Auto HDR", &autoHdr)) {
+                    m_pConfig->setOption("autoHdr", autoHdr ? "on" : "off");
+                    m_pConfig->savePerGame();
+                    if (m_pSwapchain) m_pSwapchain->forceSwapchainRebuild = true;
+                }
+                ImGui::EndDisabled();
+                if (gameIsHDR && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+                    ImGui::SetTooltip("Disabled: Game is already outputting HDR.");
+                }
+
+                // Source -> Output format line
                 ImGui::TextDisabled("Source:  %s / %s", formatName(m_pSwapchain->sourceFormat), colorSpaceName(m_pSwapchain->sourceColorSpace));
                 ImGui::TextDisabled("Output:  %s / %s", formatName(m_pSwapchain->destFormat), colorSpaceName(m_pSwapchain->destColorSpace));
-                ImGui::TextDisabled("Mutable: %s | Auto HDR Active: %s",
+
+                // Support flags on one line
+                ImGui::TextDisabled("Mutable: %s | hdr_metadata: %s | State: %s",
                     m_pSwapchain->pLogicalDevice->supportsMutableFormat ? "YES" : "NO",
-                    m_pSwapchain->autoHdrActive ? "YES" : "NO");
+                    m_pSwapchain->pLogicalDevice->supportsHdrMetadata ? "YES" : "NO",
+                    m_pSwapchain->autoHdrActive ? "ACTIVE" : "idle");
             } else {
                 ImGui::TextDisabled("No active swapchain.");
             }
