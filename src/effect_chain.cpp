@@ -386,27 +386,34 @@ namespace vkBasalt {
         }
 
         // Create compute passes. They read from the final output slice.
-        if (pLogicalSwapchain->computePasses.empty())
+        if (pLogicalSwapchain->computePasses.empty() && pConfig->getOption<bool>("scopesEnabled", false))
         {
             std::vector<VkImage> computeSrcImages;
+            VkFormat analyzerFormat;
+            VkColorSpaceKHR analyzerColorSpace;
+
             if (pLogicalDevice->supportsMutableFormat)
             {
+                // Reading from real swapchain images (already in destFormat/destColorSpace)
                 computeSrcImages = pLogicalSwapchain->images;
+                analyzerFormat = pLogicalSwapchain->format;
+                analyzerColorSpace = pLogicalSwapchain->colorSpace;
             }
             else
             {
+                // Reading from fake images (which are in sourceFormat/sourceColorSpace)
                 uint32_t srcSlice = pLogicalSwapchain->computeSrcSlice;
                 computeSrcImages = std::vector<VkImage>(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
+                analyzerFormat = pLogicalSwapchain->sourceFormat;
+                analyzerColorSpace = pLogicalSwapchain->sourceColorSpace;
             }
-
+            
             auto fa = std::make_shared<FrameAnalyzer>(
                 pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages,
-                pLogicalSwapchain->format, pLogicalSwapchain->colorSpace);
-            if (pConfig->getOption<bool>("scopesEnabled", false)) {
-                fa->setEnabled(true);
-            }
+                analyzerFormat, analyzerColorSpace);
+            fa->setEnabled(true);
             pLogicalSwapchain->computePasses.push_back(fa);
             Logger::debug("created compute passes (FrameAnalyzer)");
         }
