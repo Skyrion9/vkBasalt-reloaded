@@ -142,7 +142,7 @@ namespace vkBasalt {
 
             ImGui::Spacing();
 
-            DisplayHdrInfo detected = detectDisplayHdrCalibration();
+            DisplayHdrInfo detected = detectDisplayHdrCalibration(m_pConfig);
             std::string sourceStr = "Fallback Defaults";
             if (detected.source == "kde") sourceStr = "KDE Plasma";
             ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "System Detection: %s", sourceStr.c_str());

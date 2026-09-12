@@ -15,7 +15,7 @@ namespace vkBasalt {
 
     class Config; // Forward declaration
 
-    DisplayHdrInfo detectDisplayHdrCalibration(Config* pConfig = nullptr, const std::string& monitorName = "");
+    DisplayHdrInfo detectDisplayHdrCalibration(Config* pConfig, const std::string& monitorName = "");
 
     // Returns a list of all detected HDR displays for the UI dropdown
     std::vector<DisplayHdrInfo> getAllDetectedHdrDisplays();
