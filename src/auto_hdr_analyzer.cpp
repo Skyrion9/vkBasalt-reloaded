@@ -1,8 +1,13 @@
 #include "auto_hdr_analyzer.hpp"
-#include "shader_sources.hpp"
-#include "logger.hpp"
+
 #include <cstring>
 #include <algorithm>
+#include <cmath>
+
+#include "shader_sources.hpp"
+#include "logger.hpp"
+#include "hdr_detect.hpp"
+
 
 namespace vkBasalt {
 
@@ -39,7 +44,7 @@ namespace vkBasalt {
         return buffer;
     }
 
-    AutoHdrAnalyzer::AutoHdrAnalyzer(LogicalDevice* pDevice, VkExtent2D extent, uint32_t imageCount, Config* pConfig, int32_t sourceColorSpace)
+    AutoHdrAnalyzer::AutoHdrAnalyzer(LogicalDevice* pDevice, VkExtent2D extent, uint32_t imageCount, Config* pConfig, int32_t sourceColorSpace, int32_t calibrationMode, const std::string& monitorName)
         : pLogicalDevice(pDevice), m_extent(extent), m_imageCount(imageCount) {
         
         m_lastTime = std::chrono::steady_clock::now();
@@ -64,19 +69,27 @@ namespace vkBasalt {
             sizeof(AccumulateSpecData),
             &m_accSpecData
         };
+
+        // Fetch system detected display values to use as intelligent fallbacks
+        DisplayHdrInfo detected = detectDisplayHdrCalibration(pConfig, monitorName);
+        float fallbackWhite = (detected.detected && detected.sdrWhitePointNits > 0.0f) ? detected.sdrWhitePointNits : 203.0f;
+        float fallbackPeak = (detected.detected && detected.peakBrightnessNits > 0.0f) ? detected.peakBrightnessNits : 1000.0f;
+
         m_redSpecData = {
             std::clamp(pConfig->getOption<float>("hdrAdaptiveSpeed", 0.1f), 0.01f, 2.0f),
-            pConfig->getOption<float>("sdrWhitePointNits", 203.0f) * 0.01f,
-            pConfig->getOption<float>("hdrPeakNits", 1000.0f) * 0.01f,
+            pConfig->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
+            pConfig->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
             std::clamp(pConfig->getOption<float>("hdrAdaptivePeakScale", 1.0f), 0.0f, 1.0f),
-            std::clamp(pConfig->getOption<float>("hdrAdaptiveMidtoneRange", 0.05f), 0.0f, 0.2f)
+            std::clamp(pConfig->getOption<float>("hdrAdaptiveMidtoneRange", 0.05f), 0.0f, 0.2f),
+            calibrationMode
         };
         m_redSpecMapEntries = {
             {10, offsetof(ReduceSpecData, adaptationSpeed), sizeof(float)},
             {11, offsetof(ReduceSpecData, targetWhite), sizeof(float)},
             {12, offsetof(ReduceSpecData, targetPeak), sizeof(float)},
             {13, offsetof(ReduceSpecData, peakScale), sizeof(float)},
-            {14, offsetof(ReduceSpecData, midtoneRange), sizeof(float)}
+            {14, offsetof(ReduceSpecData, midtoneRange), sizeof(float)},
+            {15, offsetof(ReduceSpecData, calibrationMode), sizeof(int32_t)}
         };
         m_redSpecInfo = {
             (uint32_t)m_redSpecMapEntries.size(),
@@ -89,7 +102,17 @@ namespace vkBasalt {
         m_histogramBuffer = createBuffer(256 * sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_histogramMemory);
         // Temporal buffer must be DEVICE_LOCAL for fast GPU side feedback loop, we initialize it via CmdUpdateBuffer on the first frame.
         m_temporalBuffer = createBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_temporalMemory, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        m_metricsBuffer = createBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_metricsMemory);
+        m_metricsBuffer = createBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, m_metricsMemory);
+        
+        // Staging buffer for CPU readback of dynamic HDR metadata
+        m_stagingMetricsBuffer = createBuffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_stagingMetricsMemory,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        pLogicalDevice->vkd.MapMemory(pLogicalDevice->device, m_stagingMetricsMemory, 0, VK_WHOLE_SIZE, 0, &m_mappedMetrics);
+        
+        // Zero init to prevent reading uninitialized VRAM garbage on the first frame before the GPU copy completes.
+        if (m_mappedMetrics) {
+            std::memset(m_mappedMetrics, 0, 16);
+        }
 
         // 3. Create Sampler
         VkSamplerCreateInfo samplerInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -197,6 +220,35 @@ namespace vkBasalt {
         Logger::debug("AutoHdrAnalyzer initialized");
     }
 
+    void AutoHdrAnalyzer::getCurrentMetrics(float& outWhite, float& outPeak, float& outIntensity) const {
+        if (!m_mappedMetrics) {
+            outWhite = outPeak = outIntensity = 0.0f;
+            return;
+        }
+        const float* data = static_cast<const float*>(m_mappedMetrics);
+        outWhite     = data[0] * 100.0f; // nits * 0.01 -> nits
+        outPeak      = data[1] * 100.0f;
+        outIntensity = data[2];
+    }
+
+    bool AutoHdrAnalyzer::getUpdatedMetadata(float& outPeak, float& outWhite) {
+        if (!m_mappedMetrics) return false;
+        const float* data = static_cast<const float*>(m_mappedMetrics);
+        // Shader stores nits * 0.01f, multiply by 100 to get actual nits
+        float peak = data[1] * 100.0f; 
+        float white = data[0] * 100.0f;
+        
+        // Only update if changed significantly (> 1 nit) to avoid spamming the driver
+        if (std::abs(peak - m_lastPeak) > 1.0f || std::abs(white - m_lastWhite) > 1.0f) {
+            outPeak = peak;
+            outWhite = white;
+            m_lastPeak = peak;
+            m_lastWhite = white;
+            return true;
+        }
+        return false;
+    }
+
     AutoHdrAnalyzer::~AutoHdrAnalyzer() {
         if (!pLogicalDevice) return;
         pLogicalDevice->vkd.DestroyPipeline(pLogicalDevice->device, m_accumulatePipeline, nullptr);
@@ -212,6 +264,9 @@ namespace vkBasalt {
         pLogicalDevice->vkd.DestroySampler(pLogicalDevice->device, m_sampler, nullptr);
         if (m_histogramBuffer) pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, m_histogramBuffer, nullptr);
         if (m_temporalBuffer) pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, m_temporalBuffer, nullptr);
+        if (m_mappedMetrics) pLogicalDevice->vkd.UnmapMemory(pLogicalDevice->device, m_stagingMetricsMemory);
+        if (m_stagingMetricsBuffer) pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, m_stagingMetricsBuffer, nullptr);
+        if (m_stagingMetricsMemory) pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, m_stagingMetricsMemory, nullptr);
         if (m_metricsBuffer) pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, m_metricsBuffer, nullptr);
         if (m_histogramMemory) pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, m_histogramMemory, nullptr);
         if (m_temporalMemory) pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, m_temporalMemory, nullptr);
@@ -290,6 +345,19 @@ namespace vkBasalt {
         
         pLogicalDevice->vkd.CmdPushConstants(cmdBuf, m_reduceLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(float), &dt);
         pLogicalDevice->vkd.CmdDispatch(cmdBuf, 1, 1, 1);
-    }
 
+        // Copy metrics to staging buffer for CPU readback (dynamic HDR metadata)
+        VkBufferMemoryBarrier reduceToCopyBarrier = {};
+        reduceToCopyBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        reduceToCopyBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        reduceToCopyBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        reduceToCopyBarrier.buffer = m_metricsBuffer;
+        reduceToCopyBarrier.offset = 0;
+        reduceToCopyBarrier.size = 16;
+        pLogicalDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 
+            0, 0, nullptr, 1, &reduceToCopyBarrier, 0, nullptr);
+
+        VkBufferCopy copyRegion = {0, 0, 16};
+        pLogicalDevice->vkd.CmdCopyBuffer(cmdBuf, m_metricsBuffer, m_stagingMetricsBuffer, 1, &copyRegion);
+    }
 } // namespace vkBasalt

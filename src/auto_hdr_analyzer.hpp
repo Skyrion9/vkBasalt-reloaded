@@ -9,11 +9,13 @@ namespace vkBasalt {
 
     class AutoHdrAnalyzer {
     public:
-        AutoHdrAnalyzer(LogicalDevice* pDevice, VkExtent2D extent, uint32_t imageCount, Config* pConfig, int32_t sourceColorSpace);
+        AutoHdrAnalyzer(LogicalDevice* pDevice, VkExtent2D extent, uint32_t imageCount, Config* pConfig, int32_t sourceColorSpace, int32_t calibrationMode = 0, const std::string& monitorName = "");
         ~AutoHdrAnalyzer();
 
         void recordCommands(VkCommandBuffer cmdBuf, VkImageView inputImageView, uint32_t imageIndex);
         void updateInputViews(const std::vector<VkImageView>& inputImageViews);
+        bool getUpdatedMetadata(float& outPeak, float& outWhite);
+        void getCurrentMetrics(float& outWhite, float& outPeak, float& outIntensity) const;
 
         VkDescriptorSetLayout getMetricsSetLayout() const { return m_metricsSetLayout; }
         VkDescriptorSet getMetricsDescriptorSet(uint32_t imageIndex) const { return m_metricsDescriptorSets[imageIndex]; }
@@ -37,6 +39,7 @@ namespace vkBasalt {
             float targetPeak;
             float peakScale;
             float midtoneRange;
+            int32_t calibrationMode;
         };
 
         AccumulateSpecData m_accSpecData;
@@ -57,6 +60,11 @@ namespace vkBasalt {
         VkBuffer m_histogramBuffer = VK_NULL_HANDLE;
         VkBuffer m_temporalBuffer = VK_NULL_HANDLE;
         VkBuffer m_metricsBuffer = VK_NULL_HANDLE;
+        VkBuffer m_stagingMetricsBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory m_stagingMetricsMemory = VK_NULL_HANDLE;
+        void* m_mappedMetrics = nullptr;
+        float m_lastPeak = -1.0f;
+        float m_lastWhite = -1.0f;
         VkDeviceMemory m_histogramMemory = VK_NULL_HANDLE;
         VkDeviceMemory m_temporalMemory = VK_NULL_HANDLE;
         VkDeviceMemory m_metricsMemory = VK_NULL_HANDLE;
