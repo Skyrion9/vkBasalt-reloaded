@@ -6,6 +6,7 @@
 
 #include <string>
 #include <algorithm>
+#include <future>
 
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
@@ -15,6 +16,10 @@
 #include "frame_analyzer.hpp"
 #include "hdr_detect.hpp"
 #include "effect_nit_calibration.hpp"
+#include "auto_hdr_analyzer.hpp"
+#include "display_info.hpp"
+#include "effect_hdr_debug.hpp"
+
 
 namespace vkBasalt {
 
