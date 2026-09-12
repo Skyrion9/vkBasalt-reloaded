@@ -447,9 +447,70 @@ namespace vkBasalt {
         }
 
         ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
 
+        // 5- HDR Metadata Debug Tool
+        if (ImGui::CollapsingHeader("HDR Metadata Debug Tool", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::TextWrapped("Overrides the game image with a test pattern and forces custom HDR metadata. "
+                               "Use this to verify if your display's internal tone mapper and local dimming "
+                               "are actually reacting to the metadata sent by vkBasalt.");
+            ImGui::Spacing();
+
+            bool hdrPipelineActive = m_pSwapchain && (m_pSwapchain->autoHdrActive ||
+                (gameIsHDR && m_pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough") != "off"));
+
+            if (!hdrPipelineActive) {
+                ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "Debug tool requires active HDR pipeline (Auto HDR or HDR Calibration).");
+            }
+
+            ImGui::BeginDisabled(!hdrPipelineActive);
+            bool debugActive = g_hdrDebugToolActive.load();
+            if (ImGui::Checkbox("Enable Debug Tool (Replaces Game Image)", &debugActive)) {
+                g_hdrDebugToolActive.store(debugActive);
+                g_triggerSoftReload = true;
+            }
+            ImGui::EndDisabled();
+            
+            if (debugActive) {
+                ImGui::Indent(kIndentWidth);
+                
+                const char* patternNames[] = { "10%% APL Window (Defeats ABL)", "Flat 100%% (Max Brightness)", "Flat 5%% (Dark)" };
+                int pattern = HdrDebugEffect::s_patternType.load();
+                if (ImGui::BeginCombo("Test Pattern", patternNames[pattern])) {
+                    for (int i = 0; i < 3; i++) {
+                        bool is_sel = (pattern == i);
+                        if (ImGui::Selectable(patternNames[i], is_sel)) {
+                            HdrDebugEffect::s_patternType.store(i);
+                        }
+                        if (is_sel) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+
+                ImGui::PushItemWidth(kSliderWidth);
+                float peak = HdrDebugEffect::s_debugPeakNits.load();
+                if (ImGui::SliderFloat("MaxCLL (Peak Nits)", &peak, 100.0f, 4000.0f, "%.0f nits"))
+                    HdrDebugEffect::s_debugPeakNits.store(peak);
+                    
+                float white = HdrDebugEffect::s_debugWhiteNits.load();
+                if (ImGui::SliderFloat("MaxFALL (Avg Nits)", &white, 50.0f, 1000.0f, "%.0f nits"))
+                    HdrDebugEffect::s_debugWhiteNits.store(white);
+                    
+                float win = HdrDebugEffect::s_windowSize.load();
+                if (ImGui::SliderFloat("Window Area", &win, 0.01f, 1.0f, "%.2f"))
+                    HdrDebugEffect::s_windowSize.store(win);
+                ImGui::PopItemWidth();
+                
+                ImGui::Spacing();
+                ImGui::TextDisabled("Move the Peak Nits slider while watching the screen.");
+                ImGui::TextDisabled("If the brightness/contrast of the pattern changes,");
+                ImGui::TextDisabled("your display is reading and applying the metadata.");
+                
+                ImGui::Unindent(kIndentWidth);
+            }
+        }
+
+        ImGui::Spacing();
+        // 6 - Scopes
         if (ImGui::CollapsingHeader("Scopes", ImGuiTreeNodeFlags_DefaultOpen)) {
             FrameAnalyzer* analyzer = nullptr;
             if (m_pSwapchain) {
