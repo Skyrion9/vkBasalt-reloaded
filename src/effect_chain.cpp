@@ -36,6 +36,7 @@
 #include "compute_test_pass.hpp"
 #include "frame_analyzer.hpp"
 #include "effect_nit_calibration.hpp"
+#include "effect_hdr_debug.hpp"
 
 namespace vkBasalt {
 
@@ -308,6 +309,7 @@ namespace vkBasalt {
         }
 
         // Append HDR Output Effect (Auto HDR / Nit Calibration)
+        pLogicalSwapchain->nitCalibrationEffect = nullptr; // Reset before rebuild
         if (shouldAppendHdrOutput) {
             std::vector<VkImage> hdrInputImages;
             if (bypassedAndReclaimed || effectStrings.empty()) {
@@ -321,16 +323,26 @@ namespace vkBasalt {
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (lastSlice + 1));
             }
 
+            // Inject HDR Metadata Debug Pattern Effect if active. It writes the test pattern to hdrInputImages, which NitCalibrationEffect will then read and tone map.
+            if (g_hdrDebugToolActive.load()) {
+                auto debugEffect = std::make_shared<HdrDebugEffect>(
+                    pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->imageExtent,
+                    hdrInputImages, pConfig);
+                pLogicalSwapchain->effects.push_back(debugEffect);
+                Logger::debug("Injected HDR Metadata Debug Pattern Effect");
+            }
+
             auto hdrEffect = std::make_shared<NitCalibrationEffect>(
-                pLogicalDevice, 
-                pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat, 
+                pLogicalDevice,
+                pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
                 pLogicalSwapchain->imageExtent,
-                hdrInputImages, pLogicalSwapchain->images, 
-                pConfig, 
+                hdrInputImages, pLogicalSwapchain->images,
+                pConfig,
                 pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
-                pLogicalSwapchain->autoHdrActive);
-            
+                pLogicalSwapchain->autoHdrActive, pLogicalSwapchain->monitorName);
+
             pLogicalSwapchain->effects.push_back(hdrEffect);
+            pLogicalSwapchain->nitCalibrationEffect = hdrEffect.get();
             Logger::debug("Appended HDR Output Effect");
         }
 
