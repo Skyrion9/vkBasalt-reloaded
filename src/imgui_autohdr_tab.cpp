@@ -76,18 +76,116 @@ namespace vkBasalt {
 
         ImGui::Spacing();
 
-        if (ImGui::CollapsingHeader("Auto HDR (SDR to HDR)", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::TextDisabled("Automatically converts SDR games to HDR output, requires HDR display.");
-            ImGui::Spacing();
-            ImGui::BeginDisabled(gameIsHDR);
-            bool autoHdr = m_pConfig->getOption<bool>("autoHdr", true);
-            if (ImGui::Checkbox("Enable Auto HDR", &autoHdr)) {
-                m_pConfig->setOption("autoHdr", autoHdr ? "on" : "off");
-                m_pConfig->savePerGame();
-                if (m_pSwapchain) m_pSwapchain->forceSwapchainRebuild = true;
+        // 2 - HDR Pipeline
+        if (ImGui::CollapsingHeader("HDR Pipeline & Metadata", ImGuiTreeNodeFlags_DefaultOpen)) {
+            // Find analyzer once for this entire section
+            AutoHdrAnalyzer* analyzer = nullptr;
+            if (m_pSwapchain) {
+                for (auto& effect : m_pSwapchain->effects) {
+                    analyzer = effect->getAutoHdrAnalyzer();
+                    if (analyzer) break;
+                }
+                if (!analyzer && m_pSwapchain->defaultHdrEffect) {
+                    analyzer = m_pSwapchain->defaultHdrEffect->getAutoHdrAnalyzer();
+                }
             }
-            ImGui::EndDisabled();
-            if (gameIsHDR) ImGui::TextDisabled("Disabled: Game is already outputting HDR.");
+
+            // Shared async state for EDID capabilities (accessible to both active and inactive UI blocks)
+            static DisplayHdrCapabilities displayCaps;
+            static std::shared_future<DisplayHdrCapabilities> capsFuture;
+            if (!capsFuture.valid()) {
+                std::string uiMonitorName = m_pSwapchain ? m_pSwapchain->monitorName : "";
+                capsFuture = std::async(std::launch::async, [uiMonitorName]() {
+                    return readDisplayHdrCapabilities(uiMonitorName);
+                });
+            }
+            if (capsFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                displayCaps = capsFuture.get();
+            } else {
+                displayCaps.source = "loading";
+            }
+
+            bool hdrActive = m_pSwapchain && m_pSwapchain->autoHdrActive;
+
+            // Adaptive analysis status
+            if (analyzer && hdrActive) {
+                float liveWhite, livePeak, liveIntensity;
+                analyzer->getCurrentMetrics(liveWhite, livePeak, liveIntensity);
+
+                ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "Adaptive Analysis: ACTIVE");
+                ImGui::Text("  Scene: White %.1f nits | Peak %.1f nits | Intensity %.2f",
+                            liveWhite, livePeak, liveIntensity);
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Metadata Sent -> Display Reported:");
+
+                // MaxCLL comparison
+                bool peakOk = displayCaps.maxLuminance <= 0 || livePeak <= displayCaps.maxLuminance * 1.1f;
+                ImGui::Text("  MaxCLL:  %.0f nits  ->  Display max: %.0f nits %s",
+                            livePeak, displayCaps.maxLuminance, peakOk ? "" : "(EXCEEDS)");
+                if (!peakOk) ImGui::SameLine();
+                if (!peakOk) ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "!");
+
+                // MaxFALL comparison
+                bool whiteOk = displayCaps.maxFrameAvgLuminance <= 0 || liveWhite <= displayCaps.maxFrameAvgLuminance * 1.1f;
+                ImGui::Text("  MaxFALL: %.0f nits  ->  Display FALL: %.0f nits %s",
+                            liveWhite, displayCaps.maxFrameAvgLuminance, whiteOk ? "" : "(EXCEEDS)");
+                if (!whiteOk) ImGui::SameLine();
+                if (!whiteOk) ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "!");
+
+                // Static metadata on one line
+                ImGui::TextDisabled("  Primaries: BT.2020 | White: D65 | Min: 0.0001 nits");
+
+                ImGui::Spacing();
+
+                // EDID status
+                if (displayCaps.source != "fallback") {
+                    ImGui::TextDisabled("EDID: %s%s%s | Max %.0f | FALL %.0f | Min %.4f nits",
+                        displayCaps.pqSupported ? "PQ" : "",
+                        (displayCaps.pqSupported && displayCaps.hlgSupported) ? "+" : "",
+                        displayCaps.hlgSupported ? "HLG" : "",
+                        displayCaps.maxLuminance, displayCaps.maxFrameAvgLuminance, displayCaps.minLuminance);
+                    if (!displayCaps.monitorName.empty()) {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("(%s)", displayCaps.monitorName.c_str());
+                    }
+                } else {
+                    ImGui::TextDisabled("EDID: Could not read from /sys/class/drm");
+                }
+
+            if (ImGui::Button("Recheck EDID")) {
+                std::string uiMonitorName = m_pSwapchain ? m_pSwapchain->monitorName : "";
+                displayCaps = readDisplayHdrCapabilities(uiMonitorName);
+                capsFuture = std::async(std::launch::async, [uiMonitorName]() {
+                    return readDisplayHdrCapabilities(uiMonitorName);
+                });
+            }
+
+                // Visual verification as tooltip on a small text
+                ImGui::TextDisabled("How to verify display is using metadata:");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("If your display supports local dimming, watch the dimming zones respond\n"
+                                      "when bright highlights appear on screen. If they pulse or react to scene\n"
+                                      "changes, the metadata is being consumed. If dimming is static regardless\n"
+                                      "of content, the display firmware is ignoring the metadata and using its\n"
+                                      "own internal scene analysis.");
+                }
+            } else if (hdrActive) {
+                ImGui::TextDisabled("Analyzer not active (adaptive analysis may be disabled).");
+            } else if (m_pSwapchain) {
+                ImGui::TextDisabled("Auto HDR is not active. No metadata is being sent.");
+
+                if (displayCaps.source != "fallback" && displayCaps.source != "loading") {
+                    ImGui::TextDisabled("EDID: HDR %s | Max %.0f nits | %s%s%s",
+                        displayCaps.hdrSupported ? "YES" : "NO",
+                        displayCaps.maxLuminance,
+                        displayCaps.pqSupported ? "PQ" : "",
+                        (displayCaps.pqSupported && displayCaps.hlgSupported) ? "+" : "",
+                        displayCaps.hlgSupported ? "HLG" : "");
+                } else if (displayCaps.source == "loading") {
+                    ImGui::TextDisabled("EDID: Loading display capabilities...");
+                }
+            }
         }
 
         ImGui::Spacing();
