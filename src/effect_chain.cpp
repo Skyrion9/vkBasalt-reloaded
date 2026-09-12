@@ -47,13 +47,11 @@ namespace vkBasalt {
     bool isHdrOutputNeeded(Config* pConfig, LogicalSwapchain* pLogicalSwapchain) {
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
         if (srcCsm == ColorSpaceMode::SDR_SRGB) {
-            std::string autoHdr = pConfig->getOption<std::string>("autoHdr", "on");
-            bool configEnabled = (autoHdr == "on" || autoHdr == "true" || autoHdr == "1");
-            // Only allocate the HDR slice if the display actually confirmed HDR support (autoHdrActive) top prevent VRAM waste on non-HDR displays.
-            return configEnabled && pLogicalSwapchain->autoHdrActive;
+            return pLogicalSwapchain->autoHdrActive;
         } else {
-            std::string hdrMode = pConfig->getOption<std::string>("hdrCalibration", "off");
-            return hdrMode == "on" || hdrMode == "true" || hdrMode == "1";
+            // Native HDR: "off" - no processing, "passthrough" and "manual" both require the effect in the chain.
+            std::string mode = pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
+            return mode != "off";
         }
     }
 
@@ -75,8 +73,8 @@ namespace vkBasalt {
         // Free old no effect command buffers before allocating new ones to prevent leaks
         if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                                                pLogicalSwapchain->commandBuffersNoEffect.size(),
-                                                pLogicalSwapchain->commandBuffersNoEffect.data());
+                                                   pLogicalSwapchain->commandBuffersNoEffect.size(),
+                                                   pLogicalSwapchain->commandBuffersNoEffect.data());
             pLogicalSwapchain->commandBuffersNoEffect.clear();
         }
 
@@ -86,26 +84,31 @@ namespace vkBasalt {
                         std::to_string(pLogicalSwapchain->imageCount) + "). Skipping.");
             return;
         }
-        if (pLogicalSwapchain->autoHdrActive) {
+
+        if (isHdrOutputNeeded(pConfig, pLogicalSwapchain)) {
             std::vector<VkImage> slice0Images(
                 pLogicalSwapchain->fakeImages.begin(),
                 pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
-            pLogicalSwapchain->defaultHdrEffect = std::make_shared<NitCalibrationEffect>(
+
+        pLogicalSwapchain->defaultHdrEffect = std::make_shared<NitCalibrationEffect>(
                 pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
                 pLogicalSwapchain->imageExtent, slice0Images, pLogicalSwapchain->images,
                 pConfig, pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
-                pLogicalSwapchain->autoHdrActive);
+                pLogicalSwapchain->autoHdrActive, pLogicalSwapchain->monitorName);
+
             pLogicalSwapchain->defaultHdrEffect->setChainPosition(true, true);
             noEffectChain.push_back(pLogicalSwapchain->defaultHdrEffect);
+            Logger::debug("buildDefaultNoEffectChain: HDR output effect included in no-effect chain");
         } else {
             pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
                 pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
                 std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
-                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
                 pLogicalSwapchain->images, pConfig));
             pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
             noEffectChain.push_back(pLogicalSwapchain->defaultTransfer);
         }
+
         pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
         writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, noEffectChain,
             VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
@@ -206,13 +209,11 @@ namespace vkBasalt {
 
         // Append HDR Output Effect (Auto HDR or Nit Calibration)
         std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
-        std::string hdrCalibOpt = pConfig->getOption<std::string>("hdrCalibration", "off");
         bool autoHdrEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
-        bool hdrCalibEnabled = (hdrCalibOpt == "on" || hdrCalibOpt == "true" || hdrCalibOpt == "1");
-        
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
+        
         bool shouldAppendHdrOutput = (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled && pLogicalSwapchain->autoHdrActive) ||
-                                    (srcCsm != ColorSpaceMode::SDR_SRGB && hdrCalibEnabled);
+                                     (srcCsm != ColorSpaceMode::SDR_SRGB && pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough") != "off");
 
         // Normal effects operate on the fake images, which are always in the source format.
         VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->sourceFormat);
