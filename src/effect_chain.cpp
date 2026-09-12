@@ -219,6 +219,13 @@ namespace vkBasalt {
         VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->sourceFormat);
         VkFormat srgbFormat  = convertToSRGB(pLogicalSwapchain->sourceFormat);
 
+        // If the game outputs scRGB (16F) or HDR10 (10-bit), convertToUNORM might mistakenly return an 8-bit UNORM format, causing GPU to clamp all >1.0 linear
+        // values to 1.0 during the intermediate effect's render pass, crushing bright saturated colors (like orange) into desaturated higlights before NitCalibration can tonemap.
+        if (isExtendedRangeFormat(pLogicalSwapchain->sourceFormat)) {
+            unormFormat = pLogicalSwapchain->sourceFormat;
+            srgbFormat = pLogicalSwapchain->sourceFormat;
+        }
+
         // Determine which slice compute passes read from. With mutable format the last effect writes to real swapchain images. Otherwise it writes to the last fake slice.
         pLogicalSwapchain->computeSrcSlice =
             pLogicalDevice->supportsMutableFormat ? 0 : getLastDstSlice(effectStrings.size());
