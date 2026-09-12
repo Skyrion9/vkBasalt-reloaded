@@ -460,6 +460,18 @@ namespace vkBasalt {
                             bool waitForIdle)
     {
         Logger::debug("Rebuilding effects for swapchain...");
+        
+        // Detect AutoHDR config changes that require a full swapchain rebuild. The real swapchain format is fixed at creation time, so toggling AutoHDR must too.
+        ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
+        std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
+        bool autoHdrConfigEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
+        
+        if (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrConfigEnabled != pLogicalSwapchain->autoHdrActive) {
+            Logger::debug("AutoHDR config changed, forcing swapchain rebuild to apply format change...");
+            pLogicalSwapchain->forceSwapchainRebuild = true;
+            return;
+        }
+
         if (waitForIdle) {
             pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         }
