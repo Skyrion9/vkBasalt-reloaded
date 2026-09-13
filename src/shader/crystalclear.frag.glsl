@@ -179,6 +179,11 @@ float bilateralDiff(float d, float weight, float threshLow, float invThreshRange
     return d * (1.0 - t * t * (3.0 - 2.0 * t)) * weight;
 }
 
+vec4 bilateralDiff4(vec4 d, vec4 weights, float threshLow, float invThreshRange) {
+    vec4 t = clamp((abs(d) - threshLow) * invThreshRange, 0.0, 1.0);
+    return d * (1.0 - t * t * (3.0 - 2.0 * t)) * weights;
+}
+
 // HDR: 'norm' is the adaptation factor (hdrNorm). Mode 5 (Linear Light) is additive, self-normalizing via the downstream luma ratio, so it stays on raw values.
 // The other modes are evaluated on normalized NEUTRAL luma in HDR so their 1.0/clamp/step reference points remain valid above SDR white.
 float applyBlendMode(float luma, float sharp, float norm) {
@@ -561,39 +566,29 @@ void main() {
     float dynamicThreshHigh = mix(bilateralThreshHighBase, bilateralThreshLow + 0.02 * hdrNorm, edgeChoke);
 
     float invThreshRange = 1.0 / max(dynamicThreshHigh - bilateralThreshLow, 0.0001);
-    // 3x3 grid diffs (always active, weight sum = 12)
+
+    // 3x3 grid diffs (always active, weight sum = 12) vec4 packed for SIMD efficiency
+    vec4 dCross = lumaAA - vec4(lB, lD, lF, lH);
+    vec4 dDiag  = lumaAA - vec4(lA, lC, lG, lI);
     float diff = (
-        bilateralDiff(lumaAA - lB, 2.0, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lD, 2.0, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lF, 2.0, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lH, 2.0, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lA, 1.0, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lC, 1.0, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lG, 1.0, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - lI, 1.0, bilateralThreshLow, invThreshRange)
+        dot(bilateralDiff4(dCross, vec4(2.0), bilateralThreshLow, invThreshRange), vec4(1.0)) +
+        dot(bilateralDiff4(dDiag,  vec4(1.0), bilateralThreshLow, invThreshRange), vec4(1.0))
     ) * (qualityLevel >= 2 ? 0.0714 : 0.0625);
 
-    // Step1 wide diffs
-    diff += (
-        bilateralDiff(lumaAA - h1_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - h2_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - v1_raw, 0.5, bilateralThreshLow, invThreshRange) +
-        bilateralDiff(lumaAA - v2_raw, 0.5, bilateralThreshLow, invThreshRange)
-    ) * (qualityLevel >= 2 ? 0.0714 : 0.0625);
+    // Step1 wide diffs vec4 packed
+    vec4 dStep1 = lumaAA - vec4(h1_raw, h2_raw, v1_raw, v2_raw);
+    diff += dot(bilateralDiff4(dStep1, vec4(0.5), bilateralThreshLow, invThreshRange), vec4(1.0))
+          * (qualityLevel >= 2 ? 0.0714 : 0.0625);
 
-    // Step2 wide diffs (Perfect/Ultra only)
+    // Step2 wide diffs (Perfect/Ultra only) vec4 packed
     if (qualityLevel <= 1) {
         // suppress step2 when wide samples form a smooth monotonic gradient to reduce long range banding artifacts.
         float hSpan = abs(h4_raw - h3_raw);
         float vSpan = abs(v4_raw - v3_raw);
         float gradientCoherence = smoothstep(0.01 * hdrNorm, 0.06 * hdrNorm, max(hSpan, vSpan));
-
-        diff += (
-            bilateralDiff(lumaAA - h3_raw, 0.5, bilateralThreshLow, invThreshRange) +
-            bilateralDiff(lumaAA - h4_raw, 0.5, bilateralThreshLow, invThreshRange) +
-            bilateralDiff(lumaAA - v3_raw, 0.5, bilateralThreshLow, invThreshRange) +
-            bilateralDiff(lumaAA - v4_raw, 0.5, bilateralThreshLow, invThreshRange)
-        ) * 0.0625 * mix(1.0, gradientCoherence, guardStrength);
+        vec4 dStep2 = lumaAA - vec4(h3_raw, h4_raw, v3_raw, v4_raw);
+        diff += dot(bilateralDiff4(dStep2, vec4(0.5), bilateralThreshLow, invThreshRange), vec4(1.0))
+              * 0.0625 * mix(1.0, gradientCoherence, guardStrength);
     }
 
     if (localContrastStrength > 0.0 && qualityLevel <= 1) {
