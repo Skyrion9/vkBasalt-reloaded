@@ -721,22 +721,23 @@ void main() {
             }
         }
 
-        // phase 10.2: Contrast (S-curve based). Positive values apply a hermite S-curve that boosts midtone separation while preserving shadow/highlight detail (zero derivatives at 0 and 1).
+        // phase 10.2: Contrast (S-curve based). Applied to luma only, then chroma is scaled proportionally to preserve hue. 
         if (contrast != 0.0) {
             vec3 t = finalColor / hdrNorm;
-            vec3 shaped = t;
-            vec3 inRange = step(0.0, t) * step(t, vec3(1.0));
-
+            float lumaT = getNeutralLuma(t);
+            float shapedLuma = lumaT;
+            float inRange = step(0.0, lumaT) * step(lumaT, 1.0);
             if (contrast > 0.0) {
                 // S-curve: smoothstep's hermite polynomial (3t² - 2t³) preserves extremes
-                vec3 sCurve = smoothstep(0.0, 1.0, t);
-                shaped = mix(shaped, mix(shaped, sCurve, contrast), inRange);
+                float sCurve = smoothstep(0.0, 1.0, lumaT);
+                shapedLuma = mix(shapedLuma, mix(shapedLuma, sCurve, contrast), inRange);
             } else {
                 // Negative contrast: blend toward neutral gray (flatten image)
-                shaped = mix(shaped, vec3(0.5), -contrast * inRange);
+                shapedLuma = mix(shapedLuma, 0.5, -contrast * inRange);
             }
-
-            finalColor = max(shaped, 0.0) * hdrNorm;
+            // Scale all channels by the luma ratio to preserve chromaticity
+            float lumaRatio = shapedLuma / max(lumaT, 0.0001);
+            finalColor = max(t * lumaRatio, 0.0) * hdrNorm;
         }
 
         // phase 10.4: Gamma / B/W tone response shaping. HDR aware.
