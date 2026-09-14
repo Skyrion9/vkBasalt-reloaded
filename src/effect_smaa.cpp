@@ -8,7 +8,7 @@
 #include <vector>
 
 #include <vulkan/vulkan_core.h>
-#include "AreaTex.h"
+#include "shader/AreaTex.h"
 #include "SearchTex.h"
 
 #include "config.hpp"
