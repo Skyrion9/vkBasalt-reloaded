@@ -181,9 +181,9 @@ namespace vkBasalt
             SPEC(30, guardStrength)},
 
             {.key = "crystalclearBandPassWidth", .label = "Band Pass Width", .type = ParamType::Float,
-            .defaultVal = 0.85, .minVal = 0.3, .maxVal = 1.5, .step = 0.05,
+            .defaultVal = 1.105, .minVal = 0.3, .maxVal = 2.0, .step = 0.05,
             .category = "Artifact Protection",
-            .tooltip = "Width of the band-pass filter on local contrast. Sharpening is strongest on mid-frequency detail and fades on very low (macro structure) and very high (noise) frequencies. Larger = wider band. Default 0.85.",
+            .tooltip = "Width of the band-pass filter on local contrast. Sharpening is strongest on mid-frequency detail and fades on very low (macro structure) and very high (noise) frequencies. Larger = wider band. Default 1.105.",
             SPEC(31, bandPassWidth)},
 
             {.key = "crystalclearExtremeProtection", .label = "Extreme Protection", .type = ParamType::Float,
@@ -199,15 +199,15 @@ namespace vkBasalt
             SPEC(33, shimmerReduction)},
 
             {.key = "crystalclearEdgeThreshLow", .label = "Edge Thresh Low", .type = ParamType::Float,
-            .defaultVal = 0.03, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+            .defaultVal = 0.04, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
             .category = "Artifact Protection",
-            .tooltip = "Lower threshold of the bilateral edge smoothstep. Contrast differences below this are fully suppressed. Lower = more fine detail passes through. Default 0.03.",
+            .tooltip = "Lower threshold of the bilateral edge smoothstep. Contrast differences below this are fully suppressed. Lower = more fine detail passes through. Default 0.04.",
             SPEC(8, edgeThreshLow)},
 
             {.key = "crystalclearEdgeThreshHigh", .label = "Edge Thresh High", .type = ParamType::Float,
-            .defaultVal = 0.25, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
+            .defaultVal = 0.325, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
             .category = "Artifact Protection",
-            .tooltip = "Upper threshold of the bilateral edge smoothstep. Contrast differences above this are fully passed through. The range between Low and High is the smooth transition zone. Default 0.25.",
+            .tooltip = "Upper threshold of the bilateral edge smoothstep. Contrast differences above this are fully passed through. The range between Low and High is the smooth transition zone. Default 0.325.",
             SPEC(9, edgeThreshHigh)},
 
             {.key = "crystalclearEnableRGBEdgeDetection", .label = "RGB Edge Detection", .type = ParamType::Bool,

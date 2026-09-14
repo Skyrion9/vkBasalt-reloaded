@@ -77,8 +77,8 @@ layout(constant_id = 4) const int blendIfDark = 40;
 layout(constant_id = 5) const int blendIfLight = 220;
 layout(constant_id = 6) const float casSharpness = 1.0;
 layout(constant_id = 7) const float casStrength = 2.0;
-layout(constant_id = 8) const float edgeThreshLow = 0.05;
-layout(constant_id = 9) const float edgeThreshHigh = 0.35;
+layout(constant_id = 8) const float edgeThreshLow = 0.065;
+layout(constant_id = 9) const float edgeThreshHigh = 0.455;
 layout(constant_id = 10) const int enableDithering = 1;
 layout(constant_id = 11) const int enableAA = 0;
 layout(constant_id = 12) const int enableRGBEdgeDetection = 1;
@@ -99,7 +99,7 @@ layout(constant_id = 26) const int enableDebugGrain = 0;
 layout(constant_id = 27) const float fineGrainWeight = 0.6;
 layout(constant_id = 28) const float coarseGrainWeight = 0.4;
 layout(constant_id = 30) const float guardStrength = 0.6;
-layout(constant_id = 31) const float bandPassWidth = 0.8;
+layout(constant_id = 31) const float bandPassWidth = 1.04;
 layout(constant_id = 32) const float extremeProtection = 0.5;
 layout(constant_id = 33) const float shimmerReduction = 0.5;
 layout(constant_id = 34) const float vibrance = 0.0;              // -1.0 to 1.0
@@ -242,10 +242,10 @@ void main() {
     float localMaxLuma = getLuma(trueMxRGB);
     float localMinLuma = getLuma(trueMnRGB);
     float localContrast = localMaxLuma - localMinLuma;
-    float bpLow = 0.01 * hdrNorm;
-    float bpFadeIn = 0.04 * hdrNorm;
+    float bpLow = 0.013 * hdrNorm;
+    float bpFadeIn = 0.052 * hdrNorm;
     float bpHigh = bandPassWidth * hdrNorm;
-    float bpFadeOut = 0.3 * hdrNorm;
+    float bpFadeOut = 0.39 * hdrNorm;
     float lowFreqFade = smoothstep(bpLow, bpLow + bpFadeIn, localContrast);
     float highFreqFade = 1.0 - smoothstep(bpHigh, bpHigh + bpFadeOut, localContrast);
     float bandPassMask = lowFreqFade * highFreqFade;
@@ -560,8 +560,8 @@ void main() {
     float bilateralThreshLow = edgeThreshLow * hdrNorm;
     float bilateralThreshHighBase = edgeThreshHigh * hdrNorm;
 
-    float edgeChoke = smoothstep(0.15 * hdrNorm, 0.45 * hdrNorm, localContrast);
-    float dynamicThreshHigh = mix(bilateralThreshHighBase, bilateralThreshLow + 0.02 * hdrNorm, edgeChoke);
+    float edgeChoke = smoothstep(0.195 * hdrNorm, 0.585 * hdrNorm, localContrast);
+    float dynamicThreshHigh = mix(bilateralThreshHighBase, bilateralThreshLow + 0.026 * hdrNorm, edgeChoke);
 
     float invThreshRange = 1.0 / max(dynamicThreshHigh - bilateralThreshLow, 0.0001);
 
