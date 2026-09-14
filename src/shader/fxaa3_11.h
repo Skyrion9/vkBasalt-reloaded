@@ -234,7 +234,7 @@ A. Or use FXAA_GREEN_AS_LUMA.
 /*==========================================================================*/
 #ifndef FXAA_HDR_DECODE
     //
-    // 1 = Wrap all internal texture fetches in decodeToLinear() from color_space.h.
+    // 1 = Wrap all internal texture fetches in decodeToSpatial() from color_space.h.
     //     Requires color_space.h to be included BEFORE this header.
     //     For SDR pipelines the decode is identity and compiled out by the driver.
     // 0 = Raw fetches (original behavior).
@@ -674,7 +674,7 @@ NOTE the other tuning knobs are now in the shader function inputs!
     // Requires "#version 130" or better
     #if (FXAA_HDR_DECODE == 1)
         vec4 FxaaDecodeFetch(vec4 raw) {
-            return vec4(decodeToLinear(raw.rgb), raw.a);
+            return vec4(decodeToSpatial(raw.rgb), raw.a);
         }
         #define FxaaTexTop(t, p) FxaaDecodeFetch(textureLod(t, p, 0.0))
         #define FxaaTexOff(t, p, o, r) FxaaDecodeFetch(textureLodOffset(t, p, 0.0, o))

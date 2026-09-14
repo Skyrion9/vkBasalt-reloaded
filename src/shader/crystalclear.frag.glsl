@@ -162,8 +162,6 @@ layout(set = 0, binding = 1) uniform FrameData {
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
-const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
-
 // perceptual green heavy luma for edge detection, sharpening masks, and FXAA.
 float getLuma(vec3 rgb) {
     return dot(rgb, vec3(0.32786885, 0.655737705, 0.0163934436));
@@ -202,7 +200,7 @@ float applyBlendMode(float luma, float sharp, float norm) {
 
 void main() {
     vec4 centerColor = textureLod(img, textureCoord, 0.0);
-    vec3 e = decodeToLinear(centerColor.rgb);
+    vec3 e = decodeToSpatial(centerColor.rgb);
     float lE = getLuma(e);
 
     if (lE <= 0.0001) {
@@ -215,14 +213,14 @@ void main() {
     float hdrNorm = (isHDR) ? clamp(lE, 0.18, 16.0) : 1.0;
 
     // phase 1: shared 3x3 grid fetch
-    vec3 a = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
-    vec3 b = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb);
-    vec3 c = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb);
-    vec3 d = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb);
-    vec3 f = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb);
-    vec3 g = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb);
-    vec3 h = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb);
-    vec3 i = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb);
+    vec3 a = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
+    vec3 b = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb);
+    vec3 c = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb);
+    vec3 d = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb);
+    vec3 f = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb);
+    vec3 g = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb);
+    vec3 h = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb);
+    vec3 i = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb);
 
     float lA = getLuma(a); float lB = getLuma(b); float lC = getLuma(c);
     float lD = getLuma(d); float lF = getLuma(f);
@@ -419,16 +417,16 @@ void main() {
     }
 
     // phase 2: clarity wide fetches for latency hiding
-    float h1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float v1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
+    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
+    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
     float h3_raw = 0.0; float h4_raw = 0.0; float v3_raw = 0.0; float v4_raw = 0.0;
     if (qualityLevel <= 1) {
-        h3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
-        h4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
-        v3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
-        v4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
+        h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
+        h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
+        v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
+        v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
     }
 
     // phase 3: CAS math (min/max, localContrast, bandPassMask moved to phase 1.1)
@@ -500,8 +498,8 @@ void main() {
         vec2 posP = posB + offNP * 1.0;
 
         float halfLumaNN = lumaNN * 0.5;
-        float lumaEndN = getLuma(decodeToLinear(textureLod(img, posN, 0.0).rgb)) - halfLumaNN;
-        float lumaEndP = getLuma(decodeToLinear(textureLod(img, posP, 0.0).rgb)) - halfLumaNN;
+        float lumaEndN = getLuma(decodeToSpatial(textureLod(img, posN, 0.0).rgb)) - halfLumaNN;
+        float lumaEndP = getLuma(decodeToSpatial(textureLod(img, posP, 0.0).rgb)) - halfLumaNN;
 
         bool doneN = abs(lumaEndN) >= gradientScaled;
         bool doneP = abs(lumaEndP) >= gradientScaled;
@@ -514,12 +512,12 @@ void main() {
             vec2 step = offNP * stepSize;
             if (!doneN) {
                 posN -= step;
-                lumaEndN = getLuma(decodeToLinear(textureLod(img, posN, 0.0).rgb)) - halfLumaNN;
+                lumaEndN = getLuma(decodeToSpatial(textureLod(img, posN, 0.0).rgb)) - halfLumaNN;
                 doneN = abs(lumaEndN) >= gradientScaled;
             }
             if (!doneP) {
                 posP += step;
-                lumaEndP = getLuma(decodeToLinear(textureLod(img, posP, 0.0).rgb)) - halfLumaNN;
+                lumaEndP = getLuma(decodeToSpatial(textureLod(img, posP, 0.0).rgb)) - halfLumaNN;
                 doneP = abs(lumaEndP) >= gradientScaled;
             }
         }
@@ -552,7 +550,7 @@ void main() {
         vec2 perpOffset = isHorizontal ? vec2(0.0, pc.pixelSize.y) : vec2(pc.pixelSize.x, 0.0);
         vec2 finalUV = posM + finalShift * perpOffset;
 
-        aaColor = decodeToLinear(textureLod(img, finalUV, 0.0).rgb);
+        aaColor = decodeToSpatial(textureLod(img, finalUV, 0.0).rgb);
     }
 
     // phase 6: clarity bilateral deltas and weights with 3x3 anchor
@@ -966,7 +964,7 @@ void main() {
     }
 
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
-    vec3 encodedColor = encodeFromLinear(finalColor);
+    vec3 encodedColor = encodeFromSpatial(finalColor);
     vec3 outColor = max(encodedColor, 0.0);
     fragColor = vec4(outColor, centerColor.a);
 }

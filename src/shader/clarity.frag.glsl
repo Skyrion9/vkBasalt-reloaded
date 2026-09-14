@@ -25,8 +25,6 @@ layout(push_constant) uniform PushConstants {
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
-const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
-
 #define BILATERAL_WEIGHT(diff) (1.0 - smoothstep(edgeThreshLow, edgeThreshHigh, abs(diff)))
 #define BILATERAL_DIFF(neighbor, weight) ((lE - neighbor) * BILATERAL_WEIGHT(lE - neighbor) * weight)
 
@@ -49,7 +47,7 @@ float applyBlendMode(float luma, float sharp, float norm) {
 
 void main() {
     vec4 centerColor = textureLod(img, textureCoord, 0.0);
-    vec3 e = decodeToLinear(centerColor.rgb);
+    vec3 e = decodeToSpatial(centerColor.rgb);
     float lE = getLuma(e);
 
     if (lE <= 0.0001) {
@@ -60,15 +58,15 @@ void main() {
     float hdrNorm = isHDR ? clamp(lE, 0.18, 16.0) : 1.0;
 
     // phase 1: clarity wide fetches (8 taps)
-    float h1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
-    float h4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
+    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
+    float h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
+    float h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
     
-    float v1_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v2_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v3_raw = getLuma(decodeToLinear(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
-    float v4_raw = getLuma(decodeToLinear(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
+    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
+    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
+    float v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
+    float v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
 
     // phase 2: bilateral delta accumulation
     float diff = (
@@ -120,7 +118,7 @@ void main() {
     }
 
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
-    vec3 encodedColor = encodeFromLinear(finalColor);
+    vec3 encodedColor = encodeFromSpatial(finalColor);
     vec3 outColor = max(encodedColor, 0.0);
     fragColor = vec4(outColor, centerColor.a);
 }

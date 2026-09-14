@@ -38,10 +38,8 @@ layout(constant_id = 8) const int   iterations = 4;
 layout(location = 0) in vec2 texcoord;
 layout(location = 0) out vec4 fragColor;
 
-const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
-
 vec3 decodeFetch(vec4 raw) {
-    return decodeToLinear(raw.rgb);
+    return decodeToSpatial(raw.rgb);
 }
 
 #define textureLod0Offset(img, coord, offset) decodeFetch(textureLodOffset(img, coord, 0.0f, offset))
@@ -100,7 +98,7 @@ void main()
     float middiff = debandMiddiff / 255.0;
 
     vec4 ori_alpha = textureLod(img, texcoord, 0.0f);
-    vec3 ori = decodeToLinear(ori_alpha.rgb);
+    vec3 ori = decodeToSpatial(ori_alpha.rgb);
 
     // HDR adaptation luminance: scale thresholds so debanding works above SDR white
     float maxRGB = max(ori.r, max(ori.g, ori.b));
@@ -173,7 +171,7 @@ void main()
     res += dither_shift_RGB;
 
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
-    vec3 encodedColor = encodeFromLinear(res);
+    vec3 encodedColor = encodeFromSpatial(res);
     vec3 finalColor = max(encodedColor, 0.0);
     fragColor = vec4(finalColor, ori_alpha.a);
 }

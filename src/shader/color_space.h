@@ -11,6 +11,8 @@
 
 layout(constant_id = 65535) const int colorSpaceMode = CSP_SDR_SRGB;
 
+const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB && colorSpaceMode != CSP_DISPLAY_P3_NONLINEAR);
+
 // sRGB Transfer Functions
 vec3 srgb_to_linear(vec3 c) {
     return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
@@ -52,7 +54,8 @@ vec3 linear_to_hlg(vec3 c) {
     return mix(sqrt(3.0 * L), HLG_A * log(12.0 * L - HLG_B) + HLG_C, step(vec3(1.0 / 12.0), L));
 }
 
-// Unified Decode/Encode Wrappers 
+// Phoometric grade (strictly linear) used by Frame Analyzer (scopes), AutoHDR Analyzer, NitCalibration tone mapping etc.
+// SDR is linearized to ensure photometric accuracy for histograms and nit measurements.
 vec3 decodeToLinear(vec3 c) {
     if (colorSpaceMode == CSP_HDR10_PQ) return pq_to_linear(c);
     if (colorSpaceMode == CSP_HDR_HLG) return hlg_to_linear(c);
@@ -65,6 +68,23 @@ vec3 encodeFromLinear(vec3 c) {
     if (colorSpaceMode == CSP_HDR_HLG) return linear_to_hlg(c);
     if (colorSpaceMode == CSP_SDR_SRGB || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) return linear_to_srgb(c);
     return c; // scRGB/BT2020/P3 Linear are already linear
+}
+
+// Perceptual grade (spatial) used by CAS, Clarity, CrystalClear, FXAA, SMAA, Deband, DLS, LUT etc.
+// SDR stays in gamma space because spatial heuristics are mathematically tuned for [0,1] perceptual values.
+// Forcing them into linear light is wasteful, HDR still decodes to linear nits (hdrNorm scales the thresholds accordingly).
+vec3 decodeToSpatial(vec3 c) {
+    if (colorSpaceMode == CSP_HDR10_PQ) return pq_to_linear(c);
+    if (colorSpaceMode == CSP_HDR_HLG) return hlg_to_linear(c);
+    // SDR sRGB and Display P3 Nonlinear stay in gamma space, scRGB/BT2020/P3 Linear are already linear nits.
+    return c;
+}
+
+vec3 encodeFromSpatial(vec3 c) {
+    if (colorSpaceMode == CSP_HDR10_PQ) return linear_to_pq(c);
+    if (colorSpaceMode == CSP_HDR_HLG) return linear_to_hlg(c);
+    // SDR stays in gamma space. No OETF encode needed.
+    return c;
 }
 
 // Gamut Mapping Matrices (Operate in Linear Light)

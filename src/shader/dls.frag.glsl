@@ -32,8 +32,6 @@ layout (constant_id = 1) const float denoise = 0.17;
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
-const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
-
 #define textureLod0Offset(img, coord, offset) textureLodOffset(img, coord, 0.0f, offset)
 #define textureLod0(img, coord) textureLod(img, coord, 0.0f)
 
@@ -74,17 +72,17 @@ void main()
     //  g  c  f
 
     vec4 x_raw = textureLod0(img, textureCoord);
-    vec3 x = decodeToLinear(x_raw.rgb);
+    vec3 x = decodeToSpatial(x_raw.rgb);
 
-    vec3 a = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2(-1,  0)).rgb);
-    vec3 b = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 1,  0)).rgb);
-    vec3 c = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 0,  1)).rgb);
-    vec3 d = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 0, -1)).rgb);
+    vec3 a = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1,  0)).rgb);
+    vec3 b = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 1,  0)).rgb);
+    vec3 c = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 0,  1)).rgb);
+    vec3 d = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 0, -1)).rgb);
 
-    vec3 e = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2(-1, -1)).rgb);
-    vec3 f = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 1,  1)).rgb);
-    vec3 g = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2(-1,  1)).rgb);
-    vec3 h = decodeToLinear(textureLod0Offset(img, textureCoord, ivec2( 1, -1)).rgb);
+    vec3 e = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1, -1)).rgb);
+    vec3 f = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 1,  1)).rgb);
+    vec3 g = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1,  1)).rgb);
+    vec3 h = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 1, -1)).rgb);
 
     float lx = GetLuma(x);
 
@@ -163,7 +161,7 @@ void main()
     x.z += delta;
 
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
-    vec3 encodedColor = encodeFromLinear(x);
+    vec3 encodedColor = encodeFromSpatial(x);
     vec3 finalColor = max(encodedColor, 0.0);
     fragColor = vec4(finalColor, x_raw.a);
 }

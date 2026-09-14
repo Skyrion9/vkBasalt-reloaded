@@ -20,8 +20,6 @@ layout (constant_id = 4) const float screenHeight = 1080;
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
-const bool isHDR = (colorSpaceMode != CSP_SDR_SRGB);
-
 void main()
 {
     vec2 size = vec2(screenWidth, screenHeight);
@@ -35,7 +33,7 @@ void main()
     
     // Encode the linear light result back to the target swapchain color space.We only clamp the lower bound. 
     // The GPU automatically clamps 8 bit UNORM formats to 1.0 on write, while preserving >1.0 benefits HDR.
-    vec3 encodedColor = encodeFromLinear(fxaaColor.rgb);
+    vec3 encodedColor = encodeFromSpatial(fxaaColor.rgb);
     vec3 outColor = max(encodedColor, 0.0);
     
     fragColor = vec4(outColor, fxaaColor.a);

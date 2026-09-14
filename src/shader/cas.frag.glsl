@@ -29,8 +29,6 @@ layout(constant_id = 1) const float contrastLimit = 0.0; // Suppresses sharpenin
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
-const int hdrMode = (colorSpaceMode != CSP_SDR_SRGB) ? 1 : 0;
-
 void main()
 {
     // fetch a 3x3 neighborhood around the pixel 'e',
@@ -38,17 +36,17 @@ void main()
     //  d(e)f
     //  g h i
     vec4 inputColor = textureLod(img, textureCoord, 0.0);
-    vec3 e = decodeToLinear(inputColor.rgb);
+    vec3 e = decodeToSpatial(inputColor.rgb);
 
     // Hardware-accelerated offset fetches
-    vec3 a = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
-    vec3 b = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb);
-    vec3 c = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb);
-    vec3 d = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb);
-    vec3 f = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb);
-    vec3 g = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb);
-    vec3 h = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb);
-    vec3 i = decodeToLinear(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb);
+    vec3 a = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
+    vec3 b = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb);
+    vec3 c = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb);
+    vec3 d = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb);
+    vec3 f = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb);
+    vec3 g = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb);
+    vec3 h = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb);
+    vec3 i = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb);
 
     // AMD's intentional "soft min/max" bias.
     // Soft min and max.
@@ -68,7 +66,7 @@ void main()
     // SDR formula uses absolute headroom (2.0 - mxRGB) which collapses to 0 when mxRGB > 2.0.
     // Use a scale invariant local contrast ratio for HDR.
     vec3 ampRGB;
-    if (hdrMode == 1) {
+    if (isHDR) {
         ampRGB = clamp(mnRGB / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
     } else {
         ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) / max(mxRGB, vec3(0.0001)), 0.0, 1.0);
@@ -95,7 +93,7 @@ void main()
     if (contrastLimit > 0.0) {
         vec3 localContrast = trueMxRGB - trueMnRGB;
         float maxContrast = max(max(localContrast.r, localContrast.g), localContrast.b);
-        float refLuma = (hdrMode == 1) ? max(max(trueMxRGB.r, trueMxRGB.g), trueMxRGB.b) : 1.0;
+        float refLuma = (isHDR) ? max(max(trueMxRGB.r, trueMxRGB.g), trueMxRGB.b) : 1.0;
         float thresh = contrastLimit * refLuma;
         limitMask = smoothstep(thresh * 0.25, thresh, maxContrast);
     }
@@ -103,7 +101,7 @@ void main()
     vec3 outColor = mix(e, sharpened, limitMask);
 
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
-    vec3 encodedColor = encodeFromLinear(outColor);
+    vec3 encodedColor = encodeFromSpatial(outColor);
     vec3 finalColor = max(encodedColor, 0.0);
     fragColor = vec4(finalColor, inputColor.a);
 }
