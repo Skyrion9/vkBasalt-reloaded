@@ -254,8 +254,13 @@ void main() {
     float crossMaxWN = max(lB, lD);
     float crossMinWN = min(lB, lD);
     float crossRangeMax = max(crossMaxWN, crossMaxESM);
-    float crossRangeMin = min(crossMinWN, crossMinESM);
-    float crossRange = crossRangeMax - crossRangeMin;
+    float crossRange = 0.0;
+
+    if (enableAA == 1) {
+        float crossRangeMin = min(crossMinWN, crossMinESM);
+        crossRange = crossRangeMax - crossRangeMin;
+    }
+
     float fxaaThreshMin = fxaaEdgeThresholdMin * hdrNorm;
     float rangeMaxClamped = max(fxaaThreshMin, crossRangeMax * fxaaEdgeThreshold);
     bool earlyExit = crossRange < rangeMaxClamped;
@@ -298,17 +303,20 @@ void main() {
     float microTextureMask = smoothstep(0.25, 0.55, effectivePurity);
     bool isEdge = !earlyExit && (maxCombinedEdge > (fxaaEdgeThreshold * 0.5 * hdrNorm));
 
-    // phase 1.3: local saturation from source center pixel (moved from phase 7)
-    float localSaturation = max(max(e.r, e.g), e.b) - min(min(e.r, e.g), e.b);
+    // phase 1.3: local saturation from source center pixel
+    float localSaturation = 0.0;
+    if (qualityLevel <= 3) {
+        localSaturation = max(max(e.r, e.g), e.b) - min(min(e.r, e.g), e.b);
+    }
 
     // phase 1.4: shared values for source corrections
     float maxNeighborLuma = max(max(lB, lH), max(lD, lF));
-    float minNeighborLuma = min(min(lB, lH), min(lD, lF));
-    float neighborSpread = maxNeighborLuma - minNeighborLuma;
     vec3 crossAvgRGB = (b + d + f + h) * 0.25;
 
     // phase 1.5 Checkerboard correction and anti speckle
     if ((enableDespeckle == 1 || enableCheckerboardFix == 1) && qualityLevel <= 2) {
+        float minNeighborLuma = min(min(lB, lH), min(lD, lF));
+        float neighborSpread = maxNeighborLuma - minNeighborLuma;
 
         // Checkerboard transparency correction (structured alternating pattern)
         if (enableCheckerboardFix == 1) {
@@ -828,7 +836,10 @@ void main() {
             }
         }
 
-        float finalLuma = getLuma(finalColor);
+        float finalLuma = 0.0;
+        if (toneCurve != 0.0 || (enableFilmGrain == 1 && qualityLevel <= 3)) {
+            finalLuma = getLuma(finalColor);
+        }
 
         // phase 13: Filmic tone curve / highlight rolloff
         if (toneCurve != 0.0) {
