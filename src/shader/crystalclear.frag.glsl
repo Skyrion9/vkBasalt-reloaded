@@ -226,7 +226,7 @@ void main() {
 
     float crossAvg = (lB + lH + lD + lF) * 0.25;
 
-    // phase 1.1: min/max, local contrast, and band-pass mask (moved from phase 3)
+    // phase 1.1: min/max, local contrast, band-pass, macro edge choke mask
     vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
     vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
     vec3 trueMnRGB = mnRGB2;
@@ -245,8 +245,12 @@ void main() {
     float lowFreqFade = smoothstep(bpLow, bpLow + bpFadeIn, localContrast);
     float highFreqFade = 1.0 - smoothstep(bpHigh, bpHigh + bpFadeOut, localContrast);
     float bandPassMask = lowFreqFade * highFreqFade;
+    
+    // Choke on macro/silhoutte edges
+    float extremeContrastFade = 1.0 - smoothstep(0.8 * hdrNorm, 1.2 * hdrNorm, localContrast);
+    bandPassMask *= extremeContrastFade;
 
-    // phase 1.2: full edge detection, edge mask, and micro texture mask (moved from phase 4)
+    // phase 1.2: full edge detection, edge mask, and micro texture mask
     float crossMaxSM = max(lH, lE);
     float crossMinSM = min(lH, lE);
     float crossMaxESM = max(lF, crossMaxSM);
@@ -435,7 +439,7 @@ void main() {
         v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
     }
 
-    // phase 3: CAS math (min/max, localContrast, bandPassMask moved to phase 1.1)
+    // phase 3: CAS math
     vec3 ampRGB;
     if (isHDR) {
         ampRGB = clamp(mnRGB / max(mxRGB, 0.0001), 0.0, 1.0);
@@ -583,9 +587,13 @@ void main() {
         dot(bilateralDiff4(dDiag,  vec4(1.0), bilateralThreshLow, invThreshRange), vec4(1.0))
     ) * bilateralNorm;
 
-    // Step1 wide diffs vec4 packed
+    // Edge crossing gate: if a wide sample deviates significantly from the local crossaverage,
+    // it's likely on the other side of an edge. Suppress its contribution to prevent halos.
     vec4 dStep1 = lumaAA - vec4(h1_raw, h2_raw, v1_raw, v2_raw);
-    diff += dot(bilateralDiff4(dStep1, vec4(0.5), bilateralThreshLow, invThreshRange), vec4(1.0))
+    vec4 step1CrossDist = abs(vec4(h1_raw, h2_raw, v1_raw, v2_raw) - vec4(crossAvg));
+    vec4 step1EdgeGate = 1.0 - smoothstep(0.12 * hdrNorm, 0.35 * hdrNorm, step1CrossDist);
+    vec4 step1Weights = vec4(0.5) * step1EdgeGate;
+    diff += dot(bilateralDiff4(dStep1, step1Weights, bilateralThreshLow, invThreshRange), vec4(1.0))
         * bilateralNorm;
 
     // Step2 wide diffs (Perfect/Ultra only) vec4 packed
@@ -595,8 +603,13 @@ void main() {
         float vSpan = abs(v4_raw - v3_raw);
         float gradientCoherence = smoothstep(0.01 * hdrNorm, 0.06 * hdrNorm, max(hSpan, vSpan));
         vec4 dStep2 = lumaAA - vec4(h3_raw, h4_raw, v3_raw, v4_raw);
-        diff += dot(bilateralDiff4(dStep2, vec4(0.5), bilateralThreshLow, invThreshRange), vec4(1.0))
-              * 0.0625 * mix(1.0, gradientCoherence, guardStrength);
+        // Edge crossing gate for step2 (same principle as step1, wider thresholds since
+        // step2 samples are at 3x distance and naturally see more variation)
+        vec4 step2CrossDist = abs(vec4(h3_raw, h4_raw, v3_raw, v4_raw) - vec4(crossAvg));
+        vec4 step2EdgeGate = 1.0 - smoothstep(0.15 * hdrNorm, 0.45 * hdrNorm, step2CrossDist);
+        vec4 step2Weights = vec4(0.5) * step2EdgeGate;
+        diff += dot(bilateralDiff4(dStep2, step2Weights, bilateralThreshLow, invThreshRange), vec4(1.0))
+            * 0.0625 * (invGuard + guardStrength * gradientCoherence);
     }
 
     if (localContrastStrength > 0.0 && qualityLevel <= 1) {
