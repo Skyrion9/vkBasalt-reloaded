@@ -69,51 +69,51 @@
 
 layout(set = 0, binding = 0) uniform sampler2D img;
 
-layout(constant_id = 0) const float radius = 3.5;
+layout(constant_id = 0) const float radius = 2.5;
 layout(constant_id = 1) const float offset = 1.5;
-layout(constant_id = 2) const float clarityStrength = 1.0;
-layout(constant_id = 3) const int blendMode = 1;
-layout(constant_id = 4) const int blendIfDark = 40;
-layout(constant_id = 5) const int blendIfLight = 220;
+layout(constant_id = 2) const float clarityStrength = 5.0;
+layout(constant_id = 3) const int blendMode = 5;
+layout(constant_id = 4) const int blendIfDark = 8;
+layout(constant_id = 5) const int blendIfLight = 248;
 layout(constant_id = 6) const float casSharpness = 1.0;
-layout(constant_id = 7) const float casStrength = 2.0;
-layout(constant_id = 8) const float edgeThreshLow = 0.065;
-layout(constant_id = 9) const float edgeThreshHigh = 0.455;
+layout(constant_id = 7) const float casStrength = 3.0;
+layout(constant_id = 8) const float edgeThreshLow = 0.04;
+layout(constant_id = 9) const float edgeThreshHigh = 0.325;
 layout(constant_id = 10) const int enableDithering = 1;
 layout(constant_id = 11) const int enableAA = 0;
 layout(constant_id = 12) const int enableRGBEdgeDetection = 1;
-layout(constant_id = 13) const float fxaaEdgeThreshold = 0.0625;
+layout(constant_id = 13) const float fxaaEdgeThreshold = 0.05;
 layout(constant_id = 14) const float fxaaSubpixAmount = 1.0;
 layout(constant_id = 15) const float fxaaSearchScale = 1.0;
 layout(constant_id = 16) const float fxaaHardEdgeThreshold = 0.08;
-layout(constant_id = 17) const float clarityTextureProtection = 0.5;
+layout(constant_id = 17) const float clarityTextureProtection = 0.35;
 layout(constant_id = 18) const float fxaaEdgeThresholdMin = 0.0312;
 layout(constant_id = 19) const int fxaaOnlyMode = 0;
 layout(constant_id = 20) const int enableDebugAA = 0;
 layout(constant_id = 21) const int enableDebugCAS = 0;
 layout(constant_id = 22) const int enableDebugClarity = 0;
-layout(constant_id = 23) const int enableFilmGrain = 1;
-layout(constant_id = 24) const float filmGrainStrength = 1.5;
-layout(constant_id = 25) const float filmGrainMinimum = 0.4;
+layout(constant_id = 23) const int enableFilmGrain = 0;
+layout(constant_id = 24) const float filmGrainStrength = 1.0;
+layout(constant_id = 25) const float filmGrainMinimum = 0.0;
 layout(constant_id = 26) const int enableDebugGrain = 0;
-layout(constant_id = 27) const float fineGrainWeight = 0.6;
-layout(constant_id = 28) const float coarseGrainWeight = 0.4;
-layout(constant_id = 30) const float guardStrength = 0.6;
-layout(constant_id = 31) const float bandPassWidth = 1.04;
-layout(constant_id = 32) const float extremeProtection = 0.5;
-layout(constant_id = 33) const float shimmerReduction = 0.5;
-layout(constant_id = 34) const float vibrance = 0.0;              // -1.0 to 1.0
+layout(constant_id = 27) const float fineGrainWeight = 0.4;
+layout(constant_id = 28) const float coarseGrainWeight = 0.8;
+layout(constant_id = 30) const float guardStrength = 0.5;
+layout(constant_id = 31) const float bandPassWidth = 1.105;
+layout(constant_id = 32) const float extremeProtection = 0.4;
+layout(constant_id = 33) const float shimmerReduction = 0.4;
+layout(constant_id = 34) const float vibrance = 0.3;              // -1.0 to 1.0
 layout(constant_id = 35) const int enableDeband = 0;
 layout(constant_id = 36) const float debandStrength = 0.5;
 layout(constant_id = 37) const float toneCurve = 0.0;             // filmic highlight rolloff, 0.0 = off
-layout(constant_id = 38) const int enableChromaSmooth = 0;
-layout(constant_id = 39) const float chromaSmoothStrength = 0.5;
+layout(constant_id = 38) const int enableChromaSmooth = 1;
+layout(constant_id = 39) const float chromaSmoothStrength = 0.4;
 layout(constant_id = 40) const float specularDesat = 0.0;         // 0.0 = off, 0.4 = subtle, 1.0 = max
-layout(constant_id = 41) const float localContrastStrength = 0.0; // Clarity local contrast knob
-layout(constant_id = 42) const int enableDespeckle = 0;
+layout(constant_id = 41) const float localContrastStrength = 2.0; // Clarity local contrast knob
+layout(constant_id = 42) const int enableDespeckle = 1;
 layout(constant_id = 43) const float despeckleThreshold = 0.15;
 layout(constant_id = 44) const int enableFringeFix = 0;
-layout(constant_id = 45) const float fringeStrength = 0.5;
+layout(constant_id = 45) const float fringeStrength = 0.4;
 layout(constant_id = 46) const float saturation = 0.0;            // -1.0 (grayscale) to 1.0 (double), 0.0 = off
 layout(constant_id = 47) const int enableCDL = 0;
 layout(constant_id = 48) const float cdlSlopeR = 1.0;
@@ -140,12 +140,12 @@ layout(constant_id = 68) const float blackLift = 0.0;              // 0.0 to 0.5
 layout(constant_id = 69) const float whiteClip = 0.0;              // 0.0 to 0.5, lowers white ceiling
 layout(constant_id = 70) const int enableCheckerboardFix = 0;      // removes checker board transparency effect used for camera obstruction
 layout(constant_id = 71) const float checkerboardStrength = 0.5;
-layout(constant_id = 72) const int qualityLevel = 0;               // 0=Perfect, 1=Ultra, 2=High, 3=Medium, 4=iGPU
-layout(constant_id = 73) const int enableBC1Fix = 0;               // BC1/DXT1 green/magenta artifact suppression
+layout(constant_id = 72) const int qualityLevel = 1;               // 0=Perfect, 1=Ultra, 2=High, 3=Medium, 4=iGPU
+layout(constant_id = 73) const int enableBC1Fix = 1;               // BC1/DXT1 green/magenta artifact suppression
 layout(constant_id = 74) const float bc1FixStrength = 0.3;         // 0.0 = off, 1.0 = maximum correction
 layout(constant_id = 75) const float exposure = 0.0;               // -2.0 to 2.0 stops
 layout(constant_id = 76) const float brightness = 0.0;             // -0.5 to 0.5 additive lift
-layout(constant_id = 77) const float contrast = 0.0;               // -1.0 to 1.0 linear scale
+layout(constant_id = 77) const float contrast = 0.2;               // -1.0 to 1.0 linear scale
 
 // push constants for spatial geometry data
 layout(push_constant) uniform PushConstants {
