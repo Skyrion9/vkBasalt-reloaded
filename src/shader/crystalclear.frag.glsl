@@ -929,10 +929,10 @@ void main() {
             float edgeFade = 1.0 - smoothstep(0.0, rangeMaxClamped * 0.8, maxCombinedEdge);
 
             float clarityDelta = abs(sharpLuma - neutralLumaAA);
-            float casDelta = length(casDeltaFinal);
+            float casDelta = max(abs(casDeltaFinal.r), max(abs(casDeltaFinal.g), abs(casDeltaFinal.b)));
             float sharpeningIntensity = max(clarityDelta, casDelta);
 
-            float sharpeningFade = 1.0 - smoothstep(0.2 * hdrNorm, 0.8 * hdrNorm, sharpeningIntensity);
+            float sharpeningFade = 1.0 - smoothstep(0.12 * hdrNorm, 0.46 * hdrNorm, sharpeningIntensity);
 
             perceptualMask = hvsLumaWeight * spatialGrain * edgeFade * sharpeningFade;
 
