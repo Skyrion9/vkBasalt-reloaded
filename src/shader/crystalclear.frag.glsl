@@ -740,23 +740,28 @@ void main() {
             }
         }
 
-        // phase 10.2: Contrast (S-curve based). Applied to luma only, then chroma is scaled proportionally to preserve hue. 
+        // phase 10.2: Contrast (S-curve based). Apply S-curve to luma only (hue preserving), then crush chroma toward neutral gray
+        // in deep shadows. This hides CAS/Clarity color bleed on dark silhouettes while preserving perfect hue on midtones and highlights.
         if (contrast != 0.0) {
             vec3 t = finalColor / hdrNorm;
             float lumaT = getNeutralLuma(t);
-            float shapedLuma = lumaT;
             float inRange = step(0.0, lumaT) * step(lumaT, 1.0);
-            if (contrast > 0.0) {
-                // S-curve: smoothstep's hermite polynomial (3t² - 2t³) preserves extremes
-                float sCurve = smoothstep(0.0, 1.0, lumaT);
-                shapedLuma = mix(shapedLuma, mix(shapedLuma, sCurve, contrast), inRange);
-            } else {
-                // Negative contrast: blend toward neutral gray (flatten image)
-                shapedLuma = mix(shapedLuma, 0.5, -contrast * inRange);
-            }
-            // Scale all channels by the luma ratio to preserve chromaticity
-            float lumaRatio = shapedLuma / max(lumaT, 0.0001);
-            finalColor = max(t * lumaRatio, 0.0) * hdrNorm;
+            
+            // Apply S-curve to luma only (to preserve hue)
+            float sCurveLuma = smoothstep(0.0, 1.0, lumaT);
+            float shapedLuma = mix(lumaT, sCurveLuma, contrast * inRange);
+            
+            // Shadow chroma crush: 0 at black (pure gray), 1 at midtones (preserve color), modeling real world shadow desaturation and hides color bleed.
+            // Threshold 0.08 = bottom 8% of luminance range (where CAS bleed is visible).
+            float crushFactor = smoothstep(0.0, 0.08, lumaT);
+            
+            // Luma-scaled color (to preserve hue)
+            vec3 lumaScaled = t * (shapedLuma / max(lumaT, 0.0001));
+            
+            // Blend: pure gray in deep shadows, hue-preserved in midtones/highlights
+            vec3 shaped = mix(vec3(shapedLuma), lumaScaled, crushFactor);
+            
+            finalColor = max(shaped, 0.0) * hdrNorm;
         }
 
         // phase 10.4: Gamma / B/W tone response shaping. HDR aware.
