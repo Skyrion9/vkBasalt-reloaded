@@ -313,7 +313,9 @@ void main() {
     float maxNeighborLuma = max(max(lB, lH), max(lD, lF));
     vec3 crossAvgRGB = (b + d + f + h) * 0.25;
 
-    // phase 1.5 Checkerboard correction and anti speckle
+    // Precomputed for all guard masks: mix(1.0, X, guardStrength) == invGuard + guardStrength * X
+    float invGuard = 1.0 - guardStrength;
+
     if ((enableDespeckle == 1 || enableCheckerboardFix == 1) && qualityLevel <= 2) {
         float minNeighborLuma = min(min(lB, lH), min(lD, lF));
         float neighborSpread = maxNeighborLuma - minNeighborLuma;
@@ -455,12 +457,13 @@ void main() {
         float gradMagSq = sobelX * sobelX + sobelY * sobelY;
         float edgeThresholdSq = 0.04;
         float isDirectional = smoothstep(edgeThresholdSq, edgeThresholdSq * 4.0, gradMagSq);
-        oilinessGate = mix(1.0, isDirectional, guardStrength);
+        oilinessGate = invGuard + guardStrength * isDirectional;
     }
 
     // phase 5: FXAA Preset 39 and some extras.
     vec3 aaColor = e;
-
+    float lumaAA = lE;
+    float neutralLumaAA = getNeutralLuma(e);
     if (isEdge && enableAA == 1) {
         bool isHorizontal = edgeH > edgeV;
 
@@ -555,11 +558,11 @@ void main() {
         vec2 finalUV = posM + finalShift * perpOffset;
 
         aaColor = decodeToSpatial(textureLod(img, finalUV, 0.0).rgb);
+        lumaAA = getLuma(aaColor);
+        neutralLumaAA = getNeutralLuma(aaColor);
     }
 
-    // phase 6: clarity bilateral deltas and weights with 3x3 anchor
-    // Perceptual luma: sharpening context
-    float lumaAA = getLuma(aaColor);
+    // phase 6: clarity bilateral deltas and weights with 3x3 anchor, Perceptual luma: sharpening context. Only recompute if FXAA modified aaColor.
 
     float bilateralThreshLow = edgeThreshLow * hdrNorm;
     float bilateralThreshHighBase = edgeThreshHigh * hdrNorm;
@@ -615,14 +618,14 @@ void main() {
     }
 
     // phase 7: clarity gates and s-curve with saturation and edge guards
-    diff *= mix(1.0, bandPassMask, guardStrength);
-    diff *= mix(1.0, mix(1.0 - clarityTextureProtection, 1.0, microTextureMask), guardStrength);
-    diff *= mix(1.0, edgeMask, guardStrength);
+    diff *= invGuard + guardStrength * bandPassMask;
+    diff *= invGuard + guardStrength * mix(1.0 - clarityTextureProtection, 1.0, microTextureMask);
+    diff *= invGuard + guardStrength * edgeMask;
 
     // localSaturation already computed in phase 1.3 from source center pixel
     if (qualityLevel <= 3) {
         float saturationGuard = 1.0 - smoothstep(0.4 * hdrNorm, 0.9 * hdrNorm, localSaturation);
-        diff *= mix(1.0, saturationGuard, guardStrength);
+        diff *= invGuard + guardStrength * saturationGuard;
     }
 
     float adjustedGuard = 1.0;
@@ -633,7 +636,7 @@ void main() {
         float brightnessContrast = maxNeighborLuma - lumaAA;    
         float edgeProximityGuard = 1.0 - smoothstep(0.0, 0.15 * hdrNorm, brightnessContrast);
         float combinedGuard = min(darkSmearGuard, edgeProximityGuard);
-        adjustedGuard = mix(1.0, combinedGuard, guardStrength);
+        adjustedGuard = invGuard + guardStrength * combinedGuard;
     }
 
     // Only apply positive bilateral boosts to directional detail. Darkening remains for shadow definition.
@@ -645,7 +648,7 @@ void main() {
         float silLow  = 0.005 * lE;
         float silHigh = 0.05  * lE;
         silhouetteGate = smoothstep(silLow, silHigh, minCrossLuma);
-        diff *= mix(1.0, silhouetteGate, guardStrength);
+        diff *= invGuard + guardStrength * silhouetteGate;
     }
 
     // Extreme protection: At 0: no penalty at brightness extremes (sharpen everything equally).
@@ -665,8 +668,6 @@ void main() {
     diff = clamp(diff, -maxDiffClamp, maxDiffClamp);
 
     float blendMask = clamp(0.5 + diff / hdrNorm, 0.0, 1.0);
-    // NEUTRAL luma for blend modes: preserves hue during saturation scaling
-    float neutralLumaAA = getNeutralLuma(aaColor);
     float sharpLuma = applyBlendMode(neutralLumaAA, blendMask, hdrNorm);
 
     if (blendIfDark > 0 || blendIfLight < 255) {
@@ -697,8 +698,6 @@ void main() {
 
         float chromaNoise = (localContrast < 0.3 * hdrNorm) ? max(0.0, maxChromaRange - localContrast) : 0.0;
         float chromaPenalty = smoothstep(0.05 * hdrNorm, 0.2 * hdrNorm, chromaNoise);
-
-        float invGuard = 1.0 - guardStrength;
         
         // Compute the scalar attenuation mask first (guarantees scalar ALU, not vector)
         float casMask = (1.0 - chromaPenalty * 0.8 * guardStrength)
