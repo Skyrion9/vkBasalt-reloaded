@@ -172,11 +172,6 @@ float getNeutralLuma(vec3 rgb) {
 }
 
 // invThreshRange = 1.0 / (threshHigh - threshLow), precomputed once per pixel to avoid 16 divisions inside smoothstep. Manual smoothstep expansion.
-float bilateralDiff(float d, float weight, float threshLow, float invThreshRange) {
-    float t = clamp((abs(d) - threshLow) * invThreshRange, 0.0, 1.0);
-    return d * (1.0 - t * t * (3.0 - 2.0 * t)) * weight;
-}
-
 vec4 bilateralDiff4(vec4 d, vec4 weights, float threshLow, float invThreshRange) {
     vec4 t = clamp((abs(d) - threshLow) * invThreshRange, 0.0, 1.0);
     return d * (1.0 - t * t * (3.0 - 2.0 * t)) * weights;
@@ -211,6 +206,7 @@ void main() {
     // HDR adaptation luminance: reference level for relative threshold scaling. SDR -> 1.0 (no-op). HDR -> tracks local luminance.
     // Floor avoids division blowup in shadows; ceiling avoids absurd thresholds in extreme highlights.
     float hdrNorm = (isHDR) ? clamp(lE, 0.18, 16.0) : 1.0;
+    float hdrNormCapped = min(hdrNorm, 1.0); // SDR=1.0, HDR=caps at SDR white
 
     // phase 1: shared 3x3 grid fetch
     vec3 a = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
@@ -274,8 +270,8 @@ void main() {
     float edgeVert2 = (-2.0 * lB) + (lA + lC);
     float edgeHorz3 = (-2.0 * lD) + (lA + lG);
     float edgeVert3 = (-2.0 * lH) + (lG + lI);
-    float edgeHorz4 = (abs(edgeHorz1) * 2.0) + abs(edgeHorz2);
-    float edgeVert4 = (abs(edgeVert1) * 2.0) + abs(edgeVert2);
+    float edgeHorz4 = pureLumaEdgeH * 2.0 + abs(edgeHorz2);
+    float edgeVert4 = pureLumaEdgeV * 2.0 + abs(edgeVert2);
     float edgeH = abs(edgeHorz3) + edgeHorz4;
     float edgeV = abs(edgeVert3) + edgeVert4;
     vec3 edgeH_rgb = vec3(0.0);
@@ -295,8 +291,9 @@ void main() {
     float maxCombinedEdge = max(maxOrthoEdge, maxDiag);
     float edgeMask = 1.0 - smoothstep(rangeMaxClamped, rangeMaxClamped * 2.0, maxCombinedEdge);
     float isDiagonalEdge = smoothstep(0.6, 0.85, lumaDiagRatio);
-    float totalEdgeEnergy = edgeH + edgeV + lumaEdgeD1 + lumaEdgeD2;
-    float directionalPurity = maxCombinedEdge / max(totalEdgeEnergy, 0.0001);
+    float edgeTotal = edgeH + edgeV;
+    float totalEdgeEnergy = edgeTotal + lumaEdgeD1 + lumaEdgeD2;
+    float directionalPurity = maxCombinedEdge * (1.0 / max(totalEdgeEnergy, 0.0001));
     float effectivePurity = max(directionalPurity, isDiagonalEdge);
     float microTextureMask = smoothstep(0.25, 0.55, effectivePurity);
     bool isEdge = !earlyExit && (maxCombinedEdge > (fxaaEdgeThreshold * 0.5 * hdrNorm));
@@ -349,8 +346,7 @@ void main() {
             // Bias disagreement: BC1 artifacts cause the center pixel's green bias to
             // differ from its neighbors. Intentional color has uniform bias across the area.
             float centerBias = e.g - (e.r + e.b) * 0.5;
-            float neighborBias = ((b.g + d.g + f.g + h.g)
-                - (b.r + d.r + f.r + h.r + b.b + d.b + f.b + h.b) * 0.5) * 0.25;
+            float neighborBias = crossAvgRGB.g - (crossAvgRGB.r + crossAvgRGB.b) * 0.5;
             float biasDiff = abs(centerBias - neighborBias);
             float bc1ArtifactMask = smoothstep(0.003 * hdrNorm, 0.015 * hdrNorm, biasDiff);
 
@@ -460,7 +456,7 @@ void main() {
     if (isEdge && enableAA == 1) {
         bool isHorizontal = edgeH > edgeV;
 
-        float subpixNSWE = lB + lH + lD + lF;
+        float subpixNSWE = crossAvg * 4.0;
         float subpixNWSWNESE = lA + lC + lG + lI;
         float subpixA = subpixNSWE * 2.0 + subpixNWSWNESE;
         float subpixB = subpixA * 0.08333333 - lE;
@@ -504,7 +500,7 @@ void main() {
         bool doneN = abs(lumaEndN) >= gradientScaled;
         bool doneP = abs(lumaEndP) >= gradientScaled;
 
-        float steps[11] = float[](1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0);
+        const float steps[11] = float[](1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0);
 
         for(int j = 0; j < 11; j++) {
             if (doneN && doneP) break;
@@ -565,18 +561,21 @@ void main() {
 
     float invThreshRange = 1.0 / max(dynamicThreshHigh - bilateralThreshLow, 0.0001);
 
+    // Normalization: weight sum = 14 (3x3 + step1) for quality >= 2, 16 (3x3 + step1 + step2) for quality <= 1
+    float bilateralNorm = (qualityLevel >= 2) ? 0.0714 : 0.0625;
+
     // 3x3 grid diffs (always active, weight sum = 12) vec4 packed for SIMD efficiency
     vec4 dCross = lumaAA - vec4(lB, lD, lF, lH);
     vec4 dDiag  = lumaAA - vec4(lA, lC, lG, lI);
     float diff = (
         dot(bilateralDiff4(dCross, vec4(2.0), bilateralThreshLow, invThreshRange), vec4(1.0)) +
         dot(bilateralDiff4(dDiag,  vec4(1.0), bilateralThreshLow, invThreshRange), vec4(1.0))
-    ) * (qualityLevel >= 2 ? 0.0714 : 0.0625);
+    ) * bilateralNorm;
 
     // Step1 wide diffs vec4 packed
     vec4 dStep1 = lumaAA - vec4(h1_raw, h2_raw, v1_raw, v2_raw);
     diff += dot(bilateralDiff4(dStep1, vec4(0.5), bilateralThreshLow, invThreshRange), vec4(1.0))
-          * (qualityLevel >= 2 ? 0.0714 : 0.0625);
+        * bilateralNorm;
 
     // Step2 wide diffs (Perfect/Ultra only) vec4 packed
     if (qualityLevel <= 1) {
@@ -879,10 +878,9 @@ void main() {
             float flatMask = 1.0 - smoothstep(0.004 * hdrNorm, 0.025 * hdrNorm, localContrast);
             float debandMask = flatMask * edgeMask;
             // Direction aware debanding, when one edge axis dominates, boost amplitude we know where bands run. In ambiguity back off.
-            float edgeTotal  = edgeH + edgeV;
             float dirClarity = max(edgeH, edgeV) / max(edgeTotal, 0.0001);
             // Amplitude sized near a quantization step to effectively break bands, deband step is calibrated for 8-bit SDR quantization. Cap at SDR white to prevent massive noise in HDR highlights.
-            finalColor += vec3(noise) * debandMask * debandStrength * 0.004 * min(hdrNorm, 1.0) * mix(0.7, 1.3, dirClarity);
+            finalColor += vec3(noise) * debandMask * debandStrength * 0.004 * hdrNormCapped * mix(0.7, 1.3, dirClarity);
         }
 
         // phase 16: perceptual film grain
@@ -912,7 +910,7 @@ void main() {
 
             float finalMask = max(perceptualMask, filmGrainMinimum * hvsLumaWeight);
 
-            float grain = noise * finalMask * filmGrainStrength * 0.06 * min(hdrNorm, 1.0);
+            float grain = noise * finalMask * filmGrainStrength * 0.06 * hdrNormCapped;
             finalColor += vec3(grain);
             finalGrainIntensity = abs(grain);
         }
@@ -921,7 +919,7 @@ void main() {
         if (enableDithering == 1) {
             float flatBoost = 1.0 - smoothstep(0.01 * hdrNorm, 0.08 * hdrNorm, localContrast);
             float ditherScale = (isHDR) ? 0.15 : 1.0;
-            float ditherAmp = 0.0019607843 * min(hdrNorm, 1.0) * mix(0.6, 1.6, flatBoost) * ditherScale;
+            float ditherAmp = 0.0019607843 * hdrNormCapped * mix(0.6, 1.6, flatBoost) * ditherScale;
 
             if (enableFilmGrain == 1) {
                 float grainAmplitude = finalGrainIntensity;
