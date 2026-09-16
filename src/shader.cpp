@@ -1,11 +1,13 @@
 #include "shader.hpp"
-#include "logical_device.hpp"
-#include "vulkan_include.hpp"
 
 #include <cstdint>
 #include <cstring>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+
+#include "logical_device.hpp"
+#include "vulkan_include.hpp"
+#include "shader_decompress.hpp"
 
 namespace vkBasalt
 {
@@ -41,6 +43,25 @@ namespace vkBasalt
         shaderCreateInfo.flags    = 0;
         shaderCreateInfo.codeSize = code.size() * sizeof(uint32_t);
         shaderCreateInfo.pCode    = code.data();
+
+        VkResult result = pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
+        ASSERT_VULKAN(result);
+    }
+
+    void createShaderModule(LogicalDevice* pLogicalDevice, const CompressedShader& shader, VkShaderModule* shaderModule)
+    {
+        const auto& spirv = decompressShaderCached(shader);
+        if (spirv.empty()) {
+            *shaderModule = VK_NULL_HANDLE;
+            return;
+        }
+
+        VkShaderModuleCreateInfo shaderCreateInfo;
+        shaderCreateInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        shaderCreateInfo.pNext    = nullptr;
+        shaderCreateInfo.flags    = 0;
+        shaderCreateInfo.codeSize = spirv.size() * sizeof(uint32_t);
+        shaderCreateInfo.pCode    = spirv.data();
 
         VkResult result = pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
         ASSERT_VULKAN(result);
