@@ -18,10 +18,10 @@
 #include "logical_device.hpp"
 #include "image.hpp"
 #include "lut_cube.hpp"
-
 #include "format.hpp"
 #include "shader_sources.hpp"
 #include "logger.hpp"
+
 
 namespace vkBasalt
 {
@@ -33,8 +33,8 @@ namespace vkBasalt
                          Config*              pConfig,
                          VkColorSpaceKHR      colorSpace)
     {
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = lut_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(lut_frag);
         this->pushConstantSize = 0;
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);

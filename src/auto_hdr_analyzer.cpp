@@ -188,12 +188,14 @@ namespace vkBasalt {
 
         // 8. Shader Modules
         VkShaderModuleCreateInfo smInfo = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-        smInfo.codeSize = auto_hdr_accumulate_comp.size() * sizeof(uint32_t);
-        smInfo.pCode = auto_hdr_accumulate_comp.data();
+        const auto& accumulateSpirv = decompressShaderCached(auto_hdr_accumulate_comp);
+        smInfo.codeSize = accumulateSpirv.size() * sizeof(uint32_t);
+        smInfo.pCode = accumulateSpirv.data();
         pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &smInfo, nullptr, &m_accumulateModule);
 
-        smInfo.codeSize = auto_hdr_reduce_comp.size() * sizeof(uint32_t);
-        smInfo.pCode = auto_hdr_reduce_comp.data();
+        const auto& reduceSpirv = decompressShaderCached(auto_hdr_reduce_comp);
+        smInfo.codeSize = reduceSpirv.size() * sizeof(uint32_t);
+        smInfo.pCode = reduceSpirv.data();
         pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &smInfo, nullptr, &m_reduceModule);
 
         // 9. Pipeline Layouts & Pipelines

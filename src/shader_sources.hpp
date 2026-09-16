@@ -1,100 +1,29 @@
 #pragma once
+#include "shader_decompress.hpp"
 
-#include <vector>
-#include <cstdint>
 
-namespace vkBasalt
-{
-    const std::vector<uint32_t> cas_frag = {
-#include "cas.frag.h"
-    };
-
-    const std::vector<uint32_t> clarity_frag = {
-#include "clarity.frag.h"
-    };
-
-    const std::vector<uint32_t> clarityrcas_frag = {
-#include "clarityrcas.frag.h"
-    };
-
-    const std::vector<uint32_t> crystalclear_frag = {
-#include "crystalclear.frag.h"
-    };
-
-    const std::vector<uint32_t> deband_frag = {
-#include "deband.frag.h"
-    };
-
-    const std::vector<uint32_t> dls_frag = {
-#include "dls.frag.h"
-    };
-
-    const std::vector<uint32_t> full_screen_triangle_vert = {
-#include "full_screen_triangle.vert.h"
-    };
-
-    const std::vector<uint32_t> fxaa_frag = {
-#include "fxaa.frag.h"
-    };
-
-    const std::vector<uint32_t> lut_frag = {
-#include "lut.frag.h"
-    };
-
-    const std::vector<uint32_t> smaa_blend_frag = {
-#include "smaa_blend.frag.h"
-    };
-
-    const std::vector<uint32_t> smaa_blend_vert = {
-#include "smaa_blend.vert.h"
-    };
-
-    const std::vector<uint32_t> smaa_edge_color_frag = {
-#include "smaa_edge_color.frag.h"
-    };
-
-    const std::vector<uint32_t> smaa_edge_luma_frag = {
-#include "smaa_edge_luma.frag.h"
-    };
-
-    const std::vector<uint32_t> smaa_edge_vert = {
-#include "smaa_edge.vert.h"
-    };
-
-    const std::vector<uint32_t> smaa_neighbor_frag = {
-#include "smaa_neighbor.frag.h"
-    };
-
-    const std::vector<uint32_t> smaa_neighbor_vert = {
-#include "smaa_neighbor.vert.h"
-    };
-
-    const std::vector<uint32_t> compute_test_comp = {
-#include "compute_test.comp.h"
-    };
-
-    const std::vector<uint32_t> frame_accumulate_comp = {
-#include "frame_accumulate.comp.h"
-    };
-
-    const std::vector<uint32_t> frame_resolve_comp = {
-#include "frame_resolve.comp.h"
-    };
-
-    const std::vector<uint32_t> nit_calibration_frag = {
-#include "nit_calibration.frag.h"
-    };
-
-    const std::vector<uint32_t> auto_hdr_accumulate_comp = {
-#include "auto_hdr_accumulate.comp.h"
-    };
-
-    const std::vector<uint32_t> auto_hdr_reduce_comp = {
-#include "auto_hdr_reduce.comp.h"
-    };
-
-    const std::vector<uint32_t> hdr_debug_pattern_comp = { 
-#include "hdr_debug_pattern.comp.h" 
-    };
-
+namespace vkBasalt {
+    extern const CompressedShader cas_frag;
+    extern const CompressedShader clarity_frag;
+    extern const CompressedShader clarityrcas_frag;
+    extern const CompressedShader crystalclear_frag;
+    extern const CompressedShader deband_frag;
+    extern const CompressedShader dls_frag;
+    extern const CompressedShader full_screen_triangle_vert;
+    extern const CompressedShader fxaa_frag;
+    extern const CompressedShader lut_frag;
+    extern const CompressedShader smaa_blend_frag;
+    extern const CompressedShader smaa_blend_vert;
+    extern const CompressedShader smaa_edge_color_frag;
+    extern const CompressedShader smaa_edge_luma_frag;
+    extern const CompressedShader smaa_edge_vert;
+    extern const CompressedShader smaa_neighbor_frag;
+    extern const CompressedShader smaa_neighbor_vert;
+    extern const CompressedShader compute_test_comp;
+    extern const CompressedShader frame_accumulate_comp;
+    extern const CompressedShader frame_resolve_comp;
+    extern const CompressedShader nit_calibration_frag;
+    extern const CompressedShader auto_hdr_accumulate_comp;
+    extern const CompressedShader auto_hdr_reduce_comp;
+    extern const CompressedShader hdr_debug_pattern_comp;
 } // namespace vkBasalt

@@ -57,8 +57,8 @@ namespace vkBasalt
                                                bool autoHdrActive,
                                                const std::string& monitorName) {
         Logger::debug("Creating HDR Output Effect");
-        vertexCode = full_screen_triangle_vert;
-        fragmentCode = nit_calibration_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(nit_calibration_frag);
         
         m_pConfigRef = pConfig;
         m_autoHdrActive = autoHdrActive;

@@ -16,6 +16,7 @@
 #include "format.hpp"
 #include "shader_sources.hpp"
 
+
 namespace vkBasalt
 {
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(DebandSpecData, field), .specSize = sizeof(((DebandSpecData*)0)->field)
@@ -28,8 +29,8 @@ namespace vkBasalt
                                Config*              pConfig,
                                VkColorSpaceKHR      colorSpace)
     {
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = deband_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(deband_frag);
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 

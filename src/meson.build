@@ -62,6 +62,8 @@ vkBasalt_src = [
     'shader.cpp',
     'screenshot.cpp',
     'color_math.cpp',
+    'shader_decompress.cpp',
+    'shader_sources.cpp',
     'stb_image.c',
     'stb_image_resize.c',
     'stb_image_write.c',
@@ -135,10 +137,11 @@ keyboard_input_x11_lib = static_library('keyboard_input_x11',
 )
 
 shared_library(meson.project_name().to_lower(), 
-    vkBasalt_src, shader_include,
+    vkBasalt_src, shader_include, texture_data_cpp,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
-    dependencies : [x11_dep, xrandr_dep, reshade_dep, wayland_client_dep, xkbcommon_dep, imgui_dep, vulkan_dep, tinyexr_dep],
+    dependencies : [x11_dep, xrandr_dep, reshade_dep, wayland_client_dep, xkbcommon_dep,
+                    imgui_dep, vulkan_dep, tinyexr_dep, zstd_dep],
     gnu_symbol_visibility: 'hidden',
     install : true,
     install_dir : lib_dir)

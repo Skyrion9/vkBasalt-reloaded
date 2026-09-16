@@ -7,6 +7,7 @@
 #include "logger.hpp"
 #include "shader_sources.hpp"
 
+
 namespace vkBasalt
 {
     FrameAnalyzer::FrameAnalyzer(LogicalDevice* pDevice, VkExtent2D extent,
@@ -148,8 +149,9 @@ namespace vkBasalt
             smInfo.pCode = code.data();
             vkd.CreateShaderModule(dev, &smInfo, nullptr, &mod);
         };
-        createModule(frame_accumulate_comp, m_accumShader);
-        createModule(frame_resolve_comp,    m_resolveShader);
+
+        createModule(decompressShaderCached(frame_accumulate_comp), m_accumShader);
+        createModule(decompressShaderCached(frame_resolve_comp), m_resolveShader);
 
         // Pipelines
         struct SpecData { int32_t colorSpaceMode; };

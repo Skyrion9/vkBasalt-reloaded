@@ -1,4 +1,5 @@
 #include "effect_cas.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -6,11 +7,13 @@
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+
 #include "config.hpp"
 #include "effect.hpp"
 #include "logical_device.hpp"
 #include "format.hpp"
 #include "shader_sources.hpp"
+
 
 namespace vkBasalt
 {
@@ -25,8 +28,8 @@ namespace vkBasalt
                          Config*              pConfig,
                          VkColorSpaceKHR      colorSpace)
     {
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = cas_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(cas_frag);
         this->pushConstantSize = 0;
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);

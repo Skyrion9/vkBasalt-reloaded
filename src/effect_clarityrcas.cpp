@@ -19,6 +19,7 @@
 #include "format.hpp"
 #include "shader_sources.hpp"
 
+
 namespace vkBasalt
 {
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClarityRcasSpecData, field), .specSize = sizeof(((ClarityRcasSpecData*)0)->field)
@@ -32,8 +33,8 @@ namespace vkBasalt
                                          VkColorSpaceKHR      colorSpace)
     {
         Logger::debug("in creating ClarityRcasEffect");
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = clarityrcas_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(clarityrcas_frag);
         this->pushConstantSize = sizeof(ClarityRcasPushConstants);
         needsUniformBuffer = true;
         uniformSize = sizeof(FrameData);

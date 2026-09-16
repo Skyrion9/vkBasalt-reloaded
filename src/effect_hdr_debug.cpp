@@ -1,8 +1,11 @@
 #include "effect_hdr_debug.hpp"
+
+#include <cstring>
+
 #include "shader_sources.hpp"
 #include "logger.hpp"
 #include "image_view.hpp"
-#include <cstring>
+
 
 namespace vkBasalt {
     std::atomic<bool> g_hdrDebugToolActive{false};
@@ -87,8 +90,9 @@ namespace vkBasalt {
         // Create compute pipeline
         VkShaderModuleCreateInfo smInfo = {};
         smInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        smInfo.codeSize = hdr_debug_pattern_comp.size() * sizeof(uint32_t);
-        smInfo.pCode = hdr_debug_pattern_comp.data();
+        const auto& spirv = decompressShaderCached(hdr_debug_pattern_comp);
+        smInfo.codeSize = spirv.size() * sizeof(uint32_t);
+        smInfo.pCode = spirv.data();
         
         VkShaderModule shaderModule;
         m_dev->vkd.CreateShaderModule(m_dev->device, &smInfo, nullptr, &shaderModule);

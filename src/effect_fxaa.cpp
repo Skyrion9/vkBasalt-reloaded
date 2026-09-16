@@ -15,6 +15,7 @@
 #include "format.hpp"
 #include "shader_sources.hpp"
 
+
 namespace vkBasalt
 {
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(FxaaSpecData, field), .specSize = sizeof(((FxaaSpecData*)0)->field)
@@ -27,8 +28,8 @@ namespace vkBasalt
                            Config*              pConfig,
                            VkColorSpaceKHR      colorSpace)
     {
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = fxaa_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(fxaa_frag);
 
         // Prevent the pipeline layout from allocating a push constant range, tells SimpleEffect::applyEffect to skip the CmdPushConstants API call.
         this->pushConstantSize = 0;

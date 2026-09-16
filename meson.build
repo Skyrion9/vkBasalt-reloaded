@@ -13,6 +13,8 @@ project('vkBasalt', ['c', 'cpp'],
 cpp = meson.get_compiler('cpp')
 c = meson.get_compiler('c')
 imgui_dep = dependency('imgui')
+zstd_dep = dependency('libzstd', fallback: ['zstd', 'libzstd_dep'])
+zstd_cli = find_program('zstd')
 
 # Shared library hardening + performance flags
 cpp_args_common = cpp.get_supported_arguments([

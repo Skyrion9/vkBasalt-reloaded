@@ -18,6 +18,7 @@
 #include "format.hpp"
 #include "shader_sources.hpp"
 
+
 namespace vkBasalt
 {
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClaritySpecData, field), .specSize = sizeof(((ClaritySpecData*)0)->field)
@@ -30,8 +31,8 @@ namespace vkBasalt
                                  VkColorSpaceKHR      colorSpace)
     {
         Logger::debug("in creating ClarityEffect");
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = clarity_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(clarity_frag);
         this->pushConstantSize = sizeof(ClarityPushConstants);
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);

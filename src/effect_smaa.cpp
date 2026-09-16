@@ -1,4 +1,5 @@
 #include "effect_smaa.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -8,8 +9,9 @@
 #include <vector>
 
 #include <vulkan/vulkan_core.h>
-#include "shader/AreaTex.h"
-#include "shader/SearchTex.h"
+
+#include "texture_data.hpp"
+#include "shader_decompress.hpp"
 
 #include "config.hpp"
 #include "effect.hpp"
@@ -26,6 +28,7 @@
 #include "util.hpp"
 #include "shader_sources.hpp"
 #include "format.hpp"
+
 
 namespace vkBasalt
 {
@@ -72,18 +75,26 @@ namespace vkBasalt
         sampler = createSampler(pLogicalDevice);
         Logger::debug("created sampler");
 
-        VkExtent3D areaImageExtent = {AREATEX_WIDTH, AREATEX_HEIGHT, 1};
+        VkExtent3D areaImageExtent = {vkBasalt::areaTex_WIDTH, vkBasalt::areaTex_HEIGHT, 1};
         areaImage = createImages(pLogicalDevice, 1, areaImageExtent, VK_FORMAT_R8G8_UNORM,
                                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, areaMemory)[0];
 
-        VkExtent3D searchImageExtent = {SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 1};
+        VkExtent3D searchImageExtent = {vkBasalt::searchTex_WIDTH, vkBasalt::searchTex_HEIGHT, 1};
         searchImage = createImages(pLogicalDevice, 1, searchImageExtent, VK_FORMAT_R8_UNORM,
                                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, searchMemory)[0];
 
-        uploadToImage(pLogicalDevice, areaImage, areaImageExtent, AREATEX_SIZE, areaTexBytes);
-        uploadToImage(pLogicalDevice, searchImage, searchImageExtent, SEARCHTEX_SIZE, searchTexBytes);
+        auto areaBytes = decompressData(vkBasalt::areaTex_zst, vkBasalt::areaTex_zst_size, vkBasalt::areaTex_size);
+        auto searchBytes = decompressData(vkBasalt::searchTex_zst, vkBasalt::searchTex_zst_size, vkBasalt::searchTex_size);
+
+        if (areaBytes.empty() || searchBytes.empty()) {
+            Logger::err("Failed to decompress SMAA lookup textures");
+            return;
+        }
+
+        uploadToImage(pLogicalDevice, areaImage, areaImageExtent, vkBasalt::areaTex_size, areaBytes.data());
+        uploadToImage(pLogicalDevice, searchImage, searchImageExtent, vkBasalt::searchTex_size, searchBytes.data());
 
         areaImageView = createImageViews(pLogicalDevice, VK_FORMAT_R8G8_UNORM, std::vector<VkImage>(1, areaImage))[0];
         Logger::debug("after creating area ImageView");
@@ -185,8 +196,8 @@ namespace vkBasalt
 
 
         createShaderModule(pLogicalDevice, smaa_edge_vert, &edgeVertexModule);
-        bool useColor = (edgeDetection == "color");
-        auto shaderCode = useColor ? smaa_edge_color_frag : smaa_edge_luma_frag;
+        bool useColorEdgeDetection = (edgeDetection == "color");
+        const auto& shaderCode = decompressShaderCached(useColorEdgeDetection ? smaa_edge_color_frag : smaa_edge_luma_frag);
         createShaderModule(pLogicalDevice, shaderCode, &edgeFragmentModule);
 
         createShaderModule(pLogicalDevice, smaa_blend_vert, &blendVertexModule);

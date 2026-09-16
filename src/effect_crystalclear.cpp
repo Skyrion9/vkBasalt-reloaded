@@ -16,6 +16,7 @@
 #include "util.hpp"
 #include "format.hpp"
 
+
 namespace vkBasalt
 {
 
@@ -29,8 +30,8 @@ namespace vkBasalt
     {
         Logger::debug("in creating CrystalClearEffect");
 
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = crystalclear_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(crystalclear_frag);
 
         this->pushConstantSize = sizeof(CrystalClearPushConstants);
         needsUniformBuffer = true;

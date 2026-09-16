@@ -1,6 +1,8 @@
 #include "compute_test_pass.hpp"
+
 #include "shader_sources.hpp"
 #include "logger.hpp"
+
 
 namespace vkBasalt
 {
@@ -51,9 +53,8 @@ namespace vkBasalt
             pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, m_histogramMemory, nullptr);
     }
 
-    const std::vector<uint32_t>& ComputeTestPass::getShaderCode() const
-    {
-        return compute_test_comp;
+    const std::vector<uint32_t>& ComputeTestPass::getShaderCode() const {
+        return decompressShaderCached(compute_test_comp);
     }
 
     std::vector<VkDescriptorSetLayoutBinding> ComputeTestPass::getBindings() const

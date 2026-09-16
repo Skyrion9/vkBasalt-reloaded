@@ -15,6 +15,7 @@
 #include "format.hpp"
 #include "shader_sources.hpp"
 
+
 namespace vkBasalt
 {
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(DlsSpecData, field), .specSize = sizeof(((DlsSpecData*)0)->field)
@@ -27,8 +28,8 @@ namespace vkBasalt
                          Config*              pConfig,
                          VkColorSpaceKHR      colorSpace)
     {
-        vertexCode   = full_screen_triangle_vert;
-        fragmentCode = dls_frag;
+        vertexCode   = decompressShaderCached(full_screen_triangle_vert);
+        fragmentCode = decompressShaderCached(dls_frag);
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
