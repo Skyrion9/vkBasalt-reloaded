@@ -18,7 +18,6 @@ imgui_sources = files(
     'imgui_draw.cpp',
     'imgui_tables.cpp',
     'imgui_widgets.cpp',
-    'imgui_demo.cpp',
     'backends/imgui_impl_vulkan.cpp',
 )
 
@@ -26,13 +25,22 @@ imgui_inc = include_directories('.', 'backends')
 
 imgui_args = [
     '-fno-rtti',
+    '-fno-exceptions',
     '-fno-semantic-interposition',
+    '-fvisibility=hidden',
+    '-fvisibility-inlines-hidden',
     '-fdata-sections',
     '-ffunction-sections',
     '-Wno-unused-parameter',
     '-Wno-missing-field-initializers',
     '-Wno-implicit-fallthrough',
     '-Wno-conditional-uninitialized',
+    
+    '-DIMGUI_DISABLE_DEMO_WINDOWS',
+    '-DIMGUI_DISABLE_METRICS_WINDOW',
+    '-DIMGUI_DISABLE_DEBUG_TOOLS',
+    '-DIMGUI_DISABLE_OBSOLETE_FUNCTIONS',
+    '-DIMGUI_DISABLE_OBSOLETE_KEYIO',
 ]
 
 imgui_lib = static_library('imgui',
