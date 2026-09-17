@@ -10,10 +10,13 @@ layout(location = 0) in vec2 textureCoord;
 layout(location = 1) in vec4[3] offsets;
 
 vec4 SMAADecodeFetch(vec4 raw) {
-    return vec4(decodeToLinear(raw.rgb), raw.a);
+    return vec4(decodeToSpatial(raw.rgb), raw.a);
 }
 #define SMAASamplePointColor(tex, coord) SMAADecodeFetch(textureLod(tex, coord, 0.0))
 #define SMAASampleLevelZeroColor(tex, coord) SMAADecodeFetch(textureLod(tex, coord, 0.0))
+
+// HDR aware getEdgeLuma
+#define SMAA_LUMA(rgb) getEdgeLuma(rgb)
 
 #define SMAA_INCLUDE_VS 0
 #define SMAA_INCLUDE_PS 1
