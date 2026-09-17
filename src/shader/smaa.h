@@ -709,11 +709,13 @@ float2 SMAALumaEdgeDetectionPS(float2 texcoord,
     #endif
 
     // Calculate lumas:
+    #ifndef SMAA_LUMA
     float3 weights = float3(0.2126, 0.7152, 0.0722);
-    float L = dot(SMAASamplePointColor(colorTex, texcoord).rgb, weights);
-
-    float Lleft = dot(SMAASamplePointColor(colorTex, offset[0].xy).rgb, weights);
-    float Ltop  = dot(SMAASamplePointColor(colorTex, offset[0].zw).rgb, weights);
+    #define SMAA_LUMA(rgb) dot(rgb, weights)
+    #endif
+    float L = SMAA_LUMA(SMAASamplePointColor(colorTex, texcoord).rgb);
+    float Lleft = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[0].xy).rgb);
+    float Ltop  = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[0].zw).rgb);
 
     // We do the usual threshold:
     float4 delta;
@@ -725,16 +727,16 @@ float2 SMAALumaEdgeDetectionPS(float2 texcoord,
         discard;
 
     // Calculate right and bottom deltas:
-    float Lright = dot(SMAASamplePointColor(colorTex, offset[1].xy).rgb, weights);
-    float Lbottom  = dot(SMAASamplePointColor(colorTex, offset[1].zw).rgb, weights);
+    float Lright = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[1].xy).rgb);
+    float Lbottom  = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[1].zw).rgb);
     delta.zw = abs(L - float2(Lright, Lbottom));
 
     // Calculate the maximum delta in the direct neighborhood:
     float2 maxDelta = max(delta.xy, delta.zw);
 
     // Calculate left-left and top-top deltas:
-    float Lleftleft = dot(SMAASamplePointColor(colorTex, offset[2].xy).rgb, weights);
-    float Ltoptop = dot(SMAASamplePointColor(colorTex, offset[2].zw).rgb, weights);
+    float Lleftleft = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[2].xy).rgb);
+    float Ltoptop = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[2].zw).rgb);
     delta.zw = abs(float2(Lleft, Ltop) - float2(Lleftleft, Ltoptop));
 
     // Calculate the final maximum delta:
