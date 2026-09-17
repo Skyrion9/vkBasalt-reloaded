@@ -241,13 +241,12 @@ void main() {
     float bpLow = 0.013 * hdrNorm;
     float bpFadeIn = 0.052 * hdrNorm;
     float bpHigh = bandPassWidth * hdrNorm;
-    float bpFadeOut = 0.39 * hdrNorm;
+    float bpFadeOut = 1.50 * hdrNorm;
     float lowFreqFade = smoothstep(bpLow, bpLow + bpFadeIn, localContrast);
     float highFreqFade = 1.0 - smoothstep(bpHigh, bpHigh + bpFadeOut, localContrast);
     float bandPassMask = lowFreqFade * highFreqFade;
     
-    // Choke on macro/silhoutte edges
-    float extremeContrastFade = 1.0 - smoothstep(0.8 * hdrNorm, 1.2 * hdrNorm, localContrast);
+    float extremeContrastFade = 1.0 - smoothstep(3.0 * hdrNorm, 5.0 * hdrNorm, localContrast);
     bandPassMask *= extremeContrastFade;
 
     // phase 1.2: full edge detection, edge mask, and micro texture mask
@@ -298,7 +297,7 @@ void main() {
     float maxOrthoEdge = max(edgeH, edgeV);
     float maxDiag = max(lumaEdgeD1, lumaEdgeD2);
     float maxCombinedEdge = max(maxOrthoEdge, maxDiag);
-    float edgeMask = 1.0 - smoothstep(rangeMaxClamped, rangeMaxClamped * 2.0, maxCombinedEdge);
+    float edgeMask = 1.0 - smoothstep(rangeMaxClamped, rangeMaxClamped * 4.0, maxCombinedEdge);
     float isDiagonalEdge = smoothstep(0.6, 0.85, lumaDiagRatio);
     float edgeTotal = edgeH + edgeV;
     float totalEdgeEnergy = edgeTotal + lumaEdgeD1 + lumaEdgeD2;
@@ -726,7 +725,9 @@ void main() {
         float overshootBoost = 1.0 + (1.0 - guardStrength) * 0.5;
 
         float overshootScale = (isHDR) ? 0.5 : 1.0;
-        vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost * overshootScale), max(vec3(0.03 * hdrNorm * overshootBoost * overshootScale), rgbRange * 0.15));
+        float edgeIntensityNorm = clamp(localContrast / hdrNorm, 0.0, 1.0);
+        float adaptiveTighten = mix(1.0, 0.6, edgeIntensityNorm);
+        vec3 overshoot = min(vec3(0.08 * hdrNorm * overshootBoost * overshootScale * adaptiveTighten), max(vec3(0.03 * hdrNorm * overshootBoost * overshootScale), rgbRange * 0.15));
 
         finalColor = clamp(finalColor, trueMnRGB - overshoot, trueMxRGB + overshoot);
 
