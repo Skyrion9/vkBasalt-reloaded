@@ -10,7 +10,9 @@ layout(location = 0) in vec2 textureCoord;
 layout(location = 1) in vec4[3] offsets;
 
 vec4 SMAADecodeFetch(vec4 raw) {
-    return vec4(decodeToSpatial(raw.rgb), raw.a);
+    // Map HDR nits into a perceptual [0, ~1] range so SMAA's color delta thresholds work correctly.
+    // For SDR, getEdgeColor passes through the gamma spatial color unchanged.
+    return vec4(getEdgeColor(decodeToSpatial(raw.rgb)), raw.a);
 }
 
 #define SMAASamplePointColor(tex, coord) SMAADecodeFetch(textureLod(tex, coord, 0.0))
