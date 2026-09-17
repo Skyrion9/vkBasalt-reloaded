@@ -125,5 +125,30 @@ vec3 p3_to_rec709(vec3 c) {
 const vec3 LUMA_REC709  = vec3(0.2126, 0.7152, 0.0722);
 const vec3 LUMA_REC2020 = vec3(0.2627, 0.6780, 0.0593);
 const vec3 LUMA_P3      = vec3(0.2289, 0.6917, 0.0793); // SMPTE RP 431-2 (DCI-P3 D65 / Display P3)
+const vec3 LUMA_REC601  = vec3(0.299, 0.587, 0.114);    // Rec.601 (standard for gamma-space spatial AA)
+
+// Standardized edge detection luma for spatial AA algorithms (FXAA, SMAA, CMAA2).
+// SDR: Evaluates gamma color using Rec.601 weights and a sqrt curve.
+// HDR: Evaluates linear nits using Rec.709 weights and a logarithmic compression curve
+// that maps SDR white (1.0) to 1.0 and gracefully compresses extreme highlights.
+float getEdgeLuma(vec3 spatialColor) {
+    if (isHDR) {
+        float luma = dot(spatialColor, LUMA_REC709);
+        return log2(1.0 + luma * 15.0) * 0.25;
+    } else {
+        return dot(sqrt(max(spatialColor, vec3(0.0))), LUMA_REC601);
+    }
+}
+
+// Perceptual color space for color based edge detection (SMAA Color).
+// Compresses HDR nits into a [0, ~1] perceptual range using the same log curve as getEdgeLuma.
+// For SDR, assumes input is already in gamma/spatial space and passes through.
+vec3 getEdgeColor(vec3 spatialColor) {
+    if (isHDR) {
+        return log2(1.0 + spatialColor * 15.0) * 0.25;
+    } else {
+        return spatialColor;
+    }
+}
 
 #endif
