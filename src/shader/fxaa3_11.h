@@ -722,10 +722,18 @@ NOTE the other tuning knobs are now in the shader function inputs!
                    GREEN AS LUMA OPTION SUPPORT FUNCTION
 ============================================================================*/
 #if (FXAA_GREEN_AS_LUMA == 0)
-    FxaaFloat FxaaLuma(FxaaFloat4 rgba) { return rgba.w; }
+FxaaFloat FxaaLuma(FxaaFloat4 rgba) { return rgba.w; }
 #else
-    FxaaFloat FxaaLuma(FxaaFloat4 rgba) { return rgba.y; }
-#endif    
+FxaaFloat FxaaLuma(FxaaFloat4 rgba) { 
+    #if (FXAA_HDR_DECODE == 1)
+    // When HDR decode is enabled, rgba is in spatial space (linear nits for HDR, gamma for SDR).
+    // Use the centralized getEdgeLuma() from color_space.h which applies log compression for HDR 
+    return getEdgeLuma(vec3(rgba.y));
+    #else
+    return rgba.y;
+    #endif
+}
+#endif
 
 
 
