@@ -127,7 +127,7 @@ namespace vkBasalt {
                     bool justOpened = ImGui::IsWindowAppearing();
                     for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
                         bool is_sel = (currentIdx == (int)ci);
-                        if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel, ImGuiSelectableFlags_NoAutoClosePopups)) {
+                        if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
                             setUIParam(p->key, static_cast<double>(ci));
                             selectedEffect->setParam(p->key, static_cast<double>(ci));
                             if (p->key == "crystalclearPreset") {
