@@ -23,27 +23,25 @@ namespace vkBasalt
         std::string getName() const override { return "clarity"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
         
-        private:
-            struct ClarityPushConstants {
-                PushVec2 step1;
-                PushVec2 step2;
-            };
-
-            struct ClaritySpecData {
-                float radius;
-                float offset;
-                float strength;
-                int32_t blendMode;
-                int32_t blendIfDark;
-                int32_t blendIfLight;
-                float edgeThreshLow;
-                float edgeThreshHigh;
-                int32_t enableDithering;
-                int32_t colorSpaceMode;
-            };
-
+    private:
+        struct ClaritySpecData {
+            float radius;
+            float offset;
+            float strength;
+            int32_t blendMode;
+            int32_t blendIfDark;
+            int32_t blendIfLight;
+            float edgeThreshLow;
+            float edgeThreshHigh;
+            int32_t enableDithering;
+            float step1_x;
+            float step1_y;
+            float step2_x;
+            float step2_y;
+            int32_t colorSpaceMode;
+        };
+    
         float radius;
         float offset;
-        ClarityPushConstants pushConstants;
     };
 } // namespace vkBasalt

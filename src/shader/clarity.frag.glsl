@@ -16,11 +16,10 @@ layout(constant_id = 5) const int blendIfLight = 220;
 layout(constant_id = 6) const float edgeThreshLow = 0.05;
 layout(constant_id = 7) const float edgeThreshHigh = 0.25;
 layout(constant_id = 8) const int enableDithering = 1;
-
-layout(push_constant) uniform PushConstants {
-    vec2 step1;     
-    vec2 step2;     
-} pc;
+layout(constant_id = 9) const float step1_x = 0.0;
+layout(constant_id = 10) const float step1_y = 0.0;
+layout(constant_id = 11) const float step2_x = 0.0;
+layout(constant_id = 12) const float step2_y = 0.0;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
@@ -58,15 +57,15 @@ void main() {
     float hdrNorm = isHDR ? clamp(lE, 0.18, 16.0) : 1.0;
 
     // phase 1: clarity wide fetches (8 taps)
-    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
-    float h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
+    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(step1_x, 0.0), 0.0).rgb));
+    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(step1_x, 0.0), 0.0).rgb));
+    float h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(step2_x, 0.0), 0.0).rgb));
+    float h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(step2_x, 0.0), 0.0).rgb));
     
-    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
-    float v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
+    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, step1_y), 0.0).rgb));
+    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, step1_y), 0.0).rgb));
+    float v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, step2_y), 0.0).rgb));
+    float v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, step2_y), 0.0).rgb));
 
     // phase 2: bilateral delta accumulation
     float diff = (

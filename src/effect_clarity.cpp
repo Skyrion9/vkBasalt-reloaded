@@ -33,7 +33,7 @@ namespace vkBasalt
         Logger::debug("in creating ClarityEffect");
         vertexCode   = decompressShaderCached(full_screen_triangle_vert);
         fragmentCode = decompressShaderCached(clarity_frag);
-        this->pushConstantSize = sizeof(ClarityPushConstants);
+        this->pushConstantSize = 0;
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
@@ -66,6 +66,11 @@ namespace vkBasalt
             mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
         }
 
+        mapEntries.push_back({9, offsetof(ClaritySpecData, step1_x), sizeof(float)});
+        mapEntries.push_back({10, offsetof(ClaritySpecData, step1_y), sizeof(float)});
+        mapEntries.push_back({11, offsetof(ClaritySpecData, step2_x), sizeof(float)});
+        mapEntries.push_back({12, offsetof(ClaritySpecData, step2_y), sizeof(float)});
+
         specData.colorSpaceMode = static_cast<int32_t>(csm);
         mapEntries.push_back({65535, offsetof(ClaritySpecData, colorSpaceMode), sizeof(int32_t)});
 
@@ -77,10 +82,10 @@ namespace vkBasalt
         float rawOffset  = 1.5f * radius * offset;
         float baseOffset = std::floor(rawOffset) + 0.5f;
 
-        pushConstants.step1.x = baseOffset * texelSizeX;
-        pushConstants.step1.y = baseOffset * texelSizeY;
-        pushConstants.step2.x = pushConstants.step1.x * 3.0f;
-        pushConstants.step2.y = pushConstants.step1.y * 3.0f;
+        specData.step1_x = baseOffset * texelSizeX;
+        specData.step1_y = baseOffset * texelSizeY;
+        specData.step2_x = specData.step1_x * 3.0f;
+        specData.step2_y = specData.step1_y * 3.0f;
 
         VkSpecializationInfo specializationInfo;
         specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
@@ -132,8 +137,6 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &(imageDescriptorSets[imageIndex]), 0, nullptr);
         pLogicalDevice->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-        pLogicalDevice->vkd.CmdPushConstants(
-            commandBuffer, pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ClarityPushConstants), &pushConstants);
         pLogicalDevice->vkd.CmdDraw(commandBuffer, 3, 1, 0, 0);
         pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
 
