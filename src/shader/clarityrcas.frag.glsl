@@ -25,11 +25,10 @@ layout(constant_id = 12) const float filmGrainStrength = 1.0;
 layout(constant_id = 13) const float filmGrainMinimum = 0.0;
 layout(constant_id = 14) const float fineGrainWeight = 0.4;
 layout(constant_id = 15) const float coarseGrainWeight = 0.8;
-
-layout(push_constant) uniform PushConstants {
-    vec2 step1;     
-    vec2 step2;     
-} pc;
+layout(constant_id = 16) const float step1_x = 0.0;
+layout(constant_id = 17) const float step1_y = 0.0;
+layout(constant_id = 18) const float step2_x = 0.0;
+layout(constant_id = 19) const float step2_y = 0.0;
 
 layout(set = 0, binding = 1) uniform FrameData {
     uint frameCounter;
@@ -82,15 +81,15 @@ void main() {
     float lH = getLuma(h);
 
     // phase 2: clarity wide fetches (early to hide latency)
-    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
-    float h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
+    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(step1_x, 0.0), 0.0).rgb));
+    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(step1_x, 0.0), 0.0).rgb));
+    float h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(step2_x, 0.0), 0.0).rgb));
+    float h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(step2_x, 0.0), 0.0).rgb));
     
-    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
-    float v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
+    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, step1_y), 0.0).rgb));
+    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, step1_y), 0.0).rgb));
+    float v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, step2_y), 0.0).rgb));
+    float v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, step2_y), 0.0).rgb));
 
     // phase 3: native rgb rcas math and local contrast
     vec3 mnRGB = min(min(b, d), min(f, h));
