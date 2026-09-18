@@ -146,13 +146,13 @@ layout(constant_id = 74) const float bc1FixStrength = 0.3;         // 0.0 = off,
 layout(constant_id = 75) const float exposure = 0.0;               // -2.0 to 2.0 stops
 layout(constant_id = 76) const float brightness = 0.0;             // -0.5 to 0.5 additive lift
 layout(constant_id = 77) const float contrast = 0.2;               // -1.0 to 1.0 linear scale
+layout(constant_id = 78) const float step1_x = 0.0;
+layout(constant_id = 79) const float step1_y = 0.0;
+layout(constant_id = 80) const float step2_x = 0.0;
+layout(constant_id = 81) const float step2_y = 0.0;
+layout(constant_id = 82) const float pixelSize_x = 0.0;
+layout(constant_id = 83) const float pixelSize_y = 0.0;
 
-// push constants for spatial geometry data
-layout(push_constant) uniform PushConstants {
-    vec2 step1;
-    vec2 step2;
-    vec2 pixelSize;
-} pc;
 
 // uniform buffer object (UBO) for per-frame temporal data
 layout(set = 0, binding = 1) uniform FrameData {
@@ -426,16 +426,16 @@ void main() {
     }
 
     // phase 2: clarity wide fetches for latency hiding
-    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step1.x, 0.0), 0.0).rgb));
-    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step1.y), 0.0).rgb));
-    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step1.y), 0.0).rgb));
+    float h1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(step1_x, 0.0), 0.0).rgb));
+    float h2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(step1_x, 0.0), 0.0).rgb));
+    float v1_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, step1_y), 0.0).rgb));
+    float v2_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, step1_y), 0.0).rgb));
     float h3_raw = 0.0; float h4_raw = 0.0; float v3_raw = 0.0; float v4_raw = 0.0;
     if (qualityLevel <= 1) {
-        h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(pc.step2.x, 0.0), 0.0).rgb));
-        h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(pc.step2.x, 0.0), 0.0).rgb));
-        v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, pc.step2.y), 0.0).rgb));
-        v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, pc.step2.y), 0.0).rgb));
+        h3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(step2_x, 0.0), 0.0).rgb));
+        h4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(step2_x, 0.0), 0.0).rgb));
+        v3_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord + vec2(0.0, step2_y), 0.0).rgb));
+        v4_raw = getLuma(decodeToSpatial(textureLod(img, textureCoord - vec2(0.0, step2_y), 0.0).rgb));
     }
 
     // phase 3: CAS math
@@ -499,10 +499,10 @@ void main() {
 
         vec2 posM = textureCoord;
         vec2 posB = posM;
-        vec2 offNP = isHorizontal ? vec2(pc.pixelSize.x * fxaaSearchScale, 0.0) : vec2(0.0, pc.pixelSize.y * fxaaSearchScale);
+        vec2 offNP = isHorizontal ? vec2(pixelSize_x * fxaaSearchScale, 0.0) : vec2(0.0, pixelSize_y * fxaaSearchScale);
 
-        if (isHorizontal) posB.y += lengthSign * 0.5 * pc.pixelSize.y;
-        else posB.x += lengthSign * 0.5 * pc.pixelSize.x;
+        if (isHorizontal) posB.y += lengthSign * 0.5 * pixelSize_y;
+        else posB.x += lengthSign * 0.5 * pixelSize_x;
 
         vec2 posN = posB - offNP * 1.0;
         vec2 posP = posB + offNP * 1.0;
@@ -557,7 +557,7 @@ void main() {
 
         finalShift = clamp(finalShift * lengthSign, -0.5, 0.5);
 
-        vec2 perpOffset = isHorizontal ? vec2(0.0, pc.pixelSize.y) : vec2(pc.pixelSize.x, 0.0);
+        vec2 perpOffset = isHorizontal ? vec2(0.0, pixelSize_y) : vec2(pixelSize_x, 0.0);
         vec2 finalUV = posM + finalShift * perpOffset;
 
         aaColor = decodeToSpatial(textureLod(img, finalUV, 0.0).rgb);

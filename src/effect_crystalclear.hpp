@@ -115,17 +115,17 @@ namespace vkBasalt
             float   exposure;
             float   brightness;
             float   contrast;
+            float   step1_x;
+            float   step1_y;
+            float   step2_x;
+            float   step2_y;
+            float   pixelSize_x;
+            float   pixelSize_y;
             int32_t colorSpaceMode;
         };
 
-        struct CrystalClearPushConstants {
-            PushVec2 step1;
-            PushVec2 step2;
-            PushVec2 pixelSize;
-        };
         float radius;
         float offset;
-        CrystalClearPushConstants pushConstants;
         uint32_t m_frameCounter = 0;
     };
 } // namespace vkBasalt
