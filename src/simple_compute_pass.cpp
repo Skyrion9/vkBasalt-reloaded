@@ -235,6 +235,7 @@ namespace vkBasalt
         cpInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
         cpInfo.stage.module = shaderModule;
         cpInfo.stage.pName = "main";
+        cpInfo.stage.pSpecializationInfo = getSpecializationInfo();
         cpInfo.layout = pipelineLayout;
         result = pLogicalDevice->vkd.CreateComputePipelines(pLogicalDevice->device,
                                                             pLogicalDevice->pipelineCache,

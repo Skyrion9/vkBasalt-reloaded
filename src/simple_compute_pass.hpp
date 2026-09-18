@@ -36,6 +36,7 @@ namespace vkBasalt
         // Return push constant data and size (0 = no push constants).
         virtual const void* getPushConstants() const { return nullptr; }
         virtual uint32_t getPushConstantSize() const { return 0; }
+        virtual const VkSpecializationInfo* getSpecializationInfo() const { return nullptr; }
         // Workgroup dispatch dimensions.
         virtual void getDispatchSize(uint32_t& x, uint32_t& y, uint32_t& z) const = 0;
         // Called after init completes. Use for creating additional resources.
