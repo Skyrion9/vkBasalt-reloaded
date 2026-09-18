@@ -31,6 +31,7 @@ namespace vkBasalt
     {
         vertexCode   = decompressShaderCached(full_screen_triangle_vert);
         fragmentCode = decompressShaderCached(deband_frag);
+        this->pushConstantSize = 0;
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 

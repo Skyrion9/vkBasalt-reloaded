@@ -67,7 +67,7 @@ namespace vkBasalt
         std::vector<uint32_t>        fragmentCode;
         VkSpecializationInfo*        pVertexSpecInfo;
         VkSpecializationInfo*        pFragmentSpecInfo;
-        uint32_t                     pushConstantSize = 16; // subclasses can set this to the size of their push constants, safe default is 16 bytes.
+        uint32_t                     pushConstantSize = 0; // Defaults to 0 (no push constants). Override per effect as necessary.
 
         // UBO support for per-frame data (e.g., temporal frame counters)
         // Subclasses can set needsUniformBuffer = true and uniformSize = sizeof(Struct) in their constructor.
