@@ -17,6 +17,7 @@ namespace vkBasalt {
                 return i;
             }
         }
+        Logger::err("AutoHdrAnalyzer: No suitable memory type found for requested properties");
         return 0;
     }
 

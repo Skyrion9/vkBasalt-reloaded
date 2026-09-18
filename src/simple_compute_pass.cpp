@@ -35,6 +35,7 @@ namespace vkBasalt
                 (props.memoryTypes[i].propertyFlags & required) == required)
                 return i;
         }
+        Logger::err("SimpleComputePass: No suitable memory type found for requested properties");
         return 0;
     }
 
