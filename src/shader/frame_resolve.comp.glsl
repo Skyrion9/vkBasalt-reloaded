@@ -13,9 +13,10 @@ layout(set = 0, binding = 4, rgba8) uniform writeonly image2D waveImage;
 layout(set = 0, binding = 5, rgba8) uniform writeonly image2D vecImage;
 layout(set = 0, binding = 6) buffer ActiveFlag  { uint scopeActive; };
 
+layout(constant_id = 0) const uint width = 1920;
+layout(constant_id = 1) const uint height = 1080;
+
 layout(push_constant) uniform PushConstants {
-    uint width;
-    uint height;
     uint enabled;
 } pc;
 
@@ -44,7 +45,7 @@ void main() {
     uint bin = uint(coord.x);
     uint intensity = 255u - uint(coord.y);
 
-    float maxVal = float(pc.width * pc.height) / 256.0 * 2.0;
+    float maxVal = float(width * height) / 256.0 * 2.0;
     float rVal = float(histData[bin]) / maxVal;
     float gVal = float(histData[256u + bin]) / maxVal;
     float bVal = float(histData[512u + bin]) / maxVal;

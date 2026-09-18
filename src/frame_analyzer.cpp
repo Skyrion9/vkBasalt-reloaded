@@ -18,7 +18,20 @@ namespace vkBasalt
         , m_inputImages(inputImages)
     {
         m_colorSpaceMode = static_cast<int>(getColorSpaceMode(inputFormat, colorSpace));
-        m_pushConstants = { extent.width, extent.height, 0};
+        m_pushConstants = { 0 };
+        
+        m_specData = { extent.width, extent.height, m_colorSpaceMode };
+        m_specMapEntries = {
+            {0, offsetof(SpecData, width), sizeof(uint32_t)},
+            {1, offsetof(SpecData, height), sizeof(uint32_t)},
+            {65535, offsetof(SpecData, colorSpaceMode), sizeof(int32_t)}
+        };
+        m_specInfo = {};
+        m_specInfo.mapEntryCount = static_cast<uint32_t>(m_specMapEntries.size());
+        m_specInfo.pMapEntries = m_specMapEntries.data();
+        m_specInfo.dataSize = sizeof(SpecData);
+        m_specInfo.pData = &m_specData;
+
         createResources();
     }
 
@@ -128,7 +141,7 @@ namespace vkBasalt
         vkd.CreateDescriptorSetLayout(dev, &resolveDSLInfo, nullptr, &m_resolveDSL);
 
         // Pipeline layouts
-        VkPushConstantRange pcRange = { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(FrameAnalyzer::PushConstants) };
+        VkPushConstantRange pcRange = { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t) };
 
         VkPipelineLayoutCreateInfo plInfo = {};
         plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -154,15 +167,6 @@ namespace vkBasalt
         createModule(decompressShaderCached(frame_resolve_comp), m_resolveShader);
 
         // Pipelines
-        struct SpecData { int32_t colorSpaceMode; };
-        SpecData specData = { m_colorSpaceMode };
-        VkSpecializationMapEntry specMapEntry = { 65535, 0, sizeof(int32_t) };
-        VkSpecializationInfo specInfo = {};
-        specInfo.mapEntryCount = 1;
-        specInfo.pMapEntries = &specMapEntry;
-        specInfo.dataSize = sizeof(SpecData);
-        specInfo.pData = &specData;
-
         auto createPipeline = [&](VkShaderModule mod, VkPipelineLayout layout, VkPipeline& pipe) {
             VkComputePipelineCreateInfo cpInfo = {};
             cpInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -170,7 +174,7 @@ namespace vkBasalt
             cpInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
             cpInfo.stage.module = mod;
             cpInfo.stage.pName = "main";
-            cpInfo.stage.pSpecializationInfo = &specInfo;
+            cpInfo.stage.pSpecializationInfo = &m_specInfo;
             cpInfo.layout = layout;
             vkd.CreateComputePipelines(dev, m_pDevice->pipelineCache, 1, &cpInfo, nullptr, &pipe);
         };
@@ -316,9 +320,9 @@ namespace vkBasalt
         // 2. Accumulate pass
         vkd.CmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_accumPipeline);
         vkd.CmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE,
-            m_accumLayout, 0, 1, &m_accumSets[imageIndex], 0, nullptr);
+                                  m_accumLayout, 0, 1, &m_accumSets[imageIndex], 0, nullptr);
         vkd.CmdPushConstants(cmdBuf, m_accumLayout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(FrameAnalyzer::PushConstants), &m_pushConstants);
+                             0, sizeof(uint32_t), &m_pushConstants);
         vkd.CmdDispatch(cmdBuf, (m_extent.width + 15) / 16, (m_extent.height + 15) / 16, 1);
 
         // Barrier: SHADER_WRITE -> SHADER_RW (SSBO accumulate -> SSBO resolve read + image write)
@@ -334,9 +338,9 @@ namespace vkBasalt
         // 3. Resolve pass
         vkd.CmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_resolvePipeline);
         vkd.CmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE,
-            m_resolveLayout, 0, 1, &m_resolveSet, 0, nullptr);
+                                  m_resolveLayout, 0, 1, &m_resolveSet, 0, nullptr);
         vkd.CmdPushConstants(cmdBuf, m_resolveLayout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(FrameAnalyzer::PushConstants), &m_pushConstants);
+                             0, sizeof(uint32_t), &m_pushConstants);
         vkd.CmdDispatch(cmdBuf, (SCOPE_DIM + 15) / 16, (SCOPE_DIM + 15) / 16, 1);
 
         // 4. Synchronization Barrier: Compute Write -> Fragment Read (ImGui) Without this scopes turns into sliding puzzles due to race conditions.

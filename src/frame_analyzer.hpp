@@ -90,11 +90,19 @@ namespace vkBasalt
         bool m_overlayVisible = true;
 
         struct PushConstants {
-            uint32_t width;
-            uint32_t height;
             uint32_t enabled;
         };
+
+        struct SpecData {
+            uint32_t width;
+            uint32_t height;
+            int32_t colorSpaceMode;
+        };
         PushConstants m_pushConstants;
+        SpecData m_specData;
+
+        std::vector<VkSpecializationMapEntry> m_specMapEntries;
+        VkSpecializationInfo m_specInfo;
 
         void createResources();
         void destroyResources();

@@ -12,9 +12,10 @@ layout(set = 0, binding = 2) buffer WaveBuffer  { uint waveData[65536]; };
 layout(set = 0, binding = 3) buffer VecBuffer   { uint vecData[65536]; };
 layout(set = 0, binding = 4) buffer ActiveFlag  { uint scopeActive; };
 
+layout(constant_id = 0) const uint width = 1920;
+layout(constant_id = 1) const uint height = 1080;
+
 layout(push_constant) uniform PushConstants {
-    uint width;
-    uint height;
     uint enabled;
 } pc;
 
@@ -22,9 +23,8 @@ void main() {
     if (scopeActive == 0u) return;
     
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    if (pixel.x >= int(pc.width) || pixel.y >= int(pc.height)) return;
-
-    vec2 uv = (vec2(pixel) + 0.5) / vec2(pc.width, pc.height);
+    if (pixel.x >= int(width) || pixel.y >= int(height)) return;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(width, height);
     vec4 raw = textureLod(inputImage, uv, 0.0);
     
     vec3 linear = decodeToLinear(raw.rgb);
@@ -68,7 +68,7 @@ void main() {
     atomicAdd(histData[768u + binL], 1u);
 
     // Waveform: X position vs luminance
-    uint waveX = uint((float(pixel.x) / float(pc.width)) * 255.0);
+    uint waveX = uint((float(pixel.x) / float(width)) * 255.0);
     uint waveY = uint(lumaClamped * 255.0);
     atomicAdd(waveData[waveY * 256u + waveX], 1u);
 
