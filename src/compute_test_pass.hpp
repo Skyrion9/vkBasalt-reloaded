@@ -19,21 +19,26 @@ namespace vkBasalt
         const std::vector<uint32_t>& getShaderCode() const override;
         std::vector<VkDescriptorSetLayoutBinding> getBindings() const override;
         void writeDescriptors(VkDescriptorSet set, uint32_t imageIndex) override;
-        const void* getPushConstants() const override { return &m_pushConstants; }
-        uint32_t getPushConstantSize() const override { return sizeof(m_pushConstants); }
+        const VkSpecializationInfo* getSpecializationInfo() const override { return &m_specInfo; }
+
         void getDispatchSize(uint32_t& x, uint32_t& y, uint32_t& z) const override;
 
     private:
         VkExtent2D m_extent;
         std::vector<VkImage> m_inputImages;
         std::vector<VkImageView> m_inputViews;
+
         VkBuffer m_histogramBuffer = VK_NULL_HANDLE;
         VkDeviceMemory m_histogramMemory = VK_NULL_HANDLE;
+
         VkSampler m_sampler = VK_NULL_HANDLE;
 
-        struct {
+        struct SpecData {
             uint32_t width;
             uint32_t height;
-        } m_pushConstants;
+        };
+        SpecData m_specData;
+        std::vector<VkSpecializationMapEntry> m_specMapEntries;
+        VkSpecializationInfo m_specInfo;
     };
 } // namespace vkBasalt

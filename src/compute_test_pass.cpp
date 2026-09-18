@@ -12,8 +12,16 @@ namespace vkBasalt
         , m_extent(extent)
         , m_inputImages(inputImages)
     {
-        m_pushConstants.width = extent.width;
-        m_pushConstants.height = extent.height;
+        m_specData = { extent.width, extent.height };
+        m_specMapEntries = {
+            {0, offsetof(SpecData, width), sizeof(uint32_t)},
+            {1, offsetof(SpecData, height), sizeof(uint32_t)}
+        };
+        m_specInfo = {};
+        m_specInfo.mapEntryCount = static_cast<uint32_t>(m_specMapEntries.size());
+        m_specInfo.pMapEntries = m_specMapEntries.data();
+        m_specInfo.dataSize = sizeof(SpecData);
+        m_specInfo.pData = &m_specData;
 
         // Histogram: 256 bins of uint32_t
         m_histogramBuffer = createDeviceLocalBuffer(256 * sizeof(uint32_t),
