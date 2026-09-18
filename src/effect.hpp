@@ -42,6 +42,13 @@ namespace vkBasalt
             isLastInChain = isLast;
         }
 
+        // Effects that support in place modification return true. The chain manager will pass the same image as both input and output.
+        // This eliminates the need for a separate output buffer and fullscreen copy.
+        virtual bool supportsInPlace() const { return false; }
+        
+        void setInPlace(bool inPlace) { m_isInPlace = inPlace; }
+        bool isInPlace() const { return m_isInPlace; }
+
         virtual ~Effect(){};
 
         // Functions for UI related Read/Updating of params.
@@ -75,6 +82,7 @@ namespace vkBasalt
     protected:
         bool isFirstInChain = false;
         bool isLastInChain = false;
+        bool m_isInPlace = false;
         
         std::unordered_map<std::string, double> m_paramValues;
 
