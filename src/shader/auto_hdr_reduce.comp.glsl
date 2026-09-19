@@ -36,15 +36,29 @@ void main() {
     uint val = bins[tid];
     sharedPrefix[tid] = val;
     barrier();
-    
-    // Inclusive prefix sum (Hillis Steele scan)
-    for (uint offset = 1; offset < 256; offset *= 2) {
-        uint temp = 0;
-        if (tid >= offset) temp = sharedPrefix[tid - offset];
-        barrier();
-        sharedPrefix[tid] += temp;
+    // Blelloch work efficient exclusive prefix sum. Up sweep (reduce) build partial sums from leaves to root, reduces shared memory writes.
+    for (uint d = 1; d < 256; d *= 2) {
+        uint index = (tid + 1) * d * 2 - 1;
+        if (index < 256) {
+            sharedPrefix[index] += sharedPrefix[index - d];
+        }
         barrier();
     }
+    if (tid == 0) sharedPrefix[255] = 0;
+    barrier();
+    // Down sweep distribute sums from root back to leaves.
+    for (uint d = 128; d >= 1; d >>= 1) {
+        uint index = (tid + 1) * d * 2 - 1;
+        if (index < 256) {
+            uint temp = sharedPrefix[index - d];
+            sharedPrefix[index - d] = sharedPrefix[index];
+            sharedPrefix[index] += temp;
+        }
+        barrier();
+    }
+    // Convert exclusive -> inclusive (P99 search expects inclusive prefix sums)
+    sharedPrefix[tid] += val;
+    barrier();
 
     uint totalPixels = sharedPrefix[255];
     
@@ -74,14 +88,18 @@ void main() {
     if (tid == 0) {
         uint targetP99 = uint(float(totalPixels) * 0.99);
         float p99Luma = 0.0;
-        
-        // Thread 0 finds P99 (256 iterations is trivial)
-        for (int i = 0; i < 256; i++) {
-            if (sharedPrefix[i] >= targetP99) {
-                float bL = (float(i) + 0.5) / 256.0;
-                p99Luma = bL / (1.0 - bL);
-                break;
-            }
+        // Binary search on the monotonic prefix sum
+        uint lo = 0u, hi = 255u;
+        while (lo < hi) {
+            uint mid = (lo + hi) >> 1u;
+            if (sharedPrefix[mid] >= targetP99)
+                hi = mid;
+            else
+                lo = mid + 1u;
+        }
+        {
+            float bL = (float(lo) + 0.5) / 256.0;
+            p99Luma = bL / (1.0 - bL);
         }
         float avgLuma = sharedWeighted[0] / float(totalPixels);
 
