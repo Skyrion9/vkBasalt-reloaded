@@ -611,12 +611,23 @@ void main() {
             * 0.0625 * (invGuard + guardStrength * gradientCoherence);
     }
 
-    if (localContrastStrength > 0.0 && qualityLevel <= 1) {
-        float wideAvg = (h1_raw + h2_raw + h3_raw + h4_raw + v1_raw + v2_raw + v3_raw + v4_raw) * 0.125;
+    if (localContrastStrength > 0.0 && qualityLevel <= 2) {
+        float wideAvg;
+        if (qualityLevel <= 1) {
+            // Perfect/Ultra: 8 tap macro contrast (step1 + step2)
+            wideAvg = (h1_raw + h2_raw + h3_raw + h4_raw + v1_raw + v2_raw + v3_raw + v4_raw) * 0.125;
+        } else {
+            // High: 4 tap meso contrast. Smaller radius naturally yields a more conservative boost.
+            wideAvg = (h1_raw + h2_raw + v1_raw + v2_raw) * 0.25;
+        }
         // Halo prevention by clamping wide blur to the 3x3 bounds already computed by CAS.
         wideAvg = clamp(wideAvg, localMinLuma, localMaxLuma);
         float lcRatio = lumaAA / max(wideAvg, 0.0001 * hdrNorm);
         float lcBoost = pow(clamp(lcRatio, 0.25, 4.0), localContrastStrength) - 1.0;
+        
+        // Scale down the final injection for High to prevent 'blindly' boosting that could artifact more easily.
+        float lcMultiplier = (qualityLevel <= 1) ? 0.08 : 0.05;
+        
         // BC1 fix: local contrast is the biggest amplifier of BC1 block-boundary luma steps.
         // Suppress it at 4px block edges in low-detail regions where the artifacts are visible.
         if (enableBC1Fix == 1 && qualityLevel <= 2) {
@@ -626,7 +637,7 @@ void main() {
             float lowDetail = 1.0 - smoothstep(0.06 * hdrNorm, 0.2 * hdrNorm, localContrast);
             lcBoost *= mix(1.0, 1.0 - blockEdge * lowDetail, bc1FixStrength * guardStrength);
         }
-        diff += lcBoost * 0.08 * hdrNorm * edgeMask;
+        diff += lcBoost * lcMultiplier * hdrNorm * edgeMask;
     }
 
     // phase 7: clarity gates and s-curve with saturation and edge guards

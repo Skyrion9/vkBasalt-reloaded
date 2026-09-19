@@ -17,8 +17,8 @@ namespace vkBasalt
             {"crystalclearEnableRGBEdgeDetection", 0},
             {"crystalclearEnableFringeFix",        0},
             {"crystalclearFringeStrength",         0},
-            // Ultra+ (qualityLevel <= 1)
-            {"crystalclearLocalContrastStrength",  1},
+            // High+ (qualityLevel <= 2): meso/macro local contrast High/Ultra+
+            {"crystalclearLocalContrastStrength",  2},
             // High+ (qualityLevel <= 2)
             {"crystalclearEnableCheckerboardFix",  2},
             {"crystalclearCheckerboardStrength",   2},
@@ -57,13 +57,13 @@ namespace vkBasalt
                         "vivid: saturated, CDL color grade.\nnoir: high contrast B&W."},
 
             {.key = "crystalclearQualityLevel", .label = "Quality Level", .type = ParamType::Combo,
-            .defaultVal = 1.0, .minVal = 0.0, .maxVal = 4.0, .step = 1.0,
+            .defaultVal = 2.0, .minVal = 0.0, .maxVal = 4.0, .step = 1.0,
             .comboOptions = {"Perfect", "Ultra", "High", "Medium", "iGPU"},
             .category = "Presets & Performance",
             .tooltip = "Master switch for feature gating. Disables certain features & grays them out.\n"
-                        "Perfect: All features. RGB edge, fringe fix, wide-radius fetches, all guards. ~17 tex fetches/pixel.\n"
+                        "Perfect: All features. RGB edge, fringe fix, wide-radius fetches, all guards. ~17 taps/pixel.\n"
                         "Ultra: Drops RGB edge detection + fringe fix. Recommended for discrete GPUs.\n"
-                        "High: Also drops wide step2 fetches and local contrast. ~13 fetches.\n"
+                        "High (default): Drops wide step2 fetches (4 fewer taps), local contrast/clarity slightly affected but worth the perf gain. ~13 taps\n"
                         "Medium: Also drops oiliness/silhouette gates, checkerboard, despeckle, BC1 fix, shimmer reduction, film grain, saturation/dark-smear guards.\n"
                         "iGPU: Core CAS + Clarity (step1) only. Band pass + edge mask + extreme protection + dithering. Minimum viable quality.",
             SPEC(72, qualityLevel)},
@@ -122,7 +122,8 @@ namespace vkBasalt
             {.key = "crystalclearLocalContrastStrength", .label = "Local Contrast", .type = ParamType::Float,
             .defaultVal = 2.0, .minVal = 0.0, .maxVal = 2.0, .step = 0.05,
             .category = "Sharpening & Contrast",
-            .tooltip = "Wide-radius local contrast boost. Compares pixel to a large-area blur to enhance macro structure. Disabled on High and below (requires step2 wide fetches). Default 2.0 (max).",
+            .tooltip = "Local contrast boost. Compares pixel to a wide blur to enhance structure.\n"
+                        "Ultra+/High determines between macro/meso contrast, 8/4 taps. Disabled on Medium and below. Default 2.0 (max).",
             SPEC(41, localContrastStrength)},
 
             // Anti-Aliasing (FXAA)
