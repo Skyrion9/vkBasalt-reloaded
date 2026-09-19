@@ -632,14 +632,12 @@ float2 SMAACalculatePredicatedThreshold(float2 texcoord,
 /**
  * Conditional move:
  */
+ // Opt: Branchless
 void SMAAMovc(bool2 cond, inout float2 variable, float2 value) {
-    SMAA_FLATTEN if (cond.x) variable.x = value.x;
-    SMAA_FLATTEN if (cond.y) variable.y = value.y;
+    variable = mix(variable, value, float2(cond));
 }
-
 void SMAAMovc(bool4 cond, inout float4 variable, float4 value) {
-    SMAAMovc(cond.xy, variable.xy, value.xy);
-    SMAAMovc(cond.zw, variable.zw, value.zw);
+    variable = mix(variable, value, float4(cond));
 }
 
 
