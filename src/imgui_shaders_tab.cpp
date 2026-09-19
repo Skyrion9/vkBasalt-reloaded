@@ -136,6 +136,9 @@ namespace vkBasalt {
                             if (p->key == "crystalclearPreset") {
                                 m_pConfig->setOption("crystalclearPresetApplied", "");
                             }
+                            if (p->key == "smaaPreset") {
+                                m_pConfig->setOption("smaaPresetApplied", "");
+                            }
                             setConfigImmediate(p->key, p->comboOptions[ci], true);
                             g_triggerPreviewReload = true;
                         }

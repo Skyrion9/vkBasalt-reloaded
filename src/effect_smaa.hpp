@@ -32,6 +32,8 @@ namespace vkBasalt
         std::string getName() const override { return "smaa"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
 
+        using PresetMap = std::unordered_map<std::string, double>;
+
     private:
         struct SmaaOptions
         {

@@ -34,6 +34,41 @@ namespace vkBasalt
 {
     #define SPEC(id, field) .specId = id, .specOffset = offsetof(SmaaOptions, field), .specSize = sizeof(((SmaaOptions*)0)->field)
 
+    static const std::unordered_map<std::string, SmaaEffect::PresetMap>& getPresetTable()
+    {
+        static const std::unordered_map<std::string, SmaaEffect::PresetMap> table = {
+            {"low", {
+                {"smaaThreshold",            0.15},
+                {"smaaMaxSearchSteps",       8.0},
+                {"smaaMaxSearchStepsDiag",   0.0},
+                {"smaaCornerRounding",       25.0},
+                {"smaaDisableDiagDetection", 1.0},
+            }},
+            {"medium", {
+                {"smaaThreshold",            0.10},
+                {"smaaMaxSearchSteps",       16.0},
+                {"smaaMaxSearchStepsDiag",   0.0},
+                {"smaaCornerRounding",       25.0},
+                {"smaaDisableDiagDetection", 1.0},
+            }},
+            {"high", {
+                {"smaaThreshold",            0.05},
+                {"smaaMaxSearchSteps",       32.0},
+                {"smaaMaxSearchStepsDiag",   16.0},
+                {"smaaCornerRounding",       25.0},
+                {"smaaDisableDiagDetection", 0.0},
+            }},
+            {"ultra", {
+                {"smaaThreshold",            0.05},
+                {"smaaMaxSearchSteps",       48.0},
+                {"smaaMaxSearchStepsDiag",   20.0},
+                {"smaaCornerRounding",       25.0},
+                {"smaaDisableDiagDetection", 0.0},
+            }},
+        };
+        return table;
+    }
+
     SmaaEffect::SmaaEffect(LogicalDevice*       pLogicalDevice,
                            VkFormat             format,
                            VkExtent2D           imageExtent,
@@ -111,48 +146,62 @@ namespace vkBasalt
         descriptorPool = createDescriptorPool(pLogicalDevice, poolSizes);
         Logger::debug("created descriptorPool");
 
-        std::string preset = pConfig->getOption<std::string>("smaaPreset", "");
+        // Stage 1: Resolve combo indices
+        std::string presetStr = pConfig->getOption<std::string>("smaaPreset", "high");
         std::string edgeDetection = pConfig->getOption<std::string>("smaaEdgeDetection", "luma");
-    
-        m_paramValues["smaaPreset"] = 0.0;
-        m_paramValues["smaaEdgeDetection"] = 0.0;
-
-        struct SmaaPreset {
-            float threshold;
-            int32_t maxSearchSteps;
-            int32_t maxSearchStepsDiag;
-            int32_t cornerRounding;
-            int32_t disableDiagDetection;
-        };
-
-        SmaaPreset activePreset = {0.05f, 32, 16, 25, 0};
-        if (preset == "low")         activePreset = {0.15f, 4,  0,  25, 1};
-        else if (preset == "medium") activePreset = {0.10f, 8,  0,  25, 1};
-        else if (preset == "high")   activePreset = {0.10f, 16, 8,  25, 0};
-        else if (preset == "ultra")  activePreset = {0.05f, 32, 16, 25, 0};
-
-        using PresetMap = std::unordered_map<std::string, double>;
-        PresetMap presetDefaults = {
-            {"smaaThreshold",            (double)activePreset.threshold},
-            {"smaaMaxSearchSteps",       (double)activePreset.maxSearchSteps},
-            {"smaaMaxSearchStepsDiag",   (double)activePreset.maxSearchStepsDiag},
-            {"smaaCornerRounding",       (double)activePreset.cornerRounding},
-            {"smaaDisableDiagDetection", (double)activePreset.disableDiagDetection},
-        };
 
         const auto& params = getParamDescs();
+
+        // Set combo indices so the UI reflects the actual selection
+        for (const auto& p : params) {
+            if (p.key == "smaaPreset" || p.key == "smaaEdgeDetection") {
+                const std::string& strVal = (p.key == "smaaPreset") ? presetStr : edgeDetection;
+                int idx = 0;
+                for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
+                    if (p.comboOptions[ci] == strVal) { idx = (int)ci; break; }
+                }
+                m_paramValues[p.key] = (double)idx;
+            }
+        }
+
+        // Stage 2: Apply preset to config (if changed)
+        const auto& presetTable = getPresetTable();
+        auto presetIt = presetTable.find(presetStr);
+
+        const std::string appliedPresetKey = "smaaPresetApplied";
+        const std::string lastAppliedPreset = pConfig->getOption<std::string>(appliedPresetKey, "");
+
+        if (presetStr != lastAppliedPreset) {
+            Logger::debug("Applying SMAA preset baseline: " + presetStr);
+            for (const auto& p : params) {
+                if (p.key == "smaaPreset" || p.key == "smaaEdgeDetection") continue;
+
+                double val = p.defaultVal;
+                if (presetIt != presetTable.end()) {
+                    auto overrideIt = presetIt->second.find(p.key);
+                    if (overrideIt != presetIt->second.end()) {
+                        val = std::clamp(overrideIt->second, p.minVal, p.maxVal);
+                    }
+                }
+
+                if (p.type == ParamType::Float) {
+                    std::string s = std::to_string(val);
+                    std::replace(s.begin(), s.end(), ',', '.');
+                    pConfig->setOption(p.key, s);
+                } else {
+                    pConfig->setOption(p.key, std::to_string(static_cast<int32_t>(val)));
+                }
+            }
+            pConfig->setOption(appliedPresetKey, presetStr);
+        }
+
+        // Stage 3: Generic param loading loop
         SmaaOptions smaaOptions = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
         mapEntries.reserve(params.size() + 5);
 
         for (const auto& p : params) {
             if (p.specId < 0) continue;
-
-            double def = p.defaultVal;
-            auto overrideIt = presetDefaults.find(p.key);
-            if (overrideIt != presetDefaults.end()) {
-                def = overrideIt->second;
-            }
 
             double val;
             if (p.type == ParamType::Combo) {
@@ -163,9 +212,9 @@ namespace vkBasalt
                 }
                 val = (double)idx;
             } else if (p.type == ParamType::Float) {
-                val = (double)pConfig->getOption<float>(p.key, (float)def);
+                val = (double)pConfig->getOption<float>(p.key, static_cast<float>(p.defaultVal));
             } else {
-                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)def);
+                val = (double)pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(p.defaultVal));
             }
 
             val = std::clamp(val, p.minVal, p.maxVal);
@@ -373,12 +422,12 @@ namespace vkBasalt
     const std::vector<EffectParamDesc>& SmaaEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {
             {.key = "smaaPreset", .label = "Preset", .type = ParamType::Combo,
-             .defaultVal = 0.0, .minVal = 0.0, .maxVal = 0.0, .step = 0.0,
+             .defaultVal = 3.0, .minVal = 0.0, .maxVal = 4.0, .step = 1.0,
              .comboOptions = {"", "low", "medium", "high", "ultra"},
              .category = "Preset",
              .tooltip = "SMAA quality preset. Sets threshold, search steps, and diagonal detection defaults.\n"
-                        "(empty): manual.\nlow: fast, minimal AA.\nmedium: balanced.\n"
-                        "high: strong AA.\nultra: maximum quality, most expensive."},
+                        "(empty): manual.\nlow: fast, consider FXAA/CMAA2, no diagonals.\nmedium: good quality, no diagonals.\n"
+                        "high: strong AA with diagonals (default).\nultra: wasteful, maximum quality, extended search."},
 
             {.key = "smaaEdgeDetection", .label = "Edge Detection", .type = ParamType::Combo,
              .defaultVal = 0.0, .minVal = 0.0, .maxVal = 0.0, .step = 0.0,
