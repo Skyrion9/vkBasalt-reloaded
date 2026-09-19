@@ -40,14 +40,17 @@ namespace vkBasalt {
         // 2. Debanding
         if (name == "deband") return 1;
         // 3. Color grading / LUT
-        if (name == "lut" || name == "dls") return 2;
-        // 4. Contrast / Clarity (CrystalClear includes CAS + grain, must come later.)
-        if (name == "clarity" || name == "clarityrcas") return 3;
-        if (name == "crystalclear") return 4;
-        // 5. Standalone sharpening
-        if (name == "cas") return 5;
-        // 6. Unknown / ReShade effects
-        return 6;
+        if (name == "lut") return 2;
+        // 4. Standalone sharpening (dumb, only noise aware)
+        if (name == "dls") return 3;
+        // 5. Standalone sharpening (contrast aware)
+        if (name == "cas") return 4;
+        // 6. Smart sharpening (heuristic, multi aware)
+        if (name == "clarity" || name == "clarityrcas") return 5;
+        // 7. CrystalClear (well gated sharp., colorgraded, avoid use with other sharp.)
+        if (name == "crystalclear") return 6;
+        // 8. Unknown / ReShade effects
+        return 7;
     }
 
     void ImGuiOverlay::drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect) {
