@@ -185,14 +185,19 @@ namespace vkBasalt {
         }},
         {"crystalclear", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs);
-        }}
+        }},
     };
 
-    static uint32_t getLastDstSlice(uint32_t effectCount) {
-        if (effectCount == 0) return 0;
-        if (effectCount == 1) return 1;
-        uint32_t lastI = effectCount - 1;
-        return (lastI % 2 == 1) ? 0 : 1;
+    // Tracks the final active slice accounting for in-place effects that don't flip the ping-pong buffer.
+    static uint32_t getFinalSlice(const std::vector<std::string>& effectStrings, bool supportsMutable, bool shouldAppendHdrOutput) {
+        uint32_t currentSlice = 0;
+        for (uint32_t i = 0; i < effectStrings.size(); i++) {
+            bool isInPlace = (effectStrings[i] == "cmaa2");
+            bool isLastWritingToReal = (i == effectStrings.size() - 1 && supportsMutable && !shouldAppendHdrOutput);
+            if (isLastWritingToReal) isInPlace = false; // In-place requires input == output, which isn't true when writing to real swapchain
+            if (!isInPlace) currentSlice = 1 - currentSlice;
+        }
+        return currentSlice;
     }
 
     // Ping pong buffering: slices 0 and 1 strictly alternate. Slice 0 is the game's initial render target.
@@ -228,43 +233,42 @@ namespace vkBasalt {
         }
 
         // Determine which slice compute passes read from. With mutable format the last effect writes to real swapchain images. Otherwise it writes to the last fake slice.
-        pLogicalSwapchain->computeSrcSlice =
-            pLogicalDevice->supportsMutableFormat ? 0 : getLastDstSlice(effectStrings.size());
+        pLogicalSwapchain->computeSrcSlice = pLogicalDevice->supportsMutableFormat ? 0 : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
 
         bool bypassedAndReclaimed = !g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass;
 
         if (!bypassedAndReclaimed) {
+        uint32_t currentSlice = 0;
             for (uint32_t i = 0; i < effectStrings.size(); i++)
             {
                 Logger::debug("current effectString " + effectStrings[i]);
-
-                // Ping-pong slice 0 is the game's render target. Effects strictly alternate between slices 0 and 1.
-                uint32_t srcSlice, dstSlice;
-                if (i == 0) {
-                    srcSlice = 0;
-                    dstSlice = 1;
+                
+                uint32_t srcSlice = currentSlice;
+                uint32_t dstSlice;
+                
+                bool isInPlace = (effectStrings[i] == "cmaa2");
+                bool isLastWritingToReal = (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput);
+                if (isLastWritingToReal) isInPlace = false; // In-place requires input == output
+                
+                if (isInPlace) {
+                    dstSlice = srcSlice; // Read and write to the same slice
                 } else {
-                    srcSlice = (i % 2 == 1) ? 1 : 0;
-                    dstSlice = (i % 2 == 1) ? 0 : 1;
+                    dstSlice = 1 - srcSlice; // Ping-pong
                 }
 
                 std::vector<VkImage> firstImages(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
-
-
                 Logger::debug(std::to_string(firstImages.size()) + " images in firstImages (slice " + std::to_string(srcSlice) + ")");
+                
                 std::vector<VkImage> secondImages;
-
-                // Last effect writes directly to real swapchain images  (only when no HDR output effect follows)
-                if (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput)
+                if (isLastWritingToReal)
                 {
                     secondImages = pLogicalSwapchain->images;
                     Logger::debug("using swapchain images as second images");
                 }
                 else
                 {
-                    // Intermediate or non-mutable last effect writes to dstSlice
                     secondImages = std::vector<VkImage>(
                         pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * dstSlice,
                         pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (dstSlice + 1));
@@ -276,10 +280,11 @@ namespace vkBasalt {
                 auto it = builtinEffects.find(effectStrings[i]);
                 if (it != builtinEffects.end())
                 {
-                    pLogicalSwapchain->effects.push_back(
-                        it->second(pLogicalDevice, unormFormat, srgbFormat, pLogicalSwapchain->imageExtent,
-                                firstImages, secondImages, pConfig, pLogicalSwapchain->sourceColorSpace, effectStrings[i]));
-                    Logger::debug("created " + effectStrings[i] + " effect");
+                    auto effect = it->second(pLogicalDevice, unormFormat, srgbFormat, pLogicalSwapchain->imageExtent,
+                                            firstImages, secondImages, pConfig, pLogicalSwapchain->sourceColorSpace, effectStrings[i]);
+                    effect->setInPlace(isInPlace);
+                    pLogicalSwapchain->effects.push_back(effect);
+                    Logger::debug("created " + effectStrings[i] + " effect" + (isInPlace ? " (in-place)" : ""));
                 }
                 else
                 {
@@ -305,6 +310,11 @@ namespace vkBasalt {
                         Logger::err("Unknown or missing effect: '" + effectStrings[i] + "'. Skipping.");
                     }
                 }
+                
+                // Advance slice for the next effect, unless the current effect was in-place
+                if (!isInPlace) {
+                    currentSlice = dstSlice;
+                }
             }
         }
 
@@ -317,7 +327,7 @@ namespace vkBasalt {
                     pLogicalSwapchain->fakeImages.begin(),
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
             } else {
-                uint32_t lastSlice = getLastDstSlice(effectStrings.size());
+                uint32_t lastSlice = getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
                 hdrInputImages = std::vector<VkImage>(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * lastSlice,
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (lastSlice + 1));
@@ -349,7 +359,7 @@ namespace vkBasalt {
         // Non-mutable format add a final transfer from the last fake slice to real swapchain images. Skip when HDR output effect is present it already writes to real swapchain images.
         if (!pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput)
         {
-            uint32_t transferSrcSlice = (bypassedAndReclaimed || effectStrings.empty()) ? 0 : getLastDstSlice(effectStrings.size());
+            uint32_t transferSrcSlice = (bypassedAndReclaimed || effectStrings.empty()) ? 0 : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
             pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new TransferEffect(
                 pLogicalDevice,
                 pLogicalSwapchain->format,
