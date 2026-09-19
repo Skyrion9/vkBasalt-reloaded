@@ -110,6 +110,7 @@ namespace vkBasalt {
         std::vector<std::string> m_cachedAllEffects;
 
         std::unordered_map<std::string, double> m_uiParamCache;
+        bool m_pendingCacheClear = false;
         float m_windowWidth = 0.0f;
         std::string m_windowSide = "left";
         bool m_windowStateInitialized = false;

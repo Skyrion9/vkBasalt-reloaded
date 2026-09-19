@@ -135,9 +135,11 @@ namespace vkBasalt {
                             selectedEffect->setParam(p->key, static_cast<double>(ci));
                             if (p->key == "crystalclearPreset") {
                                 m_pConfig->setOption("crystalclearPresetApplied", "");
+                                m_pendingCacheClear = true;
                             }
                             if (p->key == "smaaPreset") {
                                 m_pConfig->setOption("smaaPresetApplied", "");
+                                m_pendingCacheClear = true;
                             }
                             setConfigImmediate(p->key, p->comboOptions[ci], true);
                             g_triggerPreviewReload = true;
@@ -403,6 +405,12 @@ namespace vkBasalt {
         Effect* selectedEffect = nullptr;
         for (auto& eff : m_pSwapchain->effects)
             if (eff->getName() == selectedName) { selectedEffect = eff.get(); break; }
+
+        // Clear stale UI cache after a preset-triggered reload has recreated the effect, put here as reload happens between frames.
+        if (m_pendingCacheClear) {
+            m_uiParamCache.clear();
+            m_pendingCacheClear = false;
+        }
 
         // Reset button right aligned in the row
         if (selectedEffect) {
