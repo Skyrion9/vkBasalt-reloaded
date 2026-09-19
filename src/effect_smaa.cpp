@@ -206,7 +206,8 @@ namespace vkBasalt
         createShaderModule(pLogicalDevice, smaa_neighbor_frag, &neighborFragmentModule);
 
         renderPass      = createRenderPass(pLogicalDevice, format, false, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-        unormRenderPass = createRenderPass(pLogicalDevice, VK_FORMAT_B8G8R8A8_UNORM, true, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        // Opt: 'false' sets LOAD_OP_DONT_CARE. The edge and blend shaders explicitly write 0.0 to non edge pixels, the hardware clear is redundant here.
+        unormRenderPass = createRenderPass(pLogicalDevice, VK_FORMAT_B8G8R8A8_UNORM, false, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {imageSamplerDescriptorSetLayout};
         pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
@@ -269,11 +270,8 @@ namespace vkBasalt
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.renderArea.offset = {0, 0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
-
-        // Alpha 1f
-        VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-        renderPassBeginInfo.clearValueCount   = 1;
-        renderPassBeginInfo.pClearValues      = &clearValue;
+        renderPassBeginInfo.clearValueCount   = 0;
+        renderPassBeginInfo.pClearValues      = nullptr;
 
         // Pass 1: edge detection
         renderPassBeginInfo.renderPass  = unormRenderPass;

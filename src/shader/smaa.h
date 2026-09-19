@@ -722,12 +722,12 @@ float2 SMAALumaEdgeDetectionPS(float2 texcoord,
     delta.xy = abs(L - float2(Lleft, Ltop));
     float2 edges = step(threshold, delta.xy);
 
-    // Then discard if there is no edge:
+    // Opt: Write zero and return if there is no edge (allows skipping ClearRenderTargets)
     if (dot(edges, float2(1.0, 1.0)) == 0.0)
-        discard;
+        return float2(0.0, 0.0);
 
     // Calculate right and bottom deltas:
-    float Lright = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[1].xy).rgb);
+    float Lright   = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[1].xy).rgb);
     float Lbottom  = SMAA_LUMA(SMAASamplePointColor(colorTex, offset[1].zw).rgb);
     delta.zw = abs(L - float2(Lright, Lbottom));
 
@@ -784,9 +784,9 @@ float2 SMAAColorEdgeDetectionPS(float2 texcoord,
     // We do the usual threshold:
     float2 edges = step(threshold, delta.xy);
 
-    // Then discard if there is no edge:
+    // Opt: Write zero and return if there is no edge (allows skipping ClearRenderTargets)
     if (dot(edges, float2(1.0, 1.0)) == 0.0)
-        discard;
+        return float2(0.0, 0.0);
 
     // Calculate right and bottom deltas:
     float3 Cright = SMAASamplePointColor(colorTex, offset[1].xy).rgb;
@@ -829,8 +829,9 @@ float2 SMAADepthEdgeDetectionPS(float2 texcoord,
     float2 delta = abs(neighbours.xx - float2(neighbours.y, neighbours.z));
     float2 edges = step(SMAA_DEPTH_THRESHOLD, delta);
 
+    // Opt: return 0 instead of discard
     if (dot(edges, float2(1.0, 1.0)) == 0.0)
-        discard;
+        return float2(0.0, 0.0);
 
     return edges;
 }
