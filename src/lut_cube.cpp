@@ -14,7 +14,11 @@
 namespace vkBasalt
 {
     // Initialize all primitive members to prevent undefined behavior
-    LutCube::LutCube() : size(0) {}
+    LutCube::LutCube() :
+        size(0), minX(0.0f), minY(0.0f), minZ(0.0f), maxX(1.0f), maxY(1.0f), maxZ(1.0f), currentX(0), currentY(0),
+        currentZ(0)
+    {
+    }
 
     LutCube::LutCube(const std::string& file) : size(0)
     {
