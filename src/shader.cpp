@@ -14,7 +14,7 @@ namespace vkBasalt
     void createShaderModule(LogicalDevice* pLogicalDevice, const std::vector<char>& code, VkShaderModule* shaderModule)
     {
         // Ensure 4-byte alignment for SPIR-V. Copy if the source buffer is misaligned.
-        const uint32_t* spirvData;
+        const uint32_t* spirvData = nullptr;
         std::vector<uint32_t> alignedCopy;
         if (reinterpret_cast<uintptr_t>(code.data()) % alignof(uint32_t) == 0) {
             spirvData = reinterpret_cast<const uint32_t*>(code.data());

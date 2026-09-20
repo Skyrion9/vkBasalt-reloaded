@@ -6,6 +6,7 @@
 #pragma once
 
 #include "effect_module.hpp"
+#include <algorithm>
 #include <memory> // std::unique_ptr
 #include <algorithm> // std::find_if
 
@@ -20,7 +21,7 @@ namespace reshadefx
 		/// <summary>
 		/// Virtual destructor to guarantee that memory of the implementations deriving from this interface is properly destroyed.
 		/// </summary>
-		virtual ~codegen() {}
+		virtual ~codegen() = default;
 
 		/// <summary>
 		/// Write result of the code generation to the specified <paramref name="module"/>.
@@ -201,11 +202,11 @@ namespace reshadefx
 		/// <summary>
 		/// Returns true if code is currently added to a basic block.
 		/// </summary>
-		bool is_in_block() const { return _current_block != 0; }
+		[[nodiscard]] bool is_in_block() const { return _current_block != 0; }
 		/// <summary>
 		/// Returns true if code is currently added to a function.
 		/// </summary>
-		virtual bool is_in_function() const { return is_in_block(); }
+		[[nodiscard]] virtual bool is_in_function() const { return is_in_block(); }
 
 		/// <summary>
 		/// Create a new basic block.
@@ -267,7 +268,7 @@ namespace reshadefx
 		/// <returns>A reference to the struct description.</returns>
 		struct_info &find_struct(id id)
 		{
-			return *std::find_if(_structs.begin(), _structs.end(),
+			return *std::ranges::find_if(_structs,
 				[id](const auto &it) { return it.definition == id; });
 		}
 		/// <summary>
@@ -277,7 +278,7 @@ namespace reshadefx
 		/// <returns>A reference to the texture description.</returns>
 		texture_info &find_texture(id id)
 		{
-			return *std::find_if(_module.textures.begin(), _module.textures.end(),
+			return *std::ranges::find_if(_module.textures,
 				[id](const auto &it) { return it.id == id; });
 		}
 		/// <summary>
@@ -287,7 +288,7 @@ namespace reshadefx
 		/// <returns>A reference to the function description.</returns>
 		function_info &find_function(id id)
 		{
-			return *std::find_if(_functions.begin(), _functions.end(),
+			return *std::ranges::find_if(_functions,
 				[id](const auto &it) { return it->definition == id; })->get();
 		}
 

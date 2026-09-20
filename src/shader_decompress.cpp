@@ -23,10 +23,10 @@ namespace vkBasalt {
     std::vector<uint32_t> decompressShader(const CompressedShader& shader) {
         std::call_once(g_dictInitFlag, initDictionary);
 
-        size_t alignedSize = (shader.originalSize + 3) & ~size_t(3);
+        size_t alignedSize = (shader.originalSize + 3) & ~static_cast<size_t>(3);
         std::vector<uint32_t> spirv(alignedSize / sizeof(uint32_t));
 
-        size_t result;
+        size_t result = 0;
         if (g_shaderDDict) {
             // Temporary context to use the dictionary.
             ZSTD_DCtx* dctx = ZSTD_createDCtx();
@@ -51,7 +51,7 @@ namespace vkBasalt {
     }
 
     const std::vector<uint32_t>& decompressShaderCached(const CompressedShader& shader) {
-        std::lock_guard<std::mutex> lock(g_shaderCacheMutex);
+        std::scoped_lock lock(g_shaderCacheMutex);
 
         auto it = g_shaderCache.find(shader.data);
         if (it != g_shaderCache.end()) {

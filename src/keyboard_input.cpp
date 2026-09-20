@@ -79,14 +79,14 @@ namespace vkBasalt
     float getScaleFromEnvAndKDE() {
         const char* qtScale = std::getenv("QT_SCALE_FACTOR");
         if (qtScale) {
-            float s = (float)std::atof(qtScale);
+            auto s = static_cast<float>(std::atof(qtScale));
             if (s >= 0.5f && s <= 5.0f) return s;
         }
         const char* gdkScale = std::getenv("GDK_SCALE");
         if (gdkScale) {
-            float s = (float)std::atof(gdkScale);
+            auto s = static_cast<float>(std::atof(gdkScale));
             const char* gdkDpi = std::getenv("GDK_DPI_SCALE");
-            if (gdkDpi) s *= (float)std::atof(gdkDpi);
+            if (gdkDpi) s *= static_cast<float>(std::atof(gdkDpi));
             if (s >= 0.5f && s <= 5.0f) return s;
         }
 
@@ -102,21 +102,21 @@ namespace vkBasalt
             if (!f.good()) continue;
             std::string line;
             while (std::getline(f, line)) {
-                if (line.rfind("ScreenScaleFactors=", 0) == 0) {
+                if (line.starts_with("ScreenScaleFactors=")) {
                     std::string val = line.substr(19);
                     size_t comma = val.find(',');
                     if (comma != std::string::npos) val = val.substr(0, comma);
-                    float s = (float)std::atof(val.c_str());
+                    auto s = static_cast<float>(std::atof(val.c_str()));
                     if (s >= 0.5f && s <= 5.0f) return s;
                 }
-                if (line.rfind("ScaleFactor=", 0) == 0) {
+                if (line.starts_with("ScaleFactor=")) {
                     std::string val = line.substr(12);
-                    float s = (float)std::atof(val.c_str());
+                    auto s = static_cast<float>(std::atof(val.c_str()));
                     if (s >= 0.5f && s <= 5.0f) return s;
                 }
-                if (line.rfind("Scale=", 0) == 0) {
+                if (line.starts_with("Scale=")) {
                     std::string val = line.substr(6);
-                    float s = (float)std::atof(val.c_str());
+                    auto s = static_cast<float>(std::atof(val.c_str()));
                     if (s >= 0.5f && s <= 5.0f) return s;
                 }
             }

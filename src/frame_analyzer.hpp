@@ -20,13 +20,13 @@ namespace vkBasalt
         ~FrameAnalyzer() override;
 
         void recordCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex) override;
-        std::string getName() const override { return "frame_analyzer"; }
+        [[nodiscard]] std::string getName() const override { return "frame_analyzer"; }
 
         enum ScopeType { HISTOGRAM = 0, WAVEFORM = 1, VECTORSCOPE = 2, SCOPE_COUNT = 3 };
         
         // Expose raw handles for ImGui backend registration
-        VkImageView getScopeImageView(ScopeType type) const { return m_scopeViews[type]; }
-        VkSampler   getScopeSampler() const { return m_sampler; }
+        [[nodiscard]] VkImageView getScopeImageView(ScopeType type) const { return m_scopeViews[type]; }
+        [[nodiscard]] VkSampler   getScopeSampler() const { return m_sampler; }
 
         void setEnabled(bool enabled) override { 
             m_enabled = enabled; 
@@ -98,11 +98,11 @@ namespace vkBasalt
             uint32_t height;
             int32_t colorSpaceMode;
         };
-        PushConstants m_pushConstants;
-        SpecData m_specData;
+        PushConstants m_pushConstants{};
+        SpecData m_specData{};
 
         std::vector<VkSpecializationMapEntry> m_specMapEntries;
-        VkSpecializationInfo m_specInfo;
+        VkSpecializationInfo m_specInfo{};
 
         void createResources();
         void destroyResources();

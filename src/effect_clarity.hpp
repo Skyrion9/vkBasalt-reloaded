@@ -15,9 +15,9 @@ namespace vkBasalt
                     Config*              pConfig,
                     VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
         
-        ~ClarityEffect();
+        ~ClarityEffect() override;
 
-        void virtual applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
+        void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
 
         // Declarative parameter interface
         std::string getName() const override { return "clarity"; }

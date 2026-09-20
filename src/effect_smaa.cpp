@@ -1,5 +1,6 @@
 #include "effect_smaa.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <math.h>
 #include <vulkan/vulkan_core.h>
 
 #include "texture_data.hpp"
@@ -32,7 +34,7 @@
 
 namespace vkBasalt
 {
-    #define SPEC(id, field) .specId = id, .specOffset = offsetof(SmaaOptions, field), .specSize = sizeof(((SmaaOptions*)0)->field)
+    #define SPEC(id, field) .specId = (id), .specOffset = offsetof(SmaaOptions, field), .specSize = sizeof(((SmaaOptions*)0)->field)
 
     static const std::unordered_map<std::string, SmaaEffect::PresetMap>& getPresetTable()
     {
@@ -69,27 +71,23 @@ namespace vkBasalt
         return table;
     }
 
-    SmaaEffect::SmaaEffect(LogicalDevice*       pLogicalDevice,
-                           VkFormat             format,
-                           VkExtent2D           imageExtent,
-                           std::vector<VkImage> inputImages,
-                           std::vector<VkImage> outputImages,
-                           Config*              pConfig,
-                           VkColorSpaceKHR      colorSpace)
+    SmaaEffect::SmaaEffect(
+        LogicalDevice* pLogicalDevice,
+        VkFormat format,
+        VkExtent2D imageExtent,
+        const std::vector<VkImage>& inputImages,
+        const std::vector<VkImage>& outputImages,
+        Config* pConfig,
+        VkColorSpaceKHR colorSpace) :
+        pLogicalDevice(pLogicalDevice), inputImages(inputImages), outputImages(outputImages), imageExtent(imageExtent),
+        sampler(createSampler(pLogicalDevice))
     {
         Logger::debug("in creating SmaaEffect");
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
-        this->pLogicalDevice = pLogicalDevice;
-        this->format         = format;
-        this->imageExtent    = imageExtent;
-        this->inputImages    = inputImages;
-        this->outputImages   = outputImages;
-        this->pConfig        = pConfig;
-
         std::vector<VkImage> edgeAndBlendImages = createImages(pLogicalDevice,
                                                                inputImages.size() * 2,
-                                                               {imageExtent.width, imageExtent.height, 1},
+                                                               {.width=imageExtent.width, .height=imageExtent.height, .depth=1},
                                                                VK_FORMAT_B8G8R8A8_UNORM,
                                                                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                                                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -107,15 +105,15 @@ namespace vkBasalt
         outputImageViews = createImageViews(pLogicalDevice, format, outputImages);
         Logger::debug("created output ImageViews");
 
-        sampler = createSampler(pLogicalDevice);
+        
         Logger::debug("created sampler");
 
-        VkExtent3D areaImageExtent = {vkBasalt::areaTex_WIDTH, vkBasalt::areaTex_HEIGHT, 1};
+        VkExtent3D areaImageExtent = {.width=vkBasalt::areaTex_WIDTH, .height=vkBasalt::areaTex_HEIGHT, .depth=1};
         areaImage = createImages(pLogicalDevice, 1, areaImageExtent, VK_FORMAT_R8G8_UNORM,
                                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, areaMemory)[0];
 
-        VkExtent3D searchImageExtent = {vkBasalt::searchTex_WIDTH, vkBasalt::searchTex_HEIGHT, 1};
+        VkExtent3D searchImageExtent = {.width=vkBasalt::searchTex_WIDTH, .height=vkBasalt::searchTex_HEIGHT, .depth=1};
         searchImage = createImages(pLogicalDevice, 1, searchImageExtent, VK_FORMAT_R8_UNORM,
                                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, searchMemory)[0];
@@ -147,8 +145,8 @@ namespace vkBasalt
         Logger::debug("created descriptorPool");
 
         // Stage 1: Resolve combo indices
-        std::string presetStr = pConfig->getOption<std::string>("smaaPreset", "high");
-        std::string edgeDetection = pConfig->getOption<std::string>("smaaEdgeDetection", "luma");
+        auto presetStr = pConfig->getOption<std::string>("smaaPreset", "high");
+        auto edgeDetection = pConfig->getOption<std::string>("smaaEdgeDetection", "luma");
 
         const auto& params = getParamDescs();
 
@@ -158,9 +156,9 @@ namespace vkBasalt
                 const std::string& strVal = (p.key == "smaaPreset") ? presetStr : edgeDetection;
                 int idx = 0;
                 for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
-                    if (p.comboOptions[ci] == strVal) { idx = (int)ci; break; }
+                    if (p.comboOptions[ci] == strVal) { idx = static_cast<int>(ci); break; }
                 }
-                m_paramValues[p.key] = (double)idx;
+                m_paramValues[p.key] = static_cast<double>(idx);
             }
         }
 
@@ -169,7 +167,7 @@ namespace vkBasalt
         auto presetIt = presetTable.find(presetStr);
 
         const std::string appliedPresetKey = "smaaPresetApplied";
-        const std::string lastAppliedPreset = pConfig->getOption<std::string>(appliedPresetKey, "");
+        const auto lastAppliedPreset = pConfig->getOption<std::string>(appliedPresetKey, "");
 
         if (presetStr != lastAppliedPreset) {
             Logger::debug("Applying SMAA preset baseline: " + presetStr);
@@ -186,7 +184,7 @@ namespace vkBasalt
 
                 if (p.type == ParamType::Float) {
                     std::string s = std::to_string(val);
-                    std::replace(s.begin(), s.end(), ',', '.');
+                    std::ranges::replace(s, ',', '.');
                     pConfig->setOption(p.key, s);
                 } else {
                     pConfig->setOption(p.key, std::to_string(static_cast<int32_t>(val)));
@@ -203,45 +201,45 @@ namespace vkBasalt
         for (const auto& p : params) {
             if (p.specId < 0) continue;
 
-            double val;
+            double val = NAN;
             if (p.type == ParamType::Combo) {
-                std::string strVal = pConfig->getOption<std::string>(p.key, "");
+                auto strVal = pConfig->getOption<std::string>(p.key, "");
                 int idx = 0;
                 for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
-                    if (p.comboOptions[ci] == strVal) { idx = (int)ci; break; }
+                    if (p.comboOptions[ci] == strVal) { idx = static_cast<int>(ci); break; }
                 }
-                val = (double)idx;
+                val = static_cast<double>(idx);
             } else if (p.type == ParamType::Float) {
-                val = (double)pConfig->getOption<float>(p.key, static_cast<float>(p.defaultVal));
+                val = static_cast<double>(pConfig->getOption<float>(p.key, static_cast<float>(p.defaultVal)));
             } else {
-                val = (double)pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(p.defaultVal));
+                val = static_cast<double>(pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(p.defaultVal)));
             }
 
             val = std::clamp(val, p.minVal, p.maxVal);
             m_paramValues[p.key] = val;
 
             if (p.type == ParamType::Float) {
-                float f = (float)val;
-                std::memcpy((uint8_t*)&smaaOptions + p.specOffset, &f, sizeof(float));
+                auto f = static_cast<float>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&smaaOptions) + p.specOffset, &f, sizeof(float));
             } else {
-                int32_t i = (int32_t)val;
-                std::memcpy((uint8_t*)&smaaOptions + p.specOffset, &i, sizeof(int32_t));
+                auto i = static_cast<int32_t>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&smaaOptions) + p.specOffset, &i, sizeof(int32_t));
             }
 
-            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+            mapEntries.push_back({.constantID=static_cast<uint32_t>(p.specId), .offset=static_cast<uint32_t>(p.specOffset), .size=p.specSize});
         }
 
-        smaaOptions.screenWidth         = (float)imageExtent.width;
-        smaaOptions.screenHeight        = (float)imageExtent.height;
+        smaaOptions.screenWidth         = static_cast<float>(imageExtent.width);
+        smaaOptions.screenHeight        = static_cast<float>(imageExtent.height);
         smaaOptions.reverseScreenWidth  = 1.0f / imageExtent.width;
         smaaOptions.reverseScreenHeight = 1.0f / imageExtent.height;
         smaaOptions.colorSpaceMode      = static_cast<int32_t>(csm);
 
-        mapEntries.push_back({0, offsetof(SmaaOptions, screenWidth),         sizeof(float)});
-        mapEntries.push_back({1, offsetof(SmaaOptions, screenHeight),        sizeof(float)});
-        mapEntries.push_back({2, offsetof(SmaaOptions, reverseScreenWidth),  sizeof(float)});
-        mapEntries.push_back({3, offsetof(SmaaOptions, reverseScreenHeight), sizeof(float)});
-        mapEntries.push_back({65535, offsetof(SmaaOptions, colorSpaceMode),  sizeof(int32_t)});
+        mapEntries.push_back({.constantID=0, .offset=offsetof(SmaaOptions, screenWidth),         .size=sizeof(float)});
+        mapEntries.push_back({.constantID=1, .offset=offsetof(SmaaOptions, screenHeight),        .size=sizeof(float)});
+        mapEntries.push_back({.constantID=2, .offset=offsetof(SmaaOptions, reverseScreenWidth),  .size=sizeof(float)});
+        mapEntries.push_back({.constantID=3, .offset=offsetof(SmaaOptions, reverseScreenHeight), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=65535, .offset=offsetof(SmaaOptions, colorSpaceMode),  .size=sizeof(int32_t)});
 
 
         createShaderModule(pLogicalDevice, smaa_edge_vert, &edgeVertexModule);
@@ -262,7 +260,7 @@ namespace vkBasalt
         pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
         specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(smaaOptions);
         specializationInfo.pData         = &smaaOptions;
@@ -309,7 +307,7 @@ namespace vkBasalt
         barrier1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier1.image               = inputImages[imageIndex];
-        barrier1.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier1.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
@@ -317,7 +315,7 @@ namespace vkBasalt
 
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassBeginInfo.renderArea.offset = {0, 0};
+        renderPassBeginInfo.renderArea.offset = {.x=0, .y=0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
         renderPassBeginInfo.clearValueCount   = 0;
         renderPassBeginInfo.pClearValues      = nullptr;
@@ -342,7 +340,7 @@ namespace vkBasalt
         barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier2.image               = edgeImages[imageIndex];
-        barrier2.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier2.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
@@ -366,7 +364,7 @@ namespace vkBasalt
         barrier3.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier3.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier3.image               = blendImages[imageIndex];
-        barrier3.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier3.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
@@ -393,7 +391,7 @@ namespace vkBasalt
         barrier4.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier4.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier4.image               = inputImages[imageIndex];
-        barrier4.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier4.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
@@ -410,7 +408,7 @@ namespace vkBasalt
             barrier5.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier5.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier5.image               = outputImages[imageIndex];
-            barrier5.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            barrier5.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,

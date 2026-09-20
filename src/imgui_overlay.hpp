@@ -125,7 +125,7 @@ namespace vkBasalt {
         struct BrowserEntry {
             std::string path;
             std::string name;
-            bool isDir;
+            bool isDir{};
         };
         std::vector<BrowserEntry> m_browserEntries;
         std::string m_browserCachedDir;

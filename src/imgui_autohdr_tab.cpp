@@ -4,9 +4,12 @@
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 
+#include <math.h>
+
 #include <string>
 #include <algorithm>
 #include <future>
+#include <utility>
 
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
@@ -109,7 +112,7 @@ namespace vkBasalt {
 
             // Adaptive analysis status
             if (analyzer && hdrActive) {
-                float liveWhite, livePeak, liveIntensity;
+                float liveWhite = NAN, livePeak = NAN, liveIntensity = NAN;
                 analyzer->getCurrentMetrics(liveWhite, livePeak, liveIntensity);
 
                 ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "Adaptive Analysis: ACTIVE");
@@ -194,7 +197,7 @@ namespace vkBasalt {
         bool isNativeHdr = gameIsHDR;
         bool isAutoHdrActive = m_pSwapchain && m_pSwapchain->autoHdrActive;
         
-        std::string calibMode = m_pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
+        auto calibMode = m_pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
         bool isCalibrationActive = isAutoHdrActive || (isNativeHdr && calibMode != "off");
         bool showManualSliders = isAutoHdrActive || (calibMode == "manual");
 
@@ -246,7 +249,7 @@ namespace vkBasalt {
             // Multi-Monitor Target Selection
             std::vector<DisplayHdrInfo> allDisplays = getAllDetectedHdrDisplays();
             if (allDisplays.size() > 1) {
-                std::string currentTarget = m_pConfig->getOption<std::string>("targetHdrDisplay", "auto");
+                auto currentTarget = m_pConfig->getOption<std::string>("targetHdrDisplay", "auto");
                 std::string previewText = (currentTarget == "auto") ? "Auto-Detect (First HDR)" : currentTarget;
                 
                 ImGui::PushItemWidth(kSliderWidth);
@@ -258,7 +261,7 @@ namespace vkBasalt {
                     }
                     for (const auto& d : allDisplays) {
                         bool is_sel = (d.name == currentTarget);
-                        std::string label = d.name + " (" + std::to_string((int)d.peakBrightnessNits) + " nits)";
+                        std::string label = d.name + " (" + std::to_string(static_cast<int>(d.peakBrightnessNits)) + " nits)";
                         if (ImGui::Selectable(label.c_str(), is_sel)) {
                             m_pConfig->setOption("targetHdrDisplay", d.name);
                             m_pConfig->savePerGame();
@@ -293,13 +296,13 @@ namespace vkBasalt {
                     for (const auto& p : calibParams) {
                         std::string val;
                         if (p.type == ParamType::Float) {
-                            val = doubleToConfigString(m_pConfig->getOption<float>(p.key, (float)p.defaultVal));
+                            val = doubleToConfigString(m_pConfig->getOption<float>(p.key, static_cast<float>(p.defaultVal)));
                         } else if (p.type == ParamType::Combo) {
-                            val = m_pConfig->getOption<std::string>(p.key, p.comboOptions.empty() ? "" : p.comboOptions[(int)p.defaultVal]);
+                            val = m_pConfig->getOption<std::string>(p.key, p.comboOptions.empty() ? "" : p.comboOptions[static_cast<int>(p.defaultVal)]);
                         } else if (p.type == ParamType::Bool) {
                             val = m_pConfig->getOption<bool>(p.key, p.defaultVal > 0.5) ? "true" : "false";
                         } else {
-                            val = std::to_string((int)m_pConfig->getOption<int>(p.key, (int)p.defaultVal));
+                            val = std::to_string(static_cast<int>(m_pConfig->getOption<int>(p.key, static_cast<int>(p.defaultVal))));
                         }
                         m_pConfig->setOption(p.key, val);
                     }
@@ -366,19 +369,19 @@ namespace vkBasalt {
                 bool changed = false;
                 switch (p.type) {
                     case ParamType::Combo: {
-                        std::string strVal = m_pConfig->getOption<std::string>(p.key, "");
+                        auto strVal = m_pConfig->getOption<std::string>(p.key, "");
                         int currentIdx = 0;
                         for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
-                            if (p.comboOptions[ci] == strVal) { currentIdx = (int)ci; break; }
+                            if (p.comboOptions[ci] == strVal) { currentIdx = static_cast<int>(ci); break; }
                         }
-                        if (strVal.empty()) currentIdx = (int)p.defaultVal;
+                        if (strVal.empty()) currentIdx = static_cast<int>(p.defaultVal);
 
                         ImGui::PushItemWidth(kSliderWidth);
                         if (ImGui::BeginCombo(p.label.c_str(), p.comboOptions[currentIdx].c_str())) {
                             for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
-                                bool is_sel = (currentIdx == (int)ci);
+                                bool is_sel = (std::cmp_equal(currentIdx ,ci));
                                 if (ImGui::Selectable(p.comboOptions[ci].c_str(), is_sel)) {
-                                    currentIdx = (int)ci;
+                                    currentIdx = static_cast<int>(ci);
                                     changed = true;
                                 }
                                 if (is_sel) ImGui::SetItemDefaultFocus();
@@ -396,17 +399,17 @@ namespace vkBasalt {
                         break;
                     }
                     case ParamType::Float: {
-                        float fallback = (float)p.defaultVal;
+                        auto fallback = static_cast<float>(p.defaultVal);
                         if (p.key == "sdrWhitePointNits" && paramFallback.detected && paramFallback.sdrWhitePointNits > 0.0f) fallback = paramFallback.sdrWhitePointNits;
                         if (p.key == "hdrPeakNits" && paramFallback.detected && paramFallback.peakBrightnessNits > 0.0f) fallback = paramFallback.peakBrightnessNits;
                         
-                        float val = m_pConfig->getOption<float>(p.key, fallback);
-                        float step = (p.step > 0) ? (float)p.step : 1.0f;
-                        float range = (float)(p.maxVal - p.minVal);
+                        auto val = m_pConfig->getOption<float>(p.key, fallback);
+                        float step = (p.step > 0) ? static_cast<float>(p.step) : 1.0f;
+                        auto range = static_cast<float>(p.maxVal - p.minVal);
                         float dragSpeed = range / kDragSpeedDivisor;
 
                         ImGui::PushItemWidth(kSliderWidth);
-                        if (ImGui::DragFloat(p.label.c_str(), &val, dragSpeed, (float)p.minVal, (float)p.maxVal, "%.0f")) {
+                        if (ImGui::DragFloat(p.label.c_str(), &val, dragSpeed, static_cast<float>(p.minVal), static_cast<float>(p.maxVal), "%.0f")) {
                             changed = true;
                         }
                         if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
@@ -416,7 +419,7 @@ namespace vkBasalt {
                         ImGui::PopItemWidth();
 
                         if (changed) {
-                            val = std::clamp(val, (float)p.minVal, (float)p.maxVal);
+                            val = std::clamp(val, static_cast<float>(p.minVal), static_cast<float>(p.maxVal));
                             setConfigDebounced(p.key, doubleToConfigString(val), perGameCalib);
                         }
                         break;
@@ -532,11 +535,11 @@ namespace vkBasalt {
 
                 if (enabled) {
                     // Register textures again if the FrameAnalyzer was recreated (swapchain rebuild, soft reload, etc.)
-                    if (!m_scopeTexturesRegistered || (void*)analyzer != m_lastAnalyzerPtr) {
+                    if (!m_scopeTexturesRegistered || reinterpret_cast<void*>(analyzer) != m_lastAnalyzerPtr) {
                         if (m_scopeTexturesRegistered) {
-                            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[0]);
-                            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[1]);
-                            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)m_scopeTextureIDs[2]);
+                            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)static_cast<uintptr_t>(m_scopeTextureIDs[0]));
+                            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)static_cast<uintptr_t>(m_scopeTextureIDs[1]));
+                            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)static_cast<uintptr_t>(m_scopeTextureIDs[2]));
                         }
                         m_scopeTextureIDs[0] = (ImTextureID)ImGui_ImplVulkan_AddTexture(
                             analyzer->getScopeSampler(),
@@ -551,7 +554,7 @@ namespace vkBasalt {
                             analyzer->getScopeImageView(FrameAnalyzer::VECTORSCOPE),
                             VK_IMAGE_LAYOUT_GENERAL);
                         m_scopeTexturesRegistered = true;
-                        m_lastAnalyzerPtr = (void*)analyzer;
+                        m_lastAnalyzerPtr = reinterpret_cast<void*>(analyzer);
                     }
 
                     float windowW = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x * 2.0f;

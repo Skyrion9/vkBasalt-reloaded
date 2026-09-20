@@ -67,7 +67,7 @@ namespace vkBasalt {
         std::string newName = imguiKeyToConfigName(key);
         if (newName.empty()) return;
 
-        std::string myOldKey = m_pConfig->getOption<std::string>(configKeys[field], "");
+        auto myOldKey = m_pConfig->getOption<std::string>(configKeys[field], "");
 
         int otherField = -1;
         for (int i = 0; i < 4; i++) {
@@ -95,7 +95,7 @@ namespace vkBasalt {
         ImGui::Text("Cursor Area Scale");
         ImGui::TextDisabled("Only change this if the mouse pointer is misbehaving.");
         ImGui::TextDisabled("0 = auto-detect from display. Controls coordinate mapping only.");
-        float cursorScale = m_pConfig->getOption<float>("cursorScale", -1.0f);
+        auto cursorScale = m_pConfig->getOption<float>("cursorScale", -1.0f);
         if (cursorScale < 0.0f) cursorScale = m_pConfig->getOption<float>("overlayScale", 0.0f);
         ImGui::PushItemWidth(200);
         if (ImGui::InputFloat("##cursorScale", &cursorScale, 0.05f, 0.25f, "%.2f")) {
@@ -110,7 +110,7 @@ namespace vkBasalt {
         ImGui::Text("UI Scale");
         ImGui::TextDisabled("Scales UI elements (padding, spacing, widgets). Does NOT affect mouse.");
         ImGui::TextDisabled("0 = auto-detect from display.");
-        float uiScale = m_pConfig->getOption<float>("uiScale", 0.0f);
+        auto uiScale = m_pConfig->getOption<float>("uiScale", 0.0f);
         ImGui::PushItemWidth(200);
         if (ImGui::InputFloat("##uiScale", &uiScale, 0.05f, 0.25f, "%.2f")) {
             if (uiScale < 0.0f) uiScale = 0.0f;
@@ -124,7 +124,7 @@ namespace vkBasalt {
         ImGui::Text("Font Scale");
         ImGui::TextDisabled("Additional multiplier for font size on top of UI Scale.");
         ImGui::TextDisabled("0 or 1 = font scales with UI Scale. Set >1 for larger text.");
-        float fontScale = m_pConfig->getOption<float>("fontScale", 0.0f);
+        auto fontScale = m_pConfig->getOption<float>("fontScale", 0.0f);
         ImGui::PushItemWidth(200);
         if (ImGui::InputFloat("##fontScale", &fontScale, 0.05f, 0.25f, "%.2f")) {
             if (fontScale < 0.0f) fontScale = 0.0f;
@@ -143,7 +143,7 @@ namespace vkBasalt {
         const char* kbConfigs[] = {"toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey"};
 
         for (int i = 0; i < 4; i++) {
-            std::string current = m_pConfig->getOption<std::string>(kbConfigs[i], "");
+            auto current = m_pConfig->getOption<std::string>(kbConfigs[i], "");
             ImGui::AlignTextToFramePadding();
             ImGui::Text("%s", kbLabels[i]);
             ImGui::SameLine(200);
@@ -164,7 +164,7 @@ namespace vkBasalt {
                 m_bindingField = -1;
             } else {
                 for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; k++) {
-                    ImGuiKey ik = (ImGuiKey)k;
+                    auto ik = static_cast<ImGuiKey>(k);
                     // Skip mouse buttons, Escape, Enter, Space to prevent immediate rebind.
                     if (ik == ImGuiKey_Escape || ik == ImGuiKey_Enter || ik == ImGuiKey_Space) continue;
                     if (ik >= ImGuiKey_MouseLeft && ik <= ImGuiKey_MouseWheelY) continue;
@@ -193,7 +193,7 @@ namespace vkBasalt {
 
         // Format selector
         const char* ssFormats[] = {"png", "jpg", "bmp", "tga", "hdr", "exr"};
-        std::string ssFmt = m_pConfig->getOption<std::string>("screenshotFormat", "png");
+        auto ssFmt = m_pConfig->getOption<std::string>("screenshotFormat", "png");
         int ssFormatIdx = 0;
         for (int i = 0; i < IM_ARRAYSIZE(ssFormats); i++) {
             if (ssFmt == ssFormats[i]) { ssFormatIdx = i; break; }
@@ -219,7 +219,7 @@ namespace vkBasalt {
         ImGui::Spacing();
 
         // Screenshot directory browser
-        std::string currentDir = m_pConfig->getOption<std::string>("screenshotPath", "");
+        auto currentDir = m_pConfig->getOption<std::string>("screenshotPath", "");
         ImGui::Text("Screenshot directory:");
         ImGui::SameLine();
         ImGui::TextDisabled("%s", currentDir.empty() ? "(default: ~/Pictures/vkBasalt-reloaded)" : currentDir.c_str());
@@ -253,7 +253,7 @@ namespace vkBasalt {
                         dirs.push_back(name);
                     }
                 }
-                std::sort(dirs.begin(), dirs.end());
+                std::ranges::sort(dirs);
                 for (auto& name : dirs) {
                     if (ImGui::Selectable(("[DIR] " + name).c_str())) {
                         m_dirBrowserDir = (std::filesystem::path(m_dirBrowserDir) / name).string();

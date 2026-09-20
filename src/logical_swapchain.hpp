@@ -21,9 +21,9 @@ namespace vkBasalt
     // for each swapchain, we have the Images and the other stuff we need to execute the compute shader
     struct LogicalSwapchain
     {
-        LogicalDevice*                       pLogicalDevice;
-        VkSwapchainCreateInfoKHR             swapchainCreateInfo;
-        VkExtent2D                           imageExtent;
+        LogicalDevice*                       pLogicalDevice{};
+        VkSwapchainCreateInfoKHR             swapchainCreateInfo{};
+        VkExtent2D                           imageExtent{};
         
         // Legacy compatibility, equals destFormat/destColorSpace
         VkFormat                             format;
@@ -37,7 +37,7 @@ namespace vkBasalt
         bool                                 autoHdrActive = false;
         bool                                 passthroughEligible = false;
         
-        uint32_t                             imageCount;
+        uint32_t                             imageCount{};
         std::vector<VkImage>                 images;
         std::vector<VkImage>                 fakeImages;
         std::vector<VkCommandBuffer>         commandBuffersEffect;
@@ -46,7 +46,7 @@ namespace vkBasalt
         std::vector<std::shared_ptr<Effect>> effects;
         std::shared_ptr<Effect>              defaultTransfer;
         std::shared_ptr<Effect>              defaultHdrEffect; // HDR conversion for empty/disabled chain when Auto HDR is active
-        VkDeviceMemory                       fakeImageMemory;
+        VkDeviceMemory                       fakeImageMemory{};
 
         // flag to force the game to recreate the swapchain if the effect chain grows dynamically.
         // prevents device loss by letting the game engine cleanly release its cached VkImage handles.

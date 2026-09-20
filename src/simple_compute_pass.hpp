@@ -28,15 +28,15 @@ namespace vkBasalt
 
     protected:
         // Return compute shader SPIR-V.
-        virtual const std::vector<uint32_t>& getShaderCode() const = 0;
+        [[nodiscard]] virtual const std::vector<uint32_t>& getShaderCode() const = 0;
         // Return descriptor set layout bindings.
-        virtual std::vector<VkDescriptorSetLayoutBinding> getBindings() const = 0;
+        [[nodiscard]] virtual std::vector<VkDescriptorSetLayoutBinding> getBindings() const = 0;
         // Write descriptor set contents for the given image index.
         virtual void writeDescriptors(VkDescriptorSet set, uint32_t imageIndex) = 0;
         // Return push constant data and size (0 = no push constants).
-        virtual const void* getPushConstants() const { return nullptr; }
-        virtual uint32_t getPushConstantSize() const { return 0; }
-        virtual const VkSpecializationInfo* getSpecializationInfo() const { return nullptr; }
+        [[nodiscard]] virtual const void* getPushConstants() const { return nullptr; }
+        [[nodiscard]] virtual uint32_t getPushConstantSize() const { return 0; }
+        [[nodiscard]] virtual const VkSpecializationInfo* getSpecializationInfo() const { return nullptr; }
         // Workgroup dispatch dimensions.
         virtual void getDispatchSize(uint32_t& x, uint32_t& y, uint32_t& z) const = 0;
         // Called after init completes. Use for creating additional resources.

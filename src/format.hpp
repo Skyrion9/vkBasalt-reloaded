@@ -21,7 +21,7 @@ namespace vkBasalt
     uint32_t getBytesPerPixel(VkFormat format);
 
     VkFormat getSupportedFormat(LogicalDevice*        pLogicalDevice,
-                                std::vector<VkFormat> formats,
+                                const std::vector<VkFormat>& formats,
                                 VkFormatFeatureFlags  features,
                                 VkImageTiling         tiling = VK_IMAGE_TILING_OPTIMAL);
 

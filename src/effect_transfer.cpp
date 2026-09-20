@@ -7,35 +7,31 @@
 
 namespace vkBasalt
 {
-    TransferEffect::TransferEffect(LogicalDevice*       pLogicalDevice,
-                                   VkFormat             format,
-                                   VkExtent2D           imageExtent,
-                                   std::vector<VkImage> inputImages,
-                                   std::vector<VkImage> outputImages,
-                                   Config*              pConfig)
+    TransferEffect::TransferEffect(
+        LogicalDevice* pLogicalDevice,
+        VkFormat format,
+        VkExtent2D imageExtent,
+        std::vector<VkImage> inputImages,
+        std::vector<VkImage> outputImages,
+        Config* pConfig) :
+        pLogicalDevice(pLogicalDevice), inputImages(inputImages), outputImages(outputImages), imageExtent(imageExtent)
     {
-        this->pLogicalDevice = pLogicalDevice;
-        this->format         = format;
-        this->imageExtent    = imageExtent;
-        this->inputImages    = inputImages;
-        this->outputImages   = outputImages;
-        this->pConfig        = pConfig;
     }
 
     void TransferEffect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
     {
         VkImageCopy imageCopy = {};
-        imageCopy.srcSubresource            = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        imageCopy.srcOffset                 = {0, 0, 0};
-        imageCopy.dstSubresource            = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        imageCopy.dstOffset                 = {0, 0, 0};
-        imageCopy.extent                    = {imageExtent.width, imageExtent.height, 1};
+        imageCopy.srcSubresource            = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel=0, .baseArrayLayer=0, .layerCount=1};
+        imageCopy.srcOffset                 = {.x=0, .y=0, .z=0};
+        imageCopy.dstSubresource            = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel=0, .baseArrayLayer=0, .layerCount=1};
+        imageCopy.dstOffset                 = {.x=0, .y=0, .z=0};
+        imageCopy.extent                    = {.width=imageExtent.width, .height=imageExtent.height, .depth=1};
 
         VkImageMemoryBarrier barrier = {};
         barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         // Barrier 1: Input -> TRANSFER_SRC
         barrier.image         = inputImages[imageIndex];
@@ -98,7 +94,6 @@ namespace vkBasalt
     }
 
     TransferEffect::~TransferEffect()
-    {
-    }
+    = default;
 
 } // namespace vkBasalt

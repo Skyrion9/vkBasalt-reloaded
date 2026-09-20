@@ -3,6 +3,7 @@
 #include "game_detect.hpp"
 #include "hdr_detect.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -83,10 +84,10 @@ namespace vkBasalt
         if (m_global.find("sdrWhitePointNits") == m_global.end() || m_global.find("hdrPeakNits") == m_global.end()) {
             DisplayHdrInfo detected = detectDisplayHdrCalibration(this);
             if (m_global.find("sdrWhitePointNits") == m_global.end()) {
-                m_global["sdrWhitePointNits"] = std::to_string((int)detected.sdrWhitePointNits);
+                m_global["sdrWhitePointNits"] = std::to_string(static_cast<int>(detected.sdrWhitePointNits));
             }
             if (m_global.find("hdrPeakNits") == m_global.end()) {
-                m_global["hdrPeakNits"] = std::to_string((int)detected.peakBrightnessNits);
+                m_global["hdrPeakNits"] = std::to_string(static_cast<int>(detected.peakBrightnessNits));
             }
             saveGlobal();
             Logger::info("Populated missing HDR calibration defaults from system detection (" + detected.source + ").");
@@ -96,15 +97,15 @@ namespace vkBasalt
         Logger::debug("Config pergame: " + m_gamePath);
     }
 
-    Config::Config(const Config& other) {
-        std::lock_guard<std::mutex> lock(other.m_mutex);
-        m_global = other.m_global;
-        m_game = other.m_game;
-        m_globalPath = other.m_globalPath;
-        m_gamePath = other.m_gamePath;
+    Config::Config(const Config& other) : m_global(other.m_global), m_game(other.m_game), m_globalPath(other.m_globalPath), m_gamePath(other.m_gamePath) {
+        std::scoped_lock lock(other.m_mutex);
+        
+        
+        
+        
     }
 
-    Config::~Config() {}
+    Config::~Config() = default;
 
     void Config::ensureDirectories() {
         std::error_code ec;
@@ -160,8 +161,8 @@ namespace vkBasalt
         out << "screenshotKey = Delete\n";
         out << "# HDR Calibration\n";
         out << "# Default: KDE plasma calibrated value, in absence of it, fallback to sensible numbers.\n";
-        out << "sdrWhitePointNits = " << std::to_string((int)defaultDetected.sdrWhitePointNits) << "\n";
-        out << "hdrPeakNits = " << std::to_string((int)defaultDetected.peakBrightnessNits) << "\n";
+        out << "sdrWhitePointNits = " << std::to_string(static_cast<int>(defaultDetected.sdrWhitePointNits)) << "\n";
+        out << "hdrPeakNits = " << std::to_string(static_cast<int>(defaultDetected.peakBrightnessNits)) << "\n";
         out << "# Screenshot format: png, jpg, bmp, tga, hdr\n";
         out << "screenshotFormat = png\n";
         out << "screenshotQuality = 95\n";
@@ -192,7 +193,7 @@ namespace vkBasalt
         }
     }
 
-    void Config::readConfigLine(std::string line, std::unordered_map<std::string, std::string>& outMap) {
+    void Config::readConfigLine(const std::string& line, std::unordered_map<std::string, std::string>& outMap) {
         std::string key;
         std::string value;
 
@@ -244,7 +245,7 @@ namespace vkBasalt
 
     // Lookup / mutation
     bool Config::findOption(const std::string& option, std::string& outValue) const {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         auto it = m_game.find(option);
         if (it != m_game.end())   { outValue = it->second; return true; }
         it = m_global.find(option);
@@ -253,7 +254,7 @@ namespace vkBasalt
     }
 
     void Config::setOption(const std::string& option, const std::string& value) {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         if (m_game[option] != value) {
             m_game[option] = value;
             g_configDirty = true;
@@ -261,7 +262,7 @@ namespace vkBasalt
     }
 
     void Config::setGlobalOption(const std::string& option, const std::string& value) {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         if (m_global[option] != value) {
             m_global[option] = value;
             g_configDirty = true;
@@ -269,12 +270,12 @@ namespace vkBasalt
     }
 
     bool Config::saveGlobal() {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         return writeConfigFile(m_globalPath, "# vkBasalt-reloaded global config (baseline)\n", m_global);
     }
 
     bool Config::savePerGame() {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         return writeConfigFile(m_gamePath,
             "# vkBasalt-reloaded per-game config\n"
             "# Only overridden keys are stored here. Missing keys fall back to the global config.\n",
@@ -282,12 +283,12 @@ namespace vkBasalt
     }
 
     bool Config::hasPerGameOption(const std::string& option) const {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         return m_game.find(option) != m_game.end();
     }
 
     void Config::removePerGameOption(const std::string& option) {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         auto it = m_game.find(option);
         if (it != m_game.end()) {
             m_game.erase(it);
@@ -296,12 +297,12 @@ namespace vkBasalt
     }
 
     bool Config::hasPerGameOverrides() const {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         return !m_game.empty();
     }
 
     void Config::resetToGlobal() {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         if (!m_game.empty()) {
             m_game.clear();
             g_configDirty = true;
@@ -330,8 +331,8 @@ namespace vkBasalt
         std::string value;
         if (findOption(option, value))
         {
-            std::replace(value.begin(), value.end(), ',', '.');
-            char* end;
+            std::ranges::replace(value, ',', '.');
+            char* end = nullptr;
             float fvalue = std::strtof(value.c_str(), &end);
             if (end == value.c_str()) {
                 Logger::warn("invalid float value for: " + option);
@@ -401,7 +402,7 @@ namespace vkBasalt
         std::ofstream out(path);
         if (!out.good()) return false;
         out << "# vkBasalt-reloaded preset: " << name << "\n";
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
 
         // Ensure the effect chain is always included, even if it was never modified from the global default (and thus missing from m_game).
         if (m_game.find("effects") == m_game.end()) {
@@ -423,7 +424,7 @@ namespace vkBasalt
         std::string path = presetDir() + "/" + name + ".conf";
         std::ifstream f(path);
         if (!f.good()) return false;
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         m_game.clear();
         readConfigFile(f, m_game);
         g_configDirty = true;
@@ -453,7 +454,7 @@ namespace vkBasalt
                 }
             }
         }
-        std::sort(result.begin(), result.end());
+        std::ranges::sort(result);
         } catch (...) {
             // Filesystem error, return empty list
         }

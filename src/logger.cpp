@@ -39,8 +39,7 @@ namespace vkBasalt
     }
 
     Logger::~Logger()
-    {
-    }
+    = default;
 
     void Logger::trace(const std::string& message)
     {
@@ -76,7 +75,7 @@ namespace vkBasalt
     {
         if (level < m_minLevel) return;
 
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::scoped_lock lock(m_mutex);
         static constexpr std::array<const char*, 5> s_prefixes = {
             {"vkBasalt trace: ", "vkBasalt debug: ", "vkBasalt info:  ", "vkBasalt warn:  ", "vkBasalt err:   "}};
         const char* prefix = s_prefixes.at(static_cast<uint32_t>(level));

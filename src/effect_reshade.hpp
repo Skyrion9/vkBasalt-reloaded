@@ -28,14 +28,14 @@ namespace vkBasalt
         ReshadeEffect(LogicalDevice*       pLogicalDevice,
                       VkFormat             format,
                       VkExtent2D           imageExtent,
-                      std::vector<VkImage> inputImages,
-                      std::vector<VkImage> outputImages,
+                      const std::vector<VkImage>& inputImages,
+                      const std::vector<VkImage>& outputImages,
                       Config*              pConfig,
                       std::string          effectName);
-        void virtual applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        void virtual updateEffect() override;
-        void virtual useDepthImage(VkImageView depthImageView) override;
-        virtual ~ReshadeEffect();
+        void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
+        void updateEffect() override;
+        void useDepthImage(VkImageView depthImageView) override;
+        ~ReshadeEffect() override;
 
     private:
         LogicalDevice*           pLogicalDevice;
@@ -65,7 +65,7 @@ namespace vkBasalt
 
         VkDescriptorSetLayout                 uniformDescriptorSetLayout;
         VkDescriptorSetLayout                 imageSamplerDescriptorSetLayout;
-        VkShaderModule                        shaderModule;
+        VkShaderModule                        shaderModule{};
         VkDescriptorPool                      descriptorPool;
         std::vector<VkRenderPass>             renderPasses;
         std::vector<std::vector<std::string>> renderTargets;
@@ -73,7 +73,7 @@ namespace vkBasalt
         VkPipelineLayout                      pipelineLayout;
         std::vector<VkPipeline>               graphicsPipelines;
         std::vector<bool>                     switchSamplers;
-        VkExtent2D                            imageExtent;
+        VkExtent2D                            imageExtent{};
         std::vector<VkSampler>                samplers;
         Config*                               pConfig;
         std::string                           effectName;
@@ -91,8 +91,8 @@ namespace vkBasalt
         std::vector<VkImage>     backBufferImages;
         std::vector<VkImageView> backBufferImageViewsUNORM;
         std::vector<VkImageView> backBufferImageViewsSRGB;
-        VkBuffer                 stagingBuffer;
-        VkDeviceMemory           stagingBufferMemory;
+        VkBuffer                 stagingBuffer{};
+        VkDeviceMemory           stagingBufferMemory{};
         uint32_t                 bufferSize;
         VkDescriptorSet          bufferDescriptorSet;
 

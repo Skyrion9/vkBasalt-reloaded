@@ -25,7 +25,7 @@ namespace vkBasalt
                            Config*              pConfig,
                            VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
         
-        ~CrystalClearEffect();
+        ~CrystalClearEffect() override;
 
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         void updateEffect() override;

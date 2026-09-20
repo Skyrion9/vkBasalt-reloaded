@@ -25,7 +25,7 @@ namespace vkBasalt {
     std::string rgbToHex(float r, float g, float b) {
         char buf[8];
         snprintf(buf, sizeof(buf), "%02x%02x%02x",
-                (int)(r * 255.0f + 0.5f), (int)(g * 255.0f + 0.5f), (int)(b * 255.0f + 0.5f));
+                static_cast<int>(r * 255.0f + 0.5f), static_cast<int>(g * 255.0f + 0.5f), static_cast<int>(b * 255.0f + 0.5f));
         return std::string(buf);
     }
 
@@ -36,8 +36,8 @@ namespace vkBasalt {
         hexToRgb(pConfig->getOption<std::string>("themeBg", "1a0d33"), bg);
         hexToRgb(pConfig->getOption<std::string>("themeAccent", "47bf59"), accent);
         hexToRgb(pConfig->getOption<std::string>("themeText", "d9f2de"), text);
-        float bgAlpha  = pConfig->getOption<float>("themeBgAlpha", 0.88f);
-        float rounding = pConfig->getOption<float>("themeRounding", 3.0f);
+        auto bgAlpha  = pConfig->getOption<float>("themeBgAlpha", 0.88f);
+        auto rounding = pConfig->getOption<float>("themeRounding", 3.0f);
 
         ImVec4 bgDark(bg[0], bg[1], bg[2], bgAlpha);
         ImVec4 bgMid(bg[0] * 1.4f, bg[1] * 1.6f, bg[2] * 1.3f, bgAlpha);

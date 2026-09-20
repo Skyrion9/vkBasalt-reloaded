@@ -26,16 +26,14 @@ namespace vkBasalt
                        std::vector<VkImage> inputImages,
                        std::vector<VkImage> outputImages,
                        Config*              pConfig);
-        void virtual applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        virtual ~TransferEffect();
+        void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
+        ~TransferEffect() override;
 
     private:
         LogicalDevice*       pLogicalDevice;
         std::vector<VkImage> inputImages;
         std::vector<VkImage> outputImages;
-        VkExtent2D           imageExtent;
-        VkFormat             format;
-        Config*              pConfig;
+        VkExtent2D           imageExtent{};
     };
 } // namespace vkBasalt
 #endif // EFFECT_TRANSFER_HPP_INCLUDED

@@ -61,7 +61,7 @@ namespace vkBasalt
         void loadPerGame();
         void createDefaultGlobal();
         void readConfigFile(std::ifstream& stream, std::unordered_map<std::string, std::string>& outMap);
-        void readConfigLine(std::string line, std::unordered_map<std::string, std::string>& outMap);
+        void readConfigLine(const std::string& line, std::unordered_map<std::string, std::string>& outMap);
 
         // Per-game -> global lookup, returns false if not found.
         bool findOption(const std::string& option, std::string& outValue) const;

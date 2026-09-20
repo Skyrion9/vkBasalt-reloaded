@@ -1,5 +1,7 @@
 #include "lut_cube.hpp"
 
+#include <math.h>
+
 #include "logger.hpp"
 
 #include <cstddef>
@@ -13,18 +15,12 @@ namespace vkBasalt
 {
     // Initialize all primitive members to prevent undefined behavior
     LutCube::LutCube() 
-        : size(0), 
-          minX(0.0f), minY(0.0f), minZ(0.0f), 
-          maxX(1.0f), maxY(1.0f), maxZ(1.0f),
-          currentX(0), currentY(0), currentZ(0)
+        : size(0) 
     {
     }
 
     LutCube::LutCube(const std::string& file) 
-        : size(0), 
-          minX(0.0f), minY(0.0f), minZ(0.0f), 
-          maxX(1.0f), maxY(1.0f), maxZ(1.0f),
-          currentX(0), currentY(0), currentZ(0)
+        : size(0) 
     {
         std::ifstream cubeStream(file);
         if (!cubeStream.good())
@@ -83,8 +79,8 @@ namespace vkBasalt
         // Fixed: Recognize negative numbers, positive signs, and decimals
         if (!line.empty() && (std::isdigit(static_cast<unsigned char>(line[0])) || line[0] == '-' || line[0] == '+' || line[0] == '.'))
         {
-            float         x, y, z;
-            unsigned char outX, outY, outZ;
+            float         x = NAN, y = NAN, z = NAN;
+            unsigned char outX = 0, outY = 0, outZ = 0;
             splitTripel(line, x, y, z);
             clampTripel(x, y, z, outX, outY, outZ);
             writeColor(currentX, currentY, currentZ, outX, outY, outZ);

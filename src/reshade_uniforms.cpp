@@ -1,5 +1,6 @@
 #include "reshade_uniforms.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -24,7 +25,7 @@ namespace vkBasalt
         for (auto& uniform : module.uniforms)
         {
             // Fixed: Safely check if the "source" annotation exists before dereferencing
-            auto sourceIt = std::find_if(uniform.annotations.begin(), uniform.annotations.end(), [](const auto& a) {
+            auto sourceIt = std::ranges::find_if(uniform.annotations, [](const auto& a) {
                               return a.name == "source";
                           });
             
@@ -52,7 +53,7 @@ namespace vkBasalt
         for (auto& uniform : module.uniforms)
         {
             // Fixed: Safely check if the "source" annotation exists
-            auto sourceIt = std::find_if(uniform.annotations.begin(), uniform.annotations.end(), [](const auto& a) {
+            auto sourceIt = std::ranges::find_if(uniform.annotations, [](const auto& a) {
                               return a.name == "source";
                           });
             
@@ -111,7 +112,7 @@ namespace vkBasalt
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     FrameTimeUniform::FrameTimeUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         // Fixed: Prevent segfault if source is missing
         if (source == uniformInfo.annotations.end() || source->value.string_data != "frametime")
         {
@@ -128,16 +129,15 @@ namespace vkBasalt
         std::chrono::duration<float, std::milli> duration     = currentFrame - lastFrame;
         lastFrame                                             = currentFrame;
         float frametime                                       = duration.count();
-        std::memcpy((uint8_t*) mapedBuffer + offset, &(frametime), sizeof(float));
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(frametime), sizeof(float));
     }
     FrameTimeUniform::~FrameTimeUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     FrameCountUniform::FrameCountUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "framecount")
         {
             Logger::err("Tried to create a FrameCountUniform from a non framecount uniform_info");
@@ -148,17 +148,16 @@ namespace vkBasalt
     }
     void FrameCountUniform::update(void* mapedBuffer)
     {
-        std::memcpy((uint8_t*) mapedBuffer + offset, &(count), sizeof(int32_t));
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(count), sizeof(int32_t));
         count++;
     }
     FrameCountUniform::~FrameCountUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     DateUniform::DateUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "date")
         {
             Logger::err("Tried to create a DateUniform from a non date uniform_info");
@@ -174,19 +173,18 @@ namespace vkBasalt
         struct tm*  currentTime = std::localtime(&nowC);
         float       year        = 1900.0f + static_cast<float>(currentTime->tm_year);
         float       month       = 1.0f + static_cast<float>(currentTime->tm_mon);
-        float       day         = static_cast<float>(currentTime->tm_mday);
-        float       seconds     = static_cast<float>((currentTime->tm_hour * 60 + currentTime->tm_min) * 60 + currentTime->tm_sec);
+        auto       day         = static_cast<float>(currentTime->tm_mday);
+        auto       seconds     = static_cast<float>((currentTime->tm_hour * 60 + currentTime->tm_min) * 60 + currentTime->tm_sec);
         float       date[]      = {year, month, day, seconds};
-        std::memcpy((uint8_t*) mapedBuffer + offset, date, sizeof(float) * 4);
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, date, sizeof(float) * 4);
     }
     DateUniform::~DateUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     TimerUniform::TimerUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "timer")
         {
             Logger::err("Tried to create a TimerUniform from a non timer uniform_info");
@@ -201,16 +199,15 @@ namespace vkBasalt
         auto                                     currentFrame = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float, std::milli> duration     = currentFrame - start;
         float                                    timer        = duration.count();
-        std::memcpy((uint8_t*) mapedBuffer + offset, &(timer), sizeof(float));
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(timer), sizeof(float));
     }
     TimerUniform::~TimerUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     PingPongUniform::PingPongUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "pingpong")
         {
             Logger::err("Tried to create a PingPongUniform from a non pingpong uniform_info");
@@ -218,26 +215,26 @@ namespace vkBasalt
         }
         
         if (auto minAnnotation =
-                std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "min"; });
+                std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "min"; });
             minAnnotation != uniformInfo.annotations.end())
         {
             min = minAnnotation->type.is_floating_point() ? minAnnotation->value.as_float[0] : static_cast<float>(minAnnotation->value.as_int[0]);
         }
         if (auto maxAnnotation =
-                std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "max"; });
+                std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "max"; });
             maxAnnotation != uniformInfo.annotations.end())
         {
             max = maxAnnotation->type.is_floating_point() ? maxAnnotation->value.as_float[0] : static_cast<float>(maxAnnotation->value.as_int[0]);
         }
         if (auto smoothingAnnotation =
-                std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "smoothing"; });
+                std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "smoothing"; });
             smoothingAnnotation != uniformInfo.annotations.end())
         {
             smoothing = smoothingAnnotation->type.is_floating_point() ? smoothingAnnotation->value.as_float[0]
                                                                       : static_cast<float>(smoothingAnnotation->value.as_int[0]);
         }
         if (auto stepAnnotation =
-                std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "step"; });
+                std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "step"; });
             stepAnnotation != uniformInfo.annotations.end())
         {
             stepMin =
@@ -278,29 +275,28 @@ namespace vkBasalt
                 currentValue[0] = min, currentValue[1] = 1.0f;
             }
         }
-        std::memcpy((uint8_t*) mapedBuffer + offset, currentValue, sizeof(float) * 2);
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, currentValue, sizeof(float) * 2);
     }
     PingPongUniform::~PingPongUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     RandomUniform::RandomUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "random")
         {
             Logger::err("Tried to create a RandomUniform from a non random uniform_info");
             return;
         }
         if (auto minAnnotation =
-                std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "min"; });
+                std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "min"; });
             minAnnotation != uniformInfo.annotations.end())
         {
             min = minAnnotation->type.is_integral() ? minAnnotation->value.as_int[0] : static_cast<int>(minAnnotation->value.as_float[0]);
         }
         if (auto maxAnnotation =
-                std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "max"; });
+                std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "max"; });
             maxAnnotation != uniformInfo.annotations.end())
         {
             max = maxAnnotation->type.is_integral() ? maxAnnotation->value.as_int[0] : static_cast<int>(maxAnnotation->value.as_float[0]);
@@ -313,20 +309,19 @@ namespace vkBasalt
         // Fixed: Prevent division by zero if max < min
         if (max < min) {
             int32_t value = min;
-            std::memcpy((uint8_t*) mapedBuffer + offset, &(value), sizeof(int32_t));
+            std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(value), sizeof(int32_t));
             return;
         }
         int32_t value = min + (std::rand() % (max - min + 1));
-        std::memcpy((uint8_t*) mapedBuffer + offset, &(value), sizeof(int32_t));
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(value), sizeof(int32_t));
     }
     RandomUniform::~RandomUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     KeyUniform::KeyUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "key")
         {
             Logger::err("Tried to create a KeyUniform from a non key uniform_info");
@@ -338,16 +333,15 @@ namespace vkBasalt
     void KeyUniform::update(void* mapedBuffer)
     {
         VkBool32 keyDown = VK_FALSE; // TODO
-        std::memcpy((uint8_t*) mapedBuffer + offset, &(keyDown), sizeof(VkBool32));
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(keyDown), sizeof(VkBool32));
     }
     KeyUniform::~KeyUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     MouseButtonUniform::MouseButtonUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "mousebutton")
         {
             Logger::err("Tried to create a MouseButtonUniform from a non mousebutton uniform_info");
@@ -359,16 +353,15 @@ namespace vkBasalt
     void MouseButtonUniform::update(void* mapedBuffer)
     {
         VkBool32 keyDown = VK_FALSE; // TODO
-        std::memcpy((uint8_t*) mapedBuffer + offset, &(keyDown), sizeof(VkBool32));
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(keyDown), sizeof(VkBool32));
     }
     MouseButtonUniform::~MouseButtonUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     MousePointUniform::MousePointUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "mousepoint")
         {
             Logger::err("Tried to create a MousePointUniform from a non mousepoint uniform_info");
@@ -380,16 +373,15 @@ namespace vkBasalt
     void MousePointUniform::update(void* mapedBuffer)
     {
         float point[2] = {0.0f, 0.0f}; // TODO
-        std::memcpy((uint8_t*) mapedBuffer + offset, point, sizeof(float) * 2);
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, point, sizeof(float) * 2);
     }
     MousePointUniform::~MousePointUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     MouseDeltaUniform::MouseDeltaUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "mousedelta")
         {
             Logger::err("Tried to create a MouseDeltaUniform from a non mousedelta uniform_info");
@@ -401,16 +393,15 @@ namespace vkBasalt
     void MouseDeltaUniform::update(void* mapedBuffer)
     {
         float delta[2] = {0.0f, 0.0f}; // TODO
-        std::memcpy((uint8_t*) mapedBuffer + offset, delta, sizeof(float) * 2);
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, delta, sizeof(float) * 2);
     }
     MouseDeltaUniform::~MouseDeltaUniform()
-    {
-    }
+    = default;
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     DepthUniform::DepthUniform(reshadefx::uniform_info uniformInfo)
     {
-        auto source = std::find_if(uniformInfo.annotations.begin(), uniformInfo.annotations.end(), [](const auto& a) { return a.name == "source"; });
+        auto source = std::ranges::find_if(uniformInfo.annotations, [](const auto& a) { return a.name == "source"; });
         if (source == uniformInfo.annotations.end() || source->value.string_data != "bufready_depth")
         {
             Logger::err("Tried to create a DepthUniform from a non bufready_depth uniform_info");
@@ -422,9 +413,8 @@ namespace vkBasalt
     void DepthUniform::update(void* mapedBuffer)
     {
         VkBool32 hasDepth = VK_FALSE; // TODO
-        std::memcpy((uint8_t*) mapedBuffer + offset, &(hasDepth), sizeof(VkBool32));
+        std::memcpy(static_cast<uint8_t*>(mapedBuffer) + offset, &(hasDepth), sizeof(VkBool32));
     }
     DepthUniform::~DepthUniform()
-    {
-    }
+    = default;
 } // namespace vkBasalt

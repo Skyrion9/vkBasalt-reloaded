@@ -22,12 +22,12 @@ namespace vkBasalt
         SmaaEffect(LogicalDevice*       pLogicalDevice,
                    VkFormat             format,
                    VkExtent2D           imageExtent,
-                   std::vector<VkImage> inputImages,
-                   std::vector<VkImage> outputImages,
+                   const std::vector<VkImage>& inputImages,
+                   const std::vector<VkImage>& outputImages,
                    Config*              pConfig,
                    VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        ~SmaaEffect();
+        ~SmaaEffect() override;
 
         std::string getName() const override { return "smaa"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
@@ -68,26 +68,23 @@ namespace vkBasalt
         VkImageView                  searchImageView;
         VkDescriptorSetLayout        imageSamplerDescriptorSetLayout;
         VkDescriptorPool             descriptorPool;
-        VkShaderModule               edgeVertexModule;
-        VkShaderModule               edgeFragmentModule;
-        VkShaderModule               blendVertexModule;
-        VkShaderModule               blendFragmentModule;
-        VkShaderModule               neighborVertexModule;
-        VkShaderModule               neighborFragmentModule;
+        VkShaderModule               edgeVertexModule{};
+        VkShaderModule               edgeFragmentModule{};
+        VkShaderModule               blendVertexModule{};
+        VkShaderModule               blendFragmentModule{};
+        VkShaderModule               neighborVertexModule{};
+        VkShaderModule               neighborFragmentModule{};
         VkRenderPass                 renderPass;
         VkRenderPass                 unormRenderPass;
         VkPipelineLayout             pipelineLayout;
         VkPipeline                   edgePipeline;
         VkPipeline                   blendPipeline;
         VkPipeline                   neighborPipeline;
-        VkExtent2D                   imageExtent;
-        VkFormat                     format;
-        VkDeviceMemory               imageMemory;
-        VkDeviceMemory               areaMemory;
-        VkDeviceMemory               searchMemory;
+        VkExtent2D                   imageExtent{};
+        VkDeviceMemory               imageMemory{};
+        VkDeviceMemory               areaMemory{};
+        VkDeviceMemory               searchMemory{};
         VkSampler                    sampler;
-
-        Config* pConfig;
     };
 
 } // namespace vkBasalt

@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace vkBasalt {
@@ -66,13 +67,13 @@ namespace vkBasalt {
 
         switch (p->type) {
             case ParamType::Float: {
-                float val = (float)getUIParam(p->key, selectedEffect);
-                float step = (p->step > 0) ? (float)p->step : 0.01f;
-                float range = (float)(p->maxVal - p->minVal);
+                auto val = static_cast<float>(getUIParam(p->key, selectedEffect));
+                float step = (p->step > 0) ? static_cast<float>(p->step) : 0.01f;
+                auto range = static_cast<float>(p->maxVal - p->minVal);
                 float dragSpeed = range / kDragSpeedDivisor;
                 bool changed = false;
                 ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                if (ImGui::DragFloat(p->label.c_str(), &val, dragSpeed, (float)p->minVal, (float)p->maxVal, "%.3f"))
+                if (ImGui::DragFloat(p->label.c_str(), &val, dragSpeed, static_cast<float>(p->minVal), static_cast<float>(p->maxVal), "%.3f"))
                     changed = true;
                 if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
                     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
@@ -80,22 +81,22 @@ namespace vkBasalt {
                 }
                 ImGui::PopItemWidth();
                 if (changed) {
-                    val = std::clamp(val, (float)p->minVal, (float)p->maxVal);
-                    setUIParam(p->key, (double)val);
-                    selectedEffect->setParam(p->key, (double)val);
+                    val = std::clamp(val, static_cast<float>(p->minVal), static_cast<float>(p->maxVal));
+                    setUIParam(p->key, static_cast<double>(val));
+                    selectedEffect->setParam(p->key, static_cast<double>(val));
                     setConfigDebounced(p->key, doubleToConfigString(val), true);
                 }
                 paramContextMenu();
                 break;
             }
             case ParamType::Int: {
-                int val = (int)getUIParam(p->key, selectedEffect);
-                int step = (p->step > 0) ? (int)p->step : 1;
-                float range = (float)(p->maxVal - p->minVal);
+                int val = static_cast<int>(getUIParam(p->key, selectedEffect));
+                int step = (p->step > 0) ? static_cast<int>(p->step) : 1;
+                auto range = static_cast<float>(p->maxVal - p->minVal);
                 float dragSpeed = std::max(0.05f, range / kDragSpeedDivisor);
                 bool changed = false;
                 ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                if (ImGui::DragInt(p->label.c_str(), &val, dragSpeed, (int)p->minVal, (int)p->maxVal))
+                if (ImGui::DragInt(p->label.c_str(), &val, dragSpeed, static_cast<int>(p->minVal), static_cast<int>(p->maxVal)))
                     changed = true;
                 if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
                     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
@@ -103,9 +104,9 @@ namespace vkBasalt {
                 }
                 ImGui::PopItemWidth();
                 if (changed) {
-                    val = std::clamp(val, (int)p->minVal, (int)p->maxVal);
-                    setUIParam(p->key, (double)val);
-                    selectedEffect->setParam(p->key, (double)val);
+                    val = std::clamp(val, static_cast<int>(p->minVal), static_cast<int>(p->maxVal));
+                    setUIParam(p->key, static_cast<double>(val));
+                    selectedEffect->setParam(p->key, static_cast<double>(val));
                     setConfigDebounced(p->key, std::to_string(val), true);
                 }
                 paramContextMenu();
@@ -123,13 +124,13 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::Combo: {
-                int currentIdx = (int)getUIParam(p->key, selectedEffect);
-                currentIdx = std::clamp(currentIdx, 0, (int)p->comboOptions.size() - 1);
+                int currentIdx = static_cast<int>(getUIParam(p->key, selectedEffect));
+                currentIdx = std::clamp(currentIdx, 0, static_cast<int>(p->comboOptions.size()) - 1);
                 const char* preview = p->comboOptions.empty() ? "" : p->comboOptions[currentIdx].c_str();
                 if (ImGui::BeginCombo(p->label.c_str(), preview)) {
                     bool justOpened = ImGui::IsWindowAppearing();
                     for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
-                        bool is_sel = (currentIdx == (int)ci);
+                        bool is_sel = (std::cmp_equal(currentIdx ,ci));
                         if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
                             setUIParam(p->key, static_cast<double>(ci));
                             selectedEffect->setParam(p->key, static_cast<double>(ci));
@@ -152,7 +153,7 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::FilePath: {
-                std::string currentPath = m_pConfig->getOption<std::string>(p->key, "");
+                auto currentPath = m_pConfig->getOption<std::string>(p->key, "");
                 char pathBuf[1024] = {};
                 strncpy(pathBuf, currentPath.c_str(), sizeof(pathBuf) - 1);
                 ImGui::Text("%s", p->label.c_str());
@@ -226,10 +227,9 @@ namespace vkBasalt {
         if (m_chainCacheDirty || g_triggerPreviewReload || g_triggerSoftReload || g_triggerRevertReload) {
             m_cachedChainList = m_pConfig->getOption<std::vector<std::string>>("effects", {});
             // Filter out empty strings that might result from parsing an empty "effects=" key
-            m_cachedChainList.erase(std::remove_if(m_cachedChainList.begin(), m_cachedChainList.end(),
-                [](const std::string& s) { return s.empty(); }), m_cachedChainList.end());
+            std::erase_if(m_cachedChainList, [](const std::string& s) { return s.empty(); });
             m_cachedAllEffects.clear();
-            for (const char* b : kBuiltInEffects) m_cachedAllEffects.push_back(b);
+            for (const char* b : kBuiltInEffects) m_cachedAllEffects.emplace_back(b);
             for (auto& name : m_cachedChainList) {
                 bool isBuiltin = false;
                 for (const char* b : kBuiltInEffects) { if (name == b) { isBuiltin = true; break; } }
@@ -242,7 +242,7 @@ namespace vkBasalt {
         std::vector<std::string>& allEffects = m_cachedAllEffects;
 
         auto isInChain = [&](const std::string& name) {
-            return std::find(chainList.begin(), chainList.end(), name) != chainList.end();
+            return std::ranges::find(chainList, name) != chainList.end();
         };
 
         if (m_selectedEffectIndex >= allEffects.size()) m_selectedEffectIndex = 0;
@@ -288,7 +288,7 @@ namespace vkBasalt {
             for (size_t i = 0; i < allEffects.size(); i++) {
                 if (allEffects[i] == chainList[ci]) { allIdx = i; break; }
             }
-            ImGui::PushID((int)allIdx);
+            ImGui::PushID(static_cast<int>(allIdx));
 
             bool checked = true;
             if (ImGui::Checkbox("##en", &checked)) {
@@ -341,7 +341,7 @@ namespace vkBasalt {
         // Inactive effects (not in chain)
         for (size_t i = 0; i < allEffects.size(); i++) {
             if (isInChain(allEffects[i])) continue;
-            ImGui::PushID((int)i);
+            ImGui::PushID(static_cast<int>(i));
 
             bool checked = false;
             if (ImGui::Checkbox("##en", &checked)) {
@@ -367,7 +367,7 @@ namespace vkBasalt {
         ImGui::Separator();
 
         if (ImGui::Button("Auto-Sort (AA > Deband > Color > Contrast > Sharpen)")) {
-            std::stable_sort(chainList.begin(), chainList.end(),
+            std::ranges::stable_sort(chainList,
                             [](const std::string& a, const std::string& b) {
                                 return getEffectSortPriority(a) < getEffectSortPriority(b);
                             });
@@ -387,7 +387,7 @@ namespace vkBasalt {
             return;
         }
         std::string selectedName = m_cachedAllEffects[m_selectedEffectIndex];
-        bool inChain = std::find(m_cachedChainList.begin(), m_cachedChainList.end(), selectedName) != m_cachedChainList.end();
+        bool inChain = std::ranges::find(m_cachedChainList, selectedName) != m_cachedChainList.end();
 
         ImGui::Text("Effect: %s", selectedName.c_str());
         if (!g_effectsEnabled) {
@@ -439,7 +439,7 @@ namespace vkBasalt {
         for (const auto& p : params) {
             if (p.key.find("QualityLevel") != std::string::npos || p.key.find("qualityLevel") != std::string::npos) {
                 hasQualityGating = true;
-                currentQuality = (int)selectedEffect->getParam(p.key);
+                currentQuality = static_cast<int>(selectedEffect->getParam(p.key));
                 break;
             }
         }
@@ -476,7 +476,7 @@ namespace vkBasalt {
                 for (auto& c : categories) {
                     if (std::string(c.name) == name) return c;
                 }
-                categories.push_back({name, getCategorySortOrder(name), {}});
+                categories.push_back({.name=name, .sortOrder=getCategorySortOrder(name), .items={}});
                 return categories.back();
             };
 
@@ -485,9 +485,9 @@ namespace vkBasalt {
             
             auto containsIgnoreCase = [](const std::string& haystack, const std::string& needle) {
                 if (needle.empty()) return true;
-                auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
-                    [](char ch1, char ch2) { return std::tolower((unsigned char)ch1) == std::tolower((unsigned char)ch2); });
-                return it != haystack.end();
+                auto result = std::ranges::search(haystack, needle,
+                    [](char ch1, char ch2) { return std::tolower(static_cast<unsigned char>(ch1)) == std::tolower(static_cast<unsigned char>(ch2)); });
+                return !result.empty();
             };
 
             for (const auto& p : params) {
@@ -512,7 +512,7 @@ namespace vkBasalt {
             }
 
             // Sort categories logically from top to bottom
-            std::sort(categories.begin(), categories.end(), [](const Category& a, const Category& b) {
+            std::ranges::sort(categories, [](const Category& a, const Category& b) {
                 return a.sortOrder < b.sortOrder;
             });
 
@@ -551,14 +551,14 @@ namespace vkBasalt {
                                     tip = "Toggle\nDefault: " + std::string(p->defaultVal > 0.5 ? "On" : "Off");
                                     break;
                                 case ParamType::Combo: {
-                                    size_t defIdx = std::min((size_t)p->defaultVal, p->comboOptions.empty() ? 0 : p->comboOptions.size() - 1);
+                                    size_t defIdx = std::min(static_cast<size_t>(p->defaultVal), p->comboOptions.empty() ? 0 : p->comboOptions.size() - 1);
                                     const char* def = p->comboOptions.empty() ? "None" : p->comboOptions[defIdx].c_str();
                                     tip = "Options: " + std::to_string(p->comboOptions.size()) + "\nDefault: " + def;
                                     break;
                                 }
                                 case ParamType::Int:
-                                    tip = "Range: " + std::to_string((int)p->minVal) + " to " + std::to_string((int)p->maxVal) +
-                                        "\nDefault: " + std::to_string((int)p->defaultVal);
+                                    tip = "Range: " + std::to_string(static_cast<int>(p->minVal)) + " to " + std::to_string(static_cast<int>(p->maxVal)) +
+                                        "\nDefault: " + std::to_string(static_cast<int>(p->defaultVal));
                                     break;
                                 case ParamType::Float:
                                 case ParamType::FilePath:

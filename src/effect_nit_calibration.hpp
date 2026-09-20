@@ -38,7 +38,6 @@ namespace vkBasalt {
 
     private:
         Config* m_pConfigRef;
-        bool m_autoHdrActive;
         std::string m_monitorName;
 
         struct NitCalibrationSpecData {
@@ -51,9 +50,9 @@ namespace vkBasalt {
             int32_t destColorSpace;
         };
 
-        NitCalibrationSpecData m_specData;
+        NitCalibrationSpecData m_specData{};
         std::vector<VkSpecializationMapEntry> m_specMapEntries;
-        VkSpecializationInfo m_specInfo;
+        VkSpecializationInfo m_specInfo{};
         std::unique_ptr<AutoHdrAnalyzer> m_autoHdrAnalyzer;
 
         // Dummy metrics buffer for when adaptive is off

@@ -41,11 +41,11 @@ namespace vkBasalt
     {
     public:
         SimpleEffect();
-        virtual void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        virtual ~SimpleEffect();
+        void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
+        ~SimpleEffect() override;
 
     protected:
-        LogicalDevice*               pLogicalDevice;
+        LogicalDevice*               pLogicalDevice{};
         std::vector<VkImage>         inputImages;
         std::vector<VkImage>         outputImages;
         std::vector<VkImageView>     inputImageViews;
@@ -59,14 +59,14 @@ namespace vkBasalt
         VkRenderPass                 renderPass;
         VkPipelineLayout             pipelineLayout;
         VkPipeline                   graphicsPipeline;
-        VkExtent2D                   imageExtent;
+        VkExtent2D                   imageExtent{};
         VkFormat                     format;
         VkSampler                    sampler;
-        Config*                      pConfig;
+        Config*                      pConfig{};
         std::vector<uint32_t>        vertexCode;
         std::vector<uint32_t>        fragmentCode;
-        VkSpecializationInfo*        pVertexSpecInfo;
-        VkSpecializationInfo*        pFragmentSpecInfo;
+        VkSpecializationInfo*        pVertexSpecInfo{};
+        VkSpecializationInfo*        pFragmentSpecInfo{};
         uint32_t                     pushConstantSize = 0; // Defaults to 0 (no push constants). Override per effect as necessary.
 
         // UBO support for per-frame data (e.g., temporal frame counters)
@@ -89,8 +89,8 @@ namespace vkBasalt
         void init(LogicalDevice*       pLogicalDevice,
                   VkFormat             format,
                   VkExtent2D           imageExtent,
-                  std::vector<VkImage> inputImages,
-                  std::vector<VkImage> outputImages,
+                  const std::vector<VkImage>& inputImages,
+                  const std::vector<VkImage>& outputImages,
                   Config*              pConfig);
     };
 } // namespace vkBasalt

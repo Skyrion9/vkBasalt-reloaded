@@ -17,6 +17,6 @@ namespace vkBasalt
     bool  isWaylandInputActive();
     void shutdownWaylandInput();
     void clearWaylandInputQueues();
-    uint32_t convertToKeySymWayland(std::string key);
+    uint32_t convertToKeySymWayland(const std::string& key);
     bool isKeyPressedWayland(uint32_t ks);
 } // namespace vkBasalt

@@ -20,11 +20,11 @@ namespace vkBasalt
     {
     public:
         void virtual update(void* mapedBuffer) = 0;
-        virtual ~ReshadeUniform(){};
+        virtual ~ReshadeUniform()= default;
 
     protected:
-        uint32_t offset;
-        uint32_t size;
+        uint32_t offset{};
+        uint32_t size{};
     };
 
     std::vector<std::shared_ptr<ReshadeUniform>> createReshadeUniforms(reshadefx::module module);
@@ -33,8 +33,8 @@ namespace vkBasalt
     {
     public:
         FrameTimeUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~FrameTimeUniform();
+        void update(void* mapedBuffer) override;
+        ~FrameTimeUniform() override;
 
     private:
         std::chrono::time_point<std::chrono::high_resolution_clock> lastFrame;
@@ -44,8 +44,8 @@ namespace vkBasalt
     {
     public:
         FrameCountUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~FrameCountUniform();
+        void update(void* mapedBuffer) override;
+        ~FrameCountUniform() override;
 
     private:
         int32_t count = 0;
@@ -55,16 +55,16 @@ namespace vkBasalt
     {
     public:
         DateUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~DateUniform();
+        void update(void* mapedBuffer) override;
+        ~DateUniform() override;
     };
 
     class TimerUniform : public ReshadeUniform
     {
     public:
         TimerUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~TimerUniform();
+        void update(void* mapedBuffer) override;
+        ~TimerUniform() override;
 
     private:
         std::chrono::time_point<std::chrono::high_resolution_clock> start;
@@ -74,8 +74,8 @@ namespace vkBasalt
     {
     public:
         PingPongUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~PingPongUniform();
+        void update(void* mapedBuffer) override;
+        ~PingPongUniform() override;
 
     private:
         std::chrono::time_point<std::chrono::high_resolution_clock> lastFrame;
@@ -92,8 +92,8 @@ namespace vkBasalt
     {
     public:
         RandomUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~RandomUniform();
+        void update(void* mapedBuffer) override;
+        ~RandomUniform() override;
 
     private:
         int max = 0;
@@ -104,40 +104,40 @@ namespace vkBasalt
     {
     public:
         KeyUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~KeyUniform();
+        void update(void* mapedBuffer) override;
+        ~KeyUniform() override;
     };
 
     class MouseButtonUniform : public ReshadeUniform
     {
     public:
         MouseButtonUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~MouseButtonUniform();
+        void update(void* mapedBuffer) override;
+        ~MouseButtonUniform() override;
     };
 
     class MousePointUniform : public ReshadeUniform
     {
     public:
         MousePointUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~MousePointUniform();
+        void update(void* mapedBuffer) override;
+        ~MousePointUniform() override;
     };
 
     class MouseDeltaUniform : public ReshadeUniform
     {
     public:
         MouseDeltaUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~MouseDeltaUniform();
+        void update(void* mapedBuffer) override;
+        ~MouseDeltaUniform() override;
     };
 
     class DepthUniform : public ReshadeUniform
     {
     public:
         DepthUniform(reshadefx::uniform_info uniformInfo);
-        void virtual update(void* mapedBuffer) override;
-        virtual ~DepthUniform();
+        void update(void* mapedBuffer) override;
+        ~DepthUniform() override;
     };
 } // namespace vkBasalt
 

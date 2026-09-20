@@ -7,7 +7,7 @@ namespace vkBasalt
 {
     VkRenderPass createRenderPass(LogicalDevice* pLogicalDevice, VkFormat format, bool clear, VkImageLayout finalLayout)
     {
-        VkRenderPass renderPass;
+        VkRenderPass renderPass = nullptr;
 
         VkAttachmentDescription attachmentDescription;
         attachmentDescription.flags          = 0;

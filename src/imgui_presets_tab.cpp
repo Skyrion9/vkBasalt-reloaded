@@ -53,11 +53,11 @@ namespace vkBasalt {
             return;
         }
 
-        ImGui::Text("Saved Presets (%d):", (int)presets.size());
+        ImGui::Text("Saved Presets (%d):", static_cast<int>(presets.size()));
         ImGui::Spacing();
 
         for (size_t i = 0; i < presets.size(); i++) {
-            ImGui::PushID((int)i);
+            ImGui::PushID(static_cast<int>(i));
             ImGui::Text("%s", presets[i].c_str());
             ImGui::SameLine(300);
             if (ImGui::Button("Load")) {

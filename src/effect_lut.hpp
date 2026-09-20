@@ -25,7 +25,7 @@ namespace vkBasalt
                   std::vector<VkImage> outputImages,
                   Config*              pConfig,
                   VkColorSpaceKHR      colorSpace);
-        ~LutEffect();
+        ~LutEffect() override;
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
     
         std::string getName() const override { return "lut"; }
@@ -39,7 +39,7 @@ namespace vkBasalt
         };
 
         VkImage               lutImage;
-        VkDeviceMemory        lutMemory;
+        VkDeviceMemory        lutMemory{};
         VkImageView           lutImageView;
         VkDescriptorSetLayout lutDescriptorSetLayout;
         VkDescriptorPool      lutDescriptorPool;

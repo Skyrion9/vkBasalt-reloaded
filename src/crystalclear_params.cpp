@@ -7,7 +7,7 @@
 
 namespace vkBasalt
 {
-    #define SPEC(id, field) .specId = id, .specOffset = offsetof(CrystalClearSpecData, field), .specSize = sizeof(((CrystalClearSpecData*)0)->field)
+    #define SPEC(id, field) .specId = (id), .specOffset = offsetof(CrystalClearSpecData, field), .specSize = sizeof(((CrystalClearSpecData*)0)->field)
 
     int CrystalClearEffect::minQualityForParam(const std::string& key) const
     {

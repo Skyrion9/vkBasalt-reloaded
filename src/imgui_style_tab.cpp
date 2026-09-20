@@ -15,8 +15,8 @@ namespace vkBasalt {
         hexToRgb(m_pConfig->getOption<std::string>("themeAccent", "47bf59"), accent);
         hexToRgb(m_pConfig->getOption<std::string>("themeText", "d9f2de"), text);
 
-        float bgAlpha  = m_pConfig->getOption<float>("themeBgAlpha", 0.88f);
-        float rounding = m_pConfig->getOption<float>("themeRounding", 3.0f);
+        auto bgAlpha  = m_pConfig->getOption<float>("themeBgAlpha", 0.88f);
+        auto rounding = m_pConfig->getOption<float>("themeRounding", 3.0f);
         bool themeChanged = false;
 
         if (ImGui::ColorEdit3("Background Color", bg)) {

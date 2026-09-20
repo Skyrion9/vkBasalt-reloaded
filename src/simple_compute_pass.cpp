@@ -108,7 +108,7 @@ namespace vkBasalt
         info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         info.imageType = VK_IMAGE_TYPE_2D;
         info.format = format;
-        info.extent = {width, height, 1};
+        info.extent = {.width=width, .height=height, .depth=1};
         info.mipLevels = 1;
         info.arrayLayers = 1;
         info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -146,7 +146,7 @@ namespace vkBasalt
         info.image = image;
         info.viewType = viewType;
         info.format = format;
-        info.subresourceRange = {aspect, 0, 1, 0, 1};
+        info.subresourceRange = {.aspectMask=aspect, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         VkImageView view = VK_NULL_HANDLE;
         pDevice->vkd.CreateImageView(pDevice->device, &info, nullptr, &view);
@@ -185,7 +185,7 @@ namespace vkBasalt
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.image = image;
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(cmdBuf, srcStage, dstStage,
                                                0, 0, nullptr, 0, nullptr, 1, &barrier);
@@ -206,7 +206,7 @@ namespace vkBasalt
         auto bindings = getBindings();
         VkDescriptorSetLayoutCreateInfo dslInfo = {};
         dslInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslInfo.bindingCount = (uint32_t)bindings.size();
+        dslInfo.bindingCount = static_cast<uint32_t>(bindings.size());
         dslInfo.pBindings = bindings.data();
         result = pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &dslInfo, nullptr, &descriptorSetLayout);
         if (result != VK_SUCCESS) { Logger::err("SimpleComputePass: CreateDescriptorSetLayout failed"); return; }
@@ -256,9 +256,9 @@ namespace vkBasalt
             {
                 if (ps.type == b.descriptorType) { ps.descriptorCount += imageCount; found = true; break; }
             }
-            if (!found) poolSizes.push_back({b.descriptorType, imageCount});
+            if (!found) poolSizes.push_back({.type=b.descriptorType, .descriptorCount=imageCount});
         }
-        dpInfo.poolSizeCount = (uint32_t)poolSizes.size();
+        dpInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         dpInfo.pPoolSizes = poolSizes.data();
         result = pLogicalDevice->vkd.CreateDescriptorPool(pLogicalDevice->device, &dpInfo, nullptr, &descriptorPool);
         if (result != VK_SUCCESS) { Logger::err("SimpleComputePass: CreateDescriptorPool failed"); return; }

@@ -4,6 +4,7 @@
 #include "game_detect.hpp"
 #include "color_math.hpp"
 
+#include <math.h>
 #include <stb_image_write.h>
 #include "tinyexr.h"
 
@@ -71,7 +72,7 @@ namespace vkBasalt {
                            const std::vector<uint8_t>& pixels, const std::string& format, int quality,
                            VkFormat vkFormat, ColorSpaceMode csm) {
 
-        size_t pixelCount = (size_t)width * height;
+        size_t pixelCount = static_cast<size_t>(width) * height;
         int dstChannels = 3;
         bool wantHDR = (format == "hdr" || format == "exr");
         
@@ -89,7 +90,7 @@ namespace vkBasalt {
             switch (vkFormat) {
                 case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
                 case VK_FORMAT_A2R10G10B10_UNORM_PACK32: {
-                    const uint32_t* packed = reinterpret_cast<const uint32_t*>(pixels.data());
+                    const auto* packed = reinterpret_cast<const uint32_t*>(pixels.data());
                     bool isA2R10 = (vkFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32);
                     uint32_t p = packed[i];
                     r = isA2R10 ? ((p >> 20) & 0x3FF) / 1023.0f : ((p >>  0) & 0x3FF) / 1023.0f;
@@ -107,12 +108,12 @@ namespace vkBasalt {
                     bool isFP32 = (vkFormat == VK_FORMAT_R32G32B32A32_SFLOAT || vkFormat == VK_FORMAT_R32G32B32_SFLOAT);
                     uint32_t channels = getBytesPerPixel(vkFormat) / (isFP32 ? 4 : 2);
                     if (isFP32) {
-                        const float* fpixels = reinterpret_cast<const float*>(pixels.data());
+                        const auto* fpixels = reinterpret_cast<const float*>(pixels.data());
                         r = fpixels[i * channels + 0];
                         g = fpixels[i * channels + 1];
                         b = fpixels[i * channels + 2];
                     } else {
-                        const uint16_t* fpixels = reinterpret_cast<const uint16_t*>(pixels.data());
+                        const auto* fpixels = reinterpret_cast<const uint16_t*>(pixels.data());
                         r = halfToFloat(fpixels[i * channels + 0]);
                         g = halfToFloat(fpixels[i * channels + 1]);
                         b = halfToFloat(fpixels[i * channels + 2]);
@@ -125,7 +126,7 @@ namespace vkBasalt {
                 default: {
                     bool isBGR = isBGRFormat(vkFormat);
                     uint32_t stride = getBytesPerPixel(vkFormat);
-                    uint8_t r8, g8, b8;
+                    uint8_t r8 = 0, g8 = 0, b8 = 0;
                     if (isBGR) {
                         r8 = pixels[i * stride + 2];
                         g8 = pixels[i * stride + 1];
@@ -145,7 +146,7 @@ namespace vkBasalt {
 
         if (wantHDR) {
             for (size_t i = 0; i < pixelCount; i++) {
-                float r, g, b;
+                float r = NAN, g = NAN, b = NAN;
                 unpackPixel(i, r, g, b);
                 // .hdr/.exr expect linear light. Clamp negatives to 0.
                 linearPixels[i * 3 + 0] = std::max(0.0f, r);
@@ -156,7 +157,7 @@ namespace vkBasalt {
             // 8-bit formats (PNG, JPG, BMP, TGA) expect sRGB gamma-encoded values in [0, 1].
             bool isHDRSource = (csm != ColorSpaceMode::SDR_SRGB && csm != ColorSpaceMode::DISPLAY_P3_NONLINEAR);
             for (size_t i = 0; i < pixelCount; i++) {
-                float r, g, b;
+                float r = NAN, g = NAN, b = NAN;
                 unpackPixel(i, r, g, b);
                 
                 if (isHDRSource) {
@@ -211,16 +212,16 @@ namespace vkBasalt {
             image_ptr[0] = channelB.data();
             image_ptr[1] = channelG.data();
             image_ptr[2] = channelR.data();
-            image.images = (unsigned char**)image_ptr;
+            image.images = reinterpret_cast<unsigned char**>(image_ptr);
             
             header.num_channels = 3;
-            header.channels = (EXRChannelInfo*)malloc(sizeof(EXRChannelInfo) * 3);
+            header.channels = static_cast<EXRChannelInfo*>(malloc(sizeof(EXRChannelInfo) * 3));
             snprintf(header.channels[0].name, 256, "B");
             snprintf(header.channels[1].name, 256, "G");
             snprintf(header.channels[2].name, 256, "R");
             
-            header.pixel_types = (int*)malloc(sizeof(int) * 3);
-            header.requested_pixel_types = (int*)malloc(sizeof(int) * 3);
+            header.pixel_types = static_cast<int*>(malloc(sizeof(int) * 3));
+            header.requested_pixel_types = static_cast<int*>(malloc(sizeof(int) * 3));
             for (int i = 0; i < 3; i++) {
                 header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
                 header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_HALF; // 16 bit half-float
@@ -235,10 +236,10 @@ namespace vkBasalt {
             };
             
             header.num_custom_attributes = 1;
-            header.custom_attributes = (EXRAttribute*)malloc(sizeof(EXRAttribute));
+            header.custom_attributes = static_cast<EXRAttribute*>(malloc(sizeof(EXRAttribute)));
             snprintf(header.custom_attributes[0].name, 256, "chromaticities");
             snprintf(header.custom_attributes[0].type, 256, "chromaticities");
-            header.custom_attributes[0].value = (unsigned char*)chromaticities;
+            header.custom_attributes[0].value = reinterpret_cast<unsigned char*>(chromaticities);
             header.custom_attributes[0].size = sizeof(chromaticities);
             
             int ret = SaveEXRImageToFile(&image, &header, path.c_str(), &err);
@@ -275,7 +276,7 @@ namespace vkBasalt {
                            uint32_t imageIndex, bool saveBeforeAfter,
                            const std::string& outputPath,
                            const std::string& format, int quality,
-                           ColorSpaceMode csm) {
+                           ColorSpaceMode  /*csm*/) {
         if (!pDevice || !pSwapchain) return;
         if (g_pending.active) {
             Logger::warn("Screenshot already in progress, skipping.");
@@ -286,7 +287,7 @@ namespace vkBasalt {
         VkFormat vkFormat = pSwapchain->format;
 
         uint32_t bytesPerPixel = getBytesPerPixel(vkFormat);
-        VkDeviceSize bufferSize = (VkDeviceSize)extent.width * extent.height * bytesPerPixel;
+        VkDeviceSize bufferSize = static_cast<VkDeviceSize>(extent.width) * extent.height * bytesPerPixel;
 
         std::string dir = outputPath;
         if (dir.empty()) {
@@ -378,9 +379,9 @@ namespace vkBasalt {
         region.bufferOffset = 0;
         region.bufferRowLength = 0;
         region.bufferImageHeight = 0;
-        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        region.imageOffset = {0, 0, 0};
-        region.imageExtent = {extent.width, extent.height, 1};
+        region.imageSubresource = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel=0, .baseArrayLayer=0, .layerCount=1};
+        region.imageOffset = {.x=0, .y=0, .z=0};
+        region.imageExtent = {.width=extent.width, .height=extent.height, .depth=1};
 
         // Copy after image (post processed)
         {
@@ -391,7 +392,7 @@ namespace vkBasalt {
             toTransfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             toTransfer.image = pSwapchain->images[imageIndex];
-            toTransfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            toTransfer.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
             pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
             pDevice->vkd.CmdCopyImageToBuffer(cmdBuf, pSwapchain->images[imageIndex],
@@ -403,7 +404,7 @@ namespace vkBasalt {
             toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             toPresent.image = pSwapchain->images[imageIndex];
-            toPresent.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            toPresent.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
             pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &toPresent);
         }
@@ -417,7 +418,7 @@ namespace vkBasalt {
             toTransfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             toTransfer.image = beforeImage;
-            toTransfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            toTransfer.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
             pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
             pDevice->vkd.CmdCopyImageToBuffer(cmdBuf, beforeImage,
@@ -429,7 +430,7 @@ namespace vkBasalt {
             toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             toPresent.image = beforeImage;
-            toPresent.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            toPresent.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
             pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &toPresent);
         }

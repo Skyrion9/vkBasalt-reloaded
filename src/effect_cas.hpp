@@ -23,7 +23,7 @@ namespace vkBasalt
                   std::vector<VkImage> outputImages,
                   Config*              pConfig,
                   VkColorSpaceKHR      colorSpace);
-        ~CasEffect();
+        ~CasEffect() override;
 
         std::string getName() const override { return "cas"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;

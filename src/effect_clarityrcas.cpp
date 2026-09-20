@@ -6,8 +6,10 @@
 #include <cstring>
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <math.h>
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
@@ -22,7 +24,7 @@
 
 namespace vkBasalt
 {
-    #define SPEC(id, field) .specId = id, .specOffset = offsetof(ClarityRcasSpecData, field), .specSize = sizeof(((ClarityRcasSpecData*)0)->field)
+    #define SPEC(id, field) .specId = (id), .specOffset = offsetof(ClarityRcasSpecData, field), .specSize = sizeof(((ClarityRcasSpecData*)0)->field)
 
     ClarityRcasEffect::ClarityRcasEffect(LogicalDevice*       pLogicalDevice,
                                          VkFormat             format,
@@ -49,34 +51,34 @@ namespace vkBasalt
         for (const auto& p : params) {
             if (p.specId < 0) continue;
 
-            double val;
+            double val = NAN;
             if (p.type == ParamType::Float) {
-                val = (double)pConfig->getOption<float>(p.key, (float)p.defaultVal);
+                val = static_cast<double>(pConfig->getOption<float>(p.key, static_cast<float>(p.defaultVal)));
             } else {
-                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)p.defaultVal);
+                val = static_cast<double>(pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(p.defaultVal)));
             }
 
             val = std::clamp(val, p.minVal, p.maxVal);
             m_paramValues[p.key] = val;
 
             if (p.type == ParamType::Float) {
-                float f = (float)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+                auto f = static_cast<float>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &f, sizeof(float));
             } else {
-                int32_t i = (int32_t)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+                auto i = static_cast<int32_t>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &i, sizeof(int32_t));
             }
 
-            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+            mapEntries.push_back({.constantID=static_cast<uint32_t>(p.specId), .offset=static_cast<uint32_t>(p.specOffset), .size=p.specSize});
         }
 
-        mapEntries.push_back({16, offsetof(ClarityRcasSpecData, step1_x), sizeof(float)});
-        mapEntries.push_back({17, offsetof(ClarityRcasSpecData, step1_y), sizeof(float)});
-        mapEntries.push_back({18, offsetof(ClarityRcasSpecData, step2_x), sizeof(float)});
-        mapEntries.push_back({19, offsetof(ClarityRcasSpecData, step2_y), sizeof(float)});
+        mapEntries.push_back({.constantID=16, .offset=offsetof(ClarityRcasSpecData, step1_x), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=17, .offset=offsetof(ClarityRcasSpecData, step1_y), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=18, .offset=offsetof(ClarityRcasSpecData, step2_x), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=19, .offset=offsetof(ClarityRcasSpecData, step2_y), .size=sizeof(float)});
 
         specData.colorSpaceMode = static_cast<int32_t>(csm);
-        mapEntries.push_back({65535, offsetof(ClarityRcasSpecData, colorSpaceMode), sizeof(int32_t)});
+        mapEntries.push_back({.constantID=65535, .offset=offsetof(ClarityRcasSpecData, colorSpaceMode), .size=sizeof(int32_t)});
 
         this->radius = specData.radius;
         this->offset = specData.offset;
@@ -92,7 +94,7 @@ namespace vkBasalt
         specData.step2_y = specData.step1_y * 3.0f;
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
         specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(ClarityRcasSpecData);
         specializationInfo.pData         = &specData;
@@ -100,7 +102,7 @@ namespace vkBasalt
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &specializationInfo;
 
-        init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
+        init(pLogicalDevice, format, imageExtent, std::move(inputImages), std::move(outputImages), pConfig);
     }
 
     ClarityRcasEffect::~ClarityRcasEffect()
@@ -112,7 +114,7 @@ namespace vkBasalt
     {
         // Write the new frame counter directly to the mapped GPU memory.
         if (mappedUniform) {
-            FrameData* data = static_cast<FrameData*>(mappedUniform);
+            auto* data = static_cast<FrameData*>(mappedUniform);
             data->frameCounter = m_frameCounter++;
         }
     }
@@ -129,7 +131,7 @@ namespace vkBasalt
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-        memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        memoryBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
@@ -142,7 +144,7 @@ namespace vkBasalt
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.renderPass        = renderPass;
         renderPassBeginInfo.framebuffer       = framebuffers[imageIndex];
-        renderPassBeginInfo.renderArea.offset = {0, 0};
+        renderPassBeginInfo.renderArea.offset = {.x=0, .y=0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -162,7 +164,7 @@ namespace vkBasalt
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
-        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        secondBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
@@ -181,7 +183,7 @@ namespace vkBasalt
             thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.image               = outputImages[imageIndex];
-            thirdBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            thirdBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer,

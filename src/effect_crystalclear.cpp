@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
+#include <math.h>
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
@@ -38,19 +40,19 @@ namespace vkBasalt
         uniformSize  = sizeof(FrameData);
 
         // devfav falls back to raw defaults by design
-        std::string preset = pConfig->getOption<std::string>("crystalclearPreset", "devfav");
+        auto preset = pConfig->getOption<std::string>("crystalclearPreset", "devfav");
         Logger::debug("CrystalClear Preset: " + preset);
         {
             int idx = 0;
             for (const auto& p : getParamDescs()) {
                 if (p.key == "crystalclearPreset") {
                     for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
-                        if (preset == p.comboOptions[ci]) { idx = (int)ci; break; }
+                        if (preset == p.comboOptions[ci]) { idx = static_cast<int>(ci); break; }
                     }
                     break;
                 }
             }
-            m_paramValues["crystalclearPreset"] = (double)idx;
+            m_paramValues["crystalclearPreset"] = static_cast<double>(idx);
         }
 
         const auto& presetTable = getPresetTable();
@@ -62,7 +64,7 @@ namespace vkBasalt
         const auto& params = getParamDescs();
 
         const std::string appliedPresetKey = "crystalclearPresetApplied";
-        const std::string lastAppliedPreset = pConfig->getOption<std::string>(appliedPresetKey, "");
+        const auto lastAppliedPreset = pConfig->getOption<std::string>(appliedPresetKey, "");
 
         if (preset != lastAppliedPreset) {
             Logger::debug("Applying CrystalClear preset baseline: " + preset);
@@ -91,7 +93,7 @@ namespace vkBasalt
                     pConfig->setOption(p.key, std::to_string(static_cast<int32_t>(val)));
                 } else {
                     std::string s = std::to_string(val);
-                    std::replace(s.begin(), s.end(), ',', '.');
+                    std::ranges::replace(s, ',', '.');
                     pConfig->setOption(p.key, s);
                 }
             }
@@ -107,10 +109,10 @@ namespace vkBasalt
             if (p.specId < 0) continue;
 
             double def = p.defaultVal;
-            double val;
+            double val = NAN;
 
             if (p.type == ParamType::Combo) {
-                std::string strVal = pConfig->getOption<std::string>(p.key, "");
+                auto strVal = pConfig->getOption<std::string>(p.key, "");
                 int idx = 0;
                 for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
                     if (p.comboOptions[ci] == strVal) {
@@ -129,25 +131,25 @@ namespace vkBasalt
             m_paramValues[p.key] = val;
 
             if (p.type == ParamType::Float) {
-                float f = (float)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+                auto f = static_cast<float>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &f, sizeof(float));
             } else {
-                int32_t i = (int32_t)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+                auto i = static_cast<int32_t>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &i, sizeof(int32_t));
             }
 
-            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+            mapEntries.push_back({.constantID=static_cast<uint32_t>(p.specId), .offset=static_cast<uint32_t>(p.specOffset), .size=p.specSize});
         }
 
-        mapEntries.push_back({78, offsetof(CrystalClearSpecData, step1_x), sizeof(float)});
-        mapEntries.push_back({79, offsetof(CrystalClearSpecData, step1_y), sizeof(float)});
-        mapEntries.push_back({80, offsetof(CrystalClearSpecData, step2_x), sizeof(float)});
-        mapEntries.push_back({81, offsetof(CrystalClearSpecData, step2_y), sizeof(float)});
-        mapEntries.push_back({82, offsetof(CrystalClearSpecData, pixelSize_x), sizeof(float)});
-        mapEntries.push_back({83, offsetof(CrystalClearSpecData, pixelSize_y), sizeof(float)});
+        mapEntries.push_back({.constantID=78, .offset=offsetof(CrystalClearSpecData, step1_x), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=79, .offset=offsetof(CrystalClearSpecData, step1_y), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=80, .offset=offsetof(CrystalClearSpecData, step2_x), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=81, .offset=offsetof(CrystalClearSpecData, step2_y), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=82, .offset=offsetof(CrystalClearSpecData, pixelSize_x), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=83, .offset=offsetof(CrystalClearSpecData, pixelSize_y), .size=sizeof(float)});
 
         specData.colorSpaceMode = static_cast<int32_t>(csm);
-        mapEntries.push_back({65535, offsetof(CrystalClearSpecData, colorSpaceMode), sizeof(int32_t)});
+        mapEntries.push_back({.constantID=65535, .offset=offsetof(CrystalClearSpecData, colorSpaceMode), .size=sizeof(int32_t)});
 
         this->radius = specData.radius;
         this->offset = specData.offset;
@@ -166,7 +168,7 @@ namespace vkBasalt
         specData.pixelSize_y = texelSizeY;
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
         specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(CrystalClearSpecData);
         specializationInfo.pData         = &specData;
@@ -174,14 +176,14 @@ namespace vkBasalt
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &specializationInfo;
 
-        init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
+        init(pLogicalDevice, format, imageExtent, std::move(inputImages), std::move(outputImages), pConfig);
     }
 
-    CrystalClearEffect::~CrystalClearEffect() {}
+    CrystalClearEffect::~CrystalClearEffect() = default;
 
     void CrystalClearEffect::updateEffect() {
         if (mappedUniform) {
-            FrameData* data = static_cast<FrameData*>(mappedUniform);
+            auto* data = static_cast<FrameData*>(mappedUniform);
             data->frameCounter = m_frameCounter++;
         }
     }
@@ -198,7 +200,7 @@ namespace vkBasalt
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-        memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        memoryBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
@@ -211,7 +213,7 @@ namespace vkBasalt
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.renderPass        = renderPass;
         renderPassBeginInfo.framebuffer       = framebuffers[imageIndex];
-        renderPassBeginInfo.renderArea.offset = {0, 0};
+        renderPassBeginInfo.renderArea.offset = {.x=0, .y=0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -231,7 +233,7 @@ namespace vkBasalt
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
-        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        secondBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
@@ -250,7 +252,7 @@ namespace vkBasalt
             thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.image               = outputImages[imageIndex];
-            thirdBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            thirdBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer,

@@ -17,8 +17,8 @@ namespace vkBasalt {
         bool getUpdatedMetadata(float& outPeak, float& outWhite);
         void getCurrentMetrics(float& outWhite, float& outPeak, float& outIntensity) const;
 
-        VkDescriptorSetLayout getMetricsSetLayout() const { return m_metricsSetLayout; }
-        VkDescriptorSet getMetricsDescriptorSet(uint32_t imageIndex) const { return m_metricsDescriptorSets[imageIndex]; }
+        [[nodiscard]] VkDescriptorSetLayout getMetricsSetLayout() const { return m_metricsSetLayout; }
+        [[nodiscard]] VkDescriptorSet getMetricsDescriptorSet(uint32_t imageIndex) const { return m_metricsDescriptorSets[imageIndex]; }
 
     private:
         LogicalDevice* pLogicalDevice;
@@ -42,13 +42,13 @@ namespace vkBasalt {
             int32_t calibrationMode;
         };
 
-        AccumulateSpecData m_accSpecData;
+        AccumulateSpecData m_accSpecData{};
         std::vector<VkSpecializationMapEntry> m_accSpecMapEntries;
-        VkSpecializationInfo m_accSpecInfo;
+        VkSpecializationInfo m_accSpecInfo{};
 
-        ReduceSpecData m_redSpecData;
+        ReduceSpecData m_redSpecData{};
         std::vector<VkSpecializationMapEntry> m_redSpecMapEntries;
-        VkSpecializationInfo m_redSpecInfo;
+        VkSpecializationInfo m_redSpecInfo{};
         
         VkSampler m_sampler = VK_NULL_HANDLE;
         

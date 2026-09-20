@@ -10,12 +10,13 @@ namespace vkBasalt
                                      const std::vector<VkImage>& inputImages)
         : SimpleComputePass(pLogicalDevice)
         , m_extent(extent)
-        , m_inputImages(inputImages)
+        , m_inputImages(inputImages), m_histogramBuffer(createDeviceLocalBuffer(256 * sizeof(uint32_t),
+                                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
     {
-        m_specData = { extent.width, extent.height };
+        m_specData = { .width=extent.width, .height=extent.height };
         m_specMapEntries = {
-            {0, offsetof(SpecData, width), sizeof(uint32_t)},
-            {1, offsetof(SpecData, height), sizeof(uint32_t)}
+            {.constantID=0, .offset=offsetof(SpecData, width), .size=sizeof(uint32_t)},
+            {.constantID=1, .offset=offsetof(SpecData, height), .size=sizeof(uint32_t)}
         };
         m_specInfo = {};
         m_specInfo.mapEntryCount = static_cast<uint32_t>(m_specMapEntries.size());
@@ -24,8 +25,7 @@ namespace vkBasalt
         m_specInfo.pData = &m_specData;
 
         // Histogram: 256 bins of uint32_t
-        m_histogramBuffer = createDeviceLocalBuffer(256 * sizeof(uint32_t),
-                                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        
 
         // Sampler
         VkSamplerCreateInfo samplerInfo = {};
@@ -68,8 +68,8 @@ namespace vkBasalt
     std::vector<VkDescriptorSetLayoutBinding> ComputeTestPass::getBindings() const
     {
         return {
-            {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
         };
     }
 

@@ -42,7 +42,7 @@ namespace vkBasalt {
 
     std::string ImGuiOverlay::doubleToConfigString(double val) {
         std::string s = std::to_string(val);
-        std::replace(s.begin(), s.end(), ',', '.');
+        std::ranges::replace(s, ',', '.');
         return s;
     }
 
@@ -77,13 +77,13 @@ namespace vkBasalt {
             val = doubleToConfigString(p.defaultVal);
         } else if (p.type == ParamType::Combo) {
             if (!p.comboOptions.empty()) {
-                int defIdx = std::clamp((int)p.defaultVal, 0, (int)p.comboOptions.size() - 1);
+                int defIdx = std::clamp(static_cast<int>(p.defaultVal), 0, static_cast<int>(p.comboOptions.size()) - 1);
                 val = p.comboOptions[defIdx];
             }
         } else if (p.type == ParamType::Bool) {
             val = (p.defaultVal > 0.5) ? "true" : "false";
         } else if (p.type == ParamType::Int) {
-            val = std::to_string((int)p.defaultVal);
+            val = std::to_string(static_cast<int>(p.defaultVal));
         } else if (p.type == ParamType::FilePath) {
             val = "";
         }
@@ -93,9 +93,9 @@ namespace vkBasalt {
         if (effect) {
             if (p.type == ParamType::Combo) {
                 if (!p.comboOptions.empty()) {
-                    int defIdx = std::clamp((int)p.defaultVal, 0, (int)p.comboOptions.size() - 1);
-                    effect->setParam(p.key, (double)defIdx);
-                    setUIParam(p.key, (double)defIdx);
+                    int defIdx = std::clamp(static_cast<int>(p.defaultVal), 0, static_cast<int>(p.comboOptions.size()) - 1);
+                    effect->setParam(p.key, static_cast<double>(defIdx));
+                    setUIParam(p.key, static_cast<double>(defIdx));
                 }
             } else {
                 effect->setParam(p.key, p.defaultVal);
@@ -108,7 +108,7 @@ namespace vkBasalt {
                                         float defaultVal, float minVal, float maxVal,
                                         const char* fmt, const char* tooltip, bool perGameCalib) {
         ImGui::PushID(id);
-        float val = m_pConfig->getOption<float>(key, defaultVal);
+        auto val = m_pConfig->getOption<float>(key, defaultVal);
         float step = 0.01f;
         float range = maxVal - minVal;
         float dragSpeed = range / kDragSpeedDivisor;
@@ -261,17 +261,17 @@ namespace vkBasalt {
         };
 
         // Resolve scales always (each new overlay instance needs correct values, regardless of whether the ImGui context already exists)
-        float cursorCfg = m_pConfig->getOption<float>("cursorScale", -1.0f);
+        auto cursorCfg = m_pConfig->getOption<float>("cursorScale", -1.0f);
         if (cursorCfg < 0.0f) cursorCfg = m_pConfig->getOption<float>("overlayScale", 0.0f); // backward compat
         m_cursorScale = resolveScale(cursorCfg, s_cachedCursorScale, 1.0f);
         Logger::debug("cursorScale: " + std::to_string(m_cursorScale));
 
-        float uiCfg = m_pConfig->getOption<float>("uiScale", 0.0f);
+        auto uiCfg = m_pConfig->getOption<float>("uiScale", 0.0f);
         m_uiScale = resolveScale(uiCfg, s_cachedUiScale, 1.0f);
         Logger::debug("uiScale: " + std::to_string(m_uiScale));
 
         // Font Scale is an additional multiplier on top of uiScale. 0 = default 1.1
-        float fontCfg = m_pConfig->getOption<float>("fontScale", 0.0f);
+        auto fontCfg = m_pConfig->getOption<float>("fontScale", 0.0f);
         if (fontCfg > 0.0f) {
             m_fontScale = fontCfg;
             s_cachedFontScale = fontCfg;
@@ -303,7 +303,7 @@ namespace vkBasalt {
         float effectiveFont = m_uiScale * m_fontScale;
         if (effectiveFont > kFontScaleThreshold) {
             ImFontConfig fc;
-            fc.SizePixels = (float)(int)(kBaseFontSize * effectiveFont + 0.5f);
+            fc.SizePixels = static_cast<float>(static_cast<int>(kBaseFontSize * effectiveFont + 0.5f));
             io.Fonts->AddFontDefault(&fc);
         }
 
@@ -312,16 +312,16 @@ namespace vkBasalt {
         if (!s_descriptorPool) {
             Logger::debug("initImGui: Creating Descriptor Pool...");
             VkDescriptorPoolSize pool_sizes[] = {
-                { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-                { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-                { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+                { .type=VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount=1000 },
+                { .type=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount=1000 },
+                { .type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1000 },
+                { .type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=1000 },
             };
             VkDescriptorPoolCreateInfo pool_info = {};
             pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
             pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
-            pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
+            pool_info.poolSizeCount = static_cast<uint32_t>IM_ARRAYSIZE(pool_sizes);
             pool_info.pPoolSizes = pool_sizes;
             m_pDevice->vkd.CreateDescriptorPool(m_pDevice->device, &pool_info, nullptr, &s_descriptorPool);
         }
@@ -333,7 +333,7 @@ namespace vkBasalt {
             // Force ImGui to use vkBasalt's dispatch tables. If we don't do this, ImGui calls global libvulkan.so functions directly,
             // which crashes because the VkPhysicalDevice handle is wrapped by the layer chain.
             auto loader_func = [](const char* function_name, void* user_data) -> PFN_vkVoidFunction {
-                LogicalDevice* dev = static_cast<LogicalDevice*>(user_data);
+                auto* dev = static_cast<LogicalDevice*>(user_data);
                 if (!dev || dev->device == VK_NULL_HANDLE) return nullptr;
                 PFN_vkVoidFunction func = dev->vkd.GetDeviceProcAddr(dev->device, function_name);
                 if (!func) {
@@ -396,7 +396,7 @@ namespace vkBasalt {
 
     void ImGuiOverlay::updateInput(uint32_t width, uint32_t height) {
         ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2((float)width, (float)height);
+        io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
         io.DeltaTime = 1.0f / 60.0f;
 
         bool isWayland = false;
@@ -440,7 +440,7 @@ namespace vkBasalt {
                 io.AddKeyEvent(ImGuiKey_RightAlt,   checkKey(0xFFEA));
                 for (int i = 0; i < 26; i++) {
                     bool down = checkKey(0x0061 + i);
-                    io.AddKeyEvent((ImGuiKey)((int)ImGuiKey_A + i), down);
+                    io.AddKeyEvent(static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_A) + i), down);
                 }
                 static bool prevSearch = false;
                 bool searchDown = checkKey(0x002F) || checkKey(0x0066);
@@ -453,8 +453,8 @@ namespace vkBasalt {
                 static bool prevKeys[12] = {};
                 for (int i = 0; i <= 9; i++) {
                     bool down = checkKey(0x0030 + i) || checkKey(0xFFB0 + i);
-                    io.AddKeyEvent((ImGuiKey)((int)ImGuiKey_0 + i), down);
-                    if (down && !prevKeys[i]) io.AddInputCharacter((unsigned int)('0' + i));
+                    io.AddKeyEvent(static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_0) + i), down);
+                    if (down && !prevKeys[i]) io.AddInputCharacter(static_cast<unsigned int>('0' + i));
                     prevKeys[i] = down;
                 }
                 if (periodDown && !prevKeys[10]) io.AddInputCharacter('.');
@@ -539,7 +539,7 @@ namespace vkBasalt {
         barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         barrier.image = swapchainImage;
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
         
         m_pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
@@ -736,10 +736,10 @@ namespace vkBasalt {
     }
 
     void ImGuiOverlay::drawLegend() {
-        std::string kbToggle  = m_pConfig->getOption<std::string>("toggleKey", "Insert");
-        std::string kbReload  = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
-        std::string kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
-        std::string kbScreenshot = m_pConfig->getOption<std::string>("screenshotKey", "Delete");
+        auto kbToggle  = m_pConfig->getOption<std::string>("toggleKey", "Insert");
+        auto kbReload  = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
+        auto kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
+        auto kbScreenshot = m_pConfig->getOption<std::string>("screenshotKey", "Delete");
 
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         // Show global effects state in legend (always reserve the line height to prevent layout shift)
@@ -890,7 +890,7 @@ namespace vkBasalt {
         // Safe to remove deferred textures now: the overlay is closing, so it will submit an empty command buffer.
         // The GPU will finish the previous frames work, safe to free the descriptor sets and the associated VkImages (which are in the swapchain graveyard).
         for (uint64_t texId : m_pendingScopeTextureRemovals) {
-            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)(uintptr_t)texId);
+            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)static_cast<uintptr_t>(texId));
         }
         m_pendingScopeTextureRemovals.clear();
         

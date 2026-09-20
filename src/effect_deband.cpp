@@ -5,8 +5,10 @@
 #include <cstring>
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include <math.h>
 #include <vulkan/vulkan_core.h>
 
 #include "config.hpp"
@@ -19,7 +21,7 @@
 
 namespace vkBasalt
 {
-    #define SPEC(id, field) .specId = id, .specOffset = offsetof(DebandSpecData, field), .specSize = sizeof(((DebandSpecData*)0)->field)
+    #define SPEC(id, field) .specId = (id), .specOffset = offsetof(DebandSpecData, field), .specSize = sizeof(((DebandSpecData*)0)->field)
 
     DebandEffect::DebandEffect(LogicalDevice*       pLogicalDevice,
                                VkFormat             format,
@@ -43,48 +45,48 @@ namespace vkBasalt
         for (const auto& p : params) {
             if (p.specId < 0) continue;
 
-            double val;
+            double val = NAN;
             if (p.type == ParamType::Combo) {
-                std::string strVal = pConfig->getOption<std::string>(p.key, "");
+                auto strVal = pConfig->getOption<std::string>(p.key, "");
                 int idx = 0;
                 for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
-                    if (p.comboOptions[ci] == strVal) { idx = (int)ci; break; }
+                    if (p.comboOptions[ci] == strVal) { idx = static_cast<int>(ci); break; }
                 }
-                val = (double)idx;
+                val = static_cast<double>(idx);
             } else if (p.type == ParamType::Float) {
-                val = (double)pConfig->getOption<float>(p.key, (float)p.defaultVal);
+                val = static_cast<double>(pConfig->getOption<float>(p.key, static_cast<float>(p.defaultVal)));
             } else {
-                val = (double)pConfig->getOption<int32_t>(p.key, (int32_t)p.defaultVal);
+                val = static_cast<double>(pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(p.defaultVal)));
             }
 
             val = std::clamp(val, p.minVal, p.maxVal);
             m_paramValues[p.key] = val;
 
             if (p.type == ParamType::Float) {
-                float f = (float)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+                auto f = static_cast<float>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &f, sizeof(float));
             } else {
-                int32_t i = (int32_t)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+                auto i = static_cast<int32_t>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &i, sizeof(int32_t));
             }
 
-            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+            mapEntries.push_back({.constantID=static_cast<uint32_t>(p.specId), .offset=static_cast<uint32_t>(p.specOffset), .size=p.specSize});
         }
 
-        specData.screenWidth         = (float)imageExtent.width;
-        specData.screenHeight        = (float)imageExtent.height;
+        specData.screenWidth         = static_cast<float>(imageExtent.width);
+        specData.screenHeight        = static_cast<float>(imageExtent.height);
         specData.reverseScreenWidth  = 1.0f / imageExtent.width;
         specData.reverseScreenHeight = 1.0f / imageExtent.height;
         specData.colorSpaceMode      = static_cast<int32_t>(csm);
 
-        mapEntries.push_back({0, offsetof(DebandSpecData, screenWidth),         sizeof(float)});
-        mapEntries.push_back({1, offsetof(DebandSpecData, screenHeight),        sizeof(float)});
-        mapEntries.push_back({2, offsetof(DebandSpecData, reverseScreenWidth),  sizeof(float)});
-        mapEntries.push_back({3, offsetof(DebandSpecData, reverseScreenHeight), sizeof(float)});
-        mapEntries.push_back({65535, offsetof(DebandSpecData, colorSpaceMode),  sizeof(int32_t)});
+        mapEntries.push_back({.constantID=0, .offset=offsetof(DebandSpecData, screenWidth),         .size=sizeof(float)});
+        mapEntries.push_back({.constantID=1, .offset=offsetof(DebandSpecData, screenHeight),        .size=sizeof(float)});
+        mapEntries.push_back({.constantID=2, .offset=offsetof(DebandSpecData, reverseScreenWidth),  .size=sizeof(float)});
+        mapEntries.push_back({.constantID=3, .offset=offsetof(DebandSpecData, reverseScreenHeight), .size=sizeof(float)});
+        mapEntries.push_back({.constantID=65535, .offset=offsetof(DebandSpecData, colorSpaceMode),  .size=sizeof(int32_t)});
 
         VkSpecializationInfo specializationInfo;
-        specializationInfo.mapEntryCount = (uint32_t)mapEntries.size();
+        specializationInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
         specializationInfo.pMapEntries   = mapEntries.data();
         specializationInfo.dataSize      = sizeof(DebandSpecData);
         specializationInfo.pData         = &specData;
@@ -92,10 +94,10 @@ namespace vkBasalt
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &specializationInfo;
 
-        init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
+        init(pLogicalDevice, format, imageExtent, std::move(inputImages), std::move(outputImages), pConfig);
     }
 
-    DebandEffect::~DebandEffect() {}
+    DebandEffect::~DebandEffect() = default;
 
     const std::vector<EffectParamDesc>& DebandEffect::getParamDescs() const {
         static const std::vector<EffectParamDesc> params = {

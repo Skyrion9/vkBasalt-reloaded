@@ -26,7 +26,7 @@ namespace vkBasalt
     void outputInColor(const std::string& output, Color foreground = Color::white, Color background = Color::black);
 
     template<typename T>
-    std::string convertToString(T object)
+    std::string convertToString(const T& object)
     {
         std::stringstream ss;
         ss << object;

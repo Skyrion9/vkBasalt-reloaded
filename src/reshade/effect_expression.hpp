@@ -58,25 +58,25 @@ namespace reshadefx
 		/// <summary>
 		/// Returns a human-readable description of this type definition.
 		/// </summary>
-		std::string description() const;
+		[[nodiscard]] std::string description() const;
 
-		bool has(qualifier x) const { return (qualifiers & x) == x; }
-		bool is_array() const { return array_length != 0; }
-		bool is_scalar() const { return !is_array() && !is_matrix() && !is_vector() && is_numeric(); }
-		bool is_vector() const { return rows > 1 && cols == 1; }
-		bool is_matrix() const { return rows >= 1 && cols > 1; }
-		bool is_signed() const { return base == t_int || base == t_float; }
-		bool is_numeric() const { return is_integral() || is_floating_point(); }
-		bool is_void() const { return base == t_void; }
-		bool is_boolean() const { return base == t_bool; }
-		bool is_integral() const { return base == t_bool || base == t_int || base == t_uint; }
-		bool is_floating_point() const { return base == t_float; }
-		bool is_struct() const { return base == t_struct; }
-		bool is_texture() const { return base == t_texture; }
-		bool is_sampler() const { return base == t_sampler; }
-		bool is_function() const { return base == t_function; }
+		[[nodiscard]] bool has(qualifier x) const { return (qualifiers & x) == x; }
+		[[nodiscard]] bool is_array() const { return array_length != 0; }
+		[[nodiscard]] bool is_scalar() const { return !is_array() && !is_matrix() && !is_vector() && is_numeric(); }
+		[[nodiscard]] bool is_vector() const { return rows > 1 && cols == 1; }
+		[[nodiscard]] bool is_matrix() const { return rows >= 1 && cols > 1; }
+		[[nodiscard]] bool is_signed() const { return base == t_int || base == t_float; }
+		[[nodiscard]] bool is_numeric() const { return is_integral() || is_floating_point(); }
+		[[nodiscard]] bool is_void() const { return base == t_void; }
+		[[nodiscard]] bool is_boolean() const { return base == t_bool; }
+		[[nodiscard]] bool is_integral() const { return base == t_bool || base == t_int || base == t_uint; }
+		[[nodiscard]] bool is_floating_point() const { return base == t_float; }
+		[[nodiscard]] bool is_struct() const { return base == t_struct; }
+		[[nodiscard]] bool is_texture() const { return base == t_texture; }
+		[[nodiscard]] bool is_sampler() const { return base == t_sampler; }
+		[[nodiscard]] bool is_function() const { return base == t_function; }
 
-		unsigned int components() const { return rows * cols; }
+		[[nodiscard]] unsigned int components() const { return rows * cols; }
 
 		friend inline bool operator==(const type &lhs, const type &rhs)
 		{

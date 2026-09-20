@@ -19,26 +19,19 @@
 
 namespace vkBasalt
 {
-    SimpleEffect::SimpleEffect()
+    SimpleEffect::SimpleEffect() :
+        imageSamplerDescriptorSetLayout(VK_NULL_HANDLE), descriptorPool(VK_NULL_HANDLE), vertexModule(VK_NULL_HANDLE),
+        fragmentModule(VK_NULL_HANDLE), renderPass(VK_NULL_HANDLE), pipelineLayout(VK_NULL_HANDLE),
+        graphicsPipeline(VK_NULL_HANDLE), sampler(VK_NULL_HANDLE), uniformBuffer(VK_NULL_HANDLE),
+        uniformMemory(VK_NULL_HANDLE), mappedUniform(nullptr)
     {
-        graphicsPipeline                = VK_NULL_HANDLE;
-        pipelineLayout                  = VK_NULL_HANDLE;
-        renderPass                      = VK_NULL_HANDLE;
-        imageSamplerDescriptorSetLayout = VK_NULL_HANDLE;
-        vertexModule                    = VK_NULL_HANDLE;
-        fragmentModule                  = VK_NULL_HANDLE;
-        descriptorPool                  = VK_NULL_HANDLE;
-        sampler                         = VK_NULL_HANDLE;
-        uniformBuffer                   = VK_NULL_HANDLE;
-        uniformMemory                   = VK_NULL_HANDLE;
-        mappedUniform                   = nullptr;
     }
     
     void SimpleEffect::init(LogicalDevice*       pLogicalDevice,
                             VkFormat             format,
                             VkExtent2D           imageExtent,
-                            std::vector<VkImage> inputImages,
-                            std::vector<VkImage> outputImages,
+                            const std::vector<VkImage>& inputImages,
+                            const std::vector<VkImage>& outputImages,
                             Config*              pConfig)
     {
         Logger::debug("in creating SimpleEffect");
@@ -211,7 +204,7 @@ namespace vkBasalt
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-        memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        memoryBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
@@ -223,7 +216,7 @@ namespace vkBasalt
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.renderPass        = renderPass;
         renderPassBeginInfo.framebuffer       = framebuffers[imageIndex];
-        renderPassBeginInfo.renderArea.offset = {0, 0};
+        renderPassBeginInfo.renderArea.offset = {.x=0, .y=0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
 
         VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 0.0f}}};
@@ -256,7 +249,7 @@ namespace vkBasalt
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
-        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        secondBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer, 
@@ -275,7 +268,7 @@ namespace vkBasalt
             thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.image               = outputImages[imageIndex];
-            thirdBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            thirdBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer, 

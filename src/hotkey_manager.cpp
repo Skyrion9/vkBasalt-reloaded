@@ -67,10 +67,10 @@ namespace vkBasalt {
 
         // Refresh cached keysyms only when config is mutated
         if (g_configDirty.exchange(false)) {
-            std::string tk = pConfig->getOption<std::string>("toggleKey", "Insert");
-            std::string rk = pConfig->getOption<std::string>("reloadConfigKey", "End");
-            std::string ok = pConfig->getOption<std::string>("overlayToggleKey", "Home");
-            std::string sk = pConfig->getOption<std::string>("screenshotKey", "Delete");
+            auto tk = pConfig->getOption<std::string>("toggleKey", "Insert");
+            auto rk = pConfig->getOption<std::string>("reloadConfigKey", "End");
+            auto ok = pConfig->getOption<std::string>("overlayToggleKey", "Home");
+            auto sk = pConfig->getOption<std::string>("screenshotKey", "Delete");
             
             if (tk != cachedToggleKey)  { keySymbol = convertToKeySym(tk);        cachedToggleKey = tk; }
             if (rk != cachedReloadKey)  { reloadKeySymbol = convertToKeySym(rk);  cachedReloadKey = rk; }

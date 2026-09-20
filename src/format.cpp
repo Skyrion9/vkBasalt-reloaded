@@ -105,7 +105,7 @@ namespace vkBasalt
         return isFloatFormat(format) || is10BitPackedFormat(format);
     }
 
-    VkFormat getSupportedFormat(LogicalDevice* pLogicalDevice, std::vector<VkFormat> formats, VkFormatFeatureFlags features, VkImageTiling tiling)
+    VkFormat getSupportedFormat(LogicalDevice* pLogicalDevice, const std::vector<VkFormat>& formats, VkFormatFeatureFlags features, VkImageTiling tiling)
     {
         for (auto& format : formats)
         {

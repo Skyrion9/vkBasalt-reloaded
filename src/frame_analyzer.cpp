@@ -15,16 +15,16 @@ namespace vkBasalt
                                  VkColorSpaceKHR colorSpace)
         : m_pDevice(pDevice)
         , m_extent(extent)
-        , m_inputImages(inputImages)
+        , m_inputImages(inputImages), m_colorSpaceMode(static_cast<int>(getColorSpaceMode(inputFormat, colorSpace)))
     {
-        m_colorSpaceMode = static_cast<int>(getColorSpaceMode(inputFormat, colorSpace));
+        
         m_pushConstants = { 0 };
         
-        m_specData = { extent.width, extent.height, m_colorSpaceMode };
+        m_specData = { .width=extent.width, .height=extent.height, .colorSpaceMode=m_colorSpaceMode };
         m_specMapEntries = {
-            {0, offsetof(SpecData, width), sizeof(uint32_t)},
-            {1, offsetof(SpecData, height), sizeof(uint32_t)},
-            {65535, offsetof(SpecData, colorSpaceMode), sizeof(int32_t)}
+            {.constantID=0, .offset=offsetof(SpecData, width), .size=sizeof(uint32_t)},
+            {.constantID=1, .offset=offsetof(SpecData, height), .size=sizeof(uint32_t)},
+            {.constantID=65535, .offset=offsetof(SpecData, colorSpaceMode), .size=sizeof(int32_t)}
         };
         m_specInfo = {};
         m_specInfo.mapEntryCount = static_cast<uint32_t>(m_specMapEntries.size());
@@ -80,7 +80,7 @@ namespace vkBasalt
             }
             vkd.AllocateMemory(dev, &allocInfo, nullptr, &m_activeMemory);
             vkd.BindBufferMemory(dev, m_activeBuffer, m_activeMemory, 0);
-            vkd.MapMemory(dev, m_activeMemory, 0, 16, 0, (void**)&m_mappedActive);
+            vkd.MapMemory(dev, m_activeMemory, 0, 16, 0, reinterpret_cast<void**>(&m_mappedActive));
             *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0;
         }
 
@@ -112,11 +112,11 @@ namespace vkBasalt
 
         // Accumulate DSL
         VkDescriptorSetLayoutBinding accumBindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // active flag
+            {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=2, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=3, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=4, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr}, // active flag
         };
         VkDescriptorSetLayoutCreateInfo accumDSLInfo = {};
         accumDSLInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -126,13 +126,13 @@ namespace vkBasalt
 
         // Resolve DSL
         VkDescriptorSetLayoutBinding resolveBindings[] = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
-            {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // active flag
+            {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=2, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=3, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=4, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=5, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding=6, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr}, // active flag
         };
         VkDescriptorSetLayoutCreateInfo resolveDSLInfo = {};
         resolveDSLInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -141,7 +141,7 @@ namespace vkBasalt
         vkd.CreateDescriptorSetLayout(dev, &resolveDSLInfo, nullptr, &m_resolveDSL);
 
         // Pipeline layouts
-        VkPushConstantRange pcRange = { VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t) };
+        VkPushConstantRange pcRange = { .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .offset=0, .size=sizeof(uint32_t) };
 
         VkPipelineLayoutCreateInfo plInfo = {};
         plInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -182,7 +182,7 @@ namespace vkBasalt
         createPipeline(m_resolveShader, m_resolveLayout, m_resolvePipeline);
 
         // Descriptor pool
-        uint32_t imgCount = (uint32_t)m_inputImages.size();
+        auto imgCount = static_cast<uint32_t>(m_inputImages.size());
 
         uint32_t totalSamplers = 0, totalSSBOs = 0, totalStorageImages = 0;
         for (const auto& b : accumBindings) {
@@ -195,9 +195,9 @@ namespace vkBasalt
         }
 
         VkDescriptorPoolSize poolSizes[] = {
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, totalSamplers },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         totalSSBOs },
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          totalStorageImages },
+            { .type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=totalSamplers },
+            { .type=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         .descriptorCount=totalSSBOs },
+            { .type=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          .descriptorCount=totalStorageImages },
         };
         VkDescriptorPoolCreateInfo dpInfo = {};
         dpInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -229,10 +229,10 @@ namespace vkBasalt
         }
 
         // Shared buffer infos for descriptor writes
-        VkDescriptorBufferInfo histBuf   = { m_histBuffer,   0, VK_WHOLE_SIZE };
-        VkDescriptorBufferInfo waveBuf   = { m_waveBuffer,   0, VK_WHOLE_SIZE };
-        VkDescriptorBufferInfo vecBuf    = { m_vecBuffer,    0, VK_WHOLE_SIZE };
-        VkDescriptorBufferInfo activeBuf = { m_activeBuffer, 0, VK_WHOLE_SIZE };
+        VkDescriptorBufferInfo histBuf   = { .buffer=m_histBuffer,   .offset=0, .range=VK_WHOLE_SIZE };
+        VkDescriptorBufferInfo waveBuf   = { .buffer=m_waveBuffer,   .offset=0, .range=VK_WHOLE_SIZE };
+        VkDescriptorBufferInfo vecBuf    = { .buffer=m_vecBuffer,    .offset=0, .range=VK_WHOLE_SIZE };
+        VkDescriptorBufferInfo activeBuf = { .buffer=m_activeBuffer, .offset=0, .range=VK_WHOLE_SIZE };
 
         // Write accumulate descriptors
         for (uint32_t i = 0; i < imgCount; i++)
@@ -243,29 +243,29 @@ namespace vkBasalt
             imgInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
             VkWriteDescriptorSet writes[] = {
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_accumSets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgInfo },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_accumSets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &histBuf },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_accumSets[i], 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &waveBuf },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_accumSets[i], 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &vecBuf },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_accumSets[i], 4, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &activeBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_accumSets[i], .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo=&imgInfo },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_accumSets[i], .dstBinding=1, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&histBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_accumSets[i], .dstBinding=2, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&waveBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_accumSets[i], .dstBinding=3, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&vecBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_accumSets[i], .dstBinding=4, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&activeBuf },
             };
             vkd.UpdateDescriptorSets(dev, std::size(writes), writes, 0, nullptr);
         }
 
         // Write resolve descriptors
         {
-            VkDescriptorImageInfo histImg = { VK_NULL_HANDLE, m_scopeViews[HISTOGRAM],   VK_IMAGE_LAYOUT_GENERAL };
-            VkDescriptorImageInfo waveImg = { VK_NULL_HANDLE, m_scopeViews[WAVEFORM],    VK_IMAGE_LAYOUT_GENERAL };
-            VkDescriptorImageInfo vecImg  = { VK_NULL_HANDLE, m_scopeViews[VECTORSCOPE], VK_IMAGE_LAYOUT_GENERAL };
+            VkDescriptorImageInfo histImg = { .sampler=VK_NULL_HANDLE, .imageView=m_scopeViews[HISTOGRAM],   .imageLayout=VK_IMAGE_LAYOUT_GENERAL };
+            VkDescriptorImageInfo waveImg = { .sampler=VK_NULL_HANDLE, .imageView=m_scopeViews[WAVEFORM],    .imageLayout=VK_IMAGE_LAYOUT_GENERAL };
+            VkDescriptorImageInfo vecImg  = { .sampler=VK_NULL_HANDLE, .imageView=m_scopeViews[VECTORSCOPE], .imageLayout=VK_IMAGE_LAYOUT_GENERAL };
 
             VkWriteDescriptorSet writes[] = {
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_resolveSet, 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &histBuf },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_resolveSet, 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &waveBuf },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_resolveSet, 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &vecBuf },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_resolveSet, 3, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &histImg },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_resolveSet, 4, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &waveImg },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_resolveSet, 5, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &vecImg },
-                { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_resolveSet, 6, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &activeBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_resolveSet, .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&histBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_resolveSet, .dstBinding=1, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&waveBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_resolveSet, .dstBinding=2, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&vecBuf },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_resolveSet, .dstBinding=3, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo=&histImg },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_resolveSet, .dstBinding=4, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo=&waveImg },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_resolveSet, .dstBinding=5, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo=&vecImg },
+                { .sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_resolveSet, .dstBinding=6, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&activeBuf },
             };
             vkd.UpdateDescriptorSets(dev, std::size(writes), writes, 0, nullptr);
         }
@@ -293,7 +293,7 @@ namespace vkBasalt
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.image = m_scopeImages[i];
-                barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+                barrier.subresourceRange = { .aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1 };
                 vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
             }
@@ -355,7 +355,7 @@ namespace vkBasalt
                 barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barriers[i].image = m_scopeImages[i];
-                barriers[i].subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+                barriers[i].subresourceRange = { .aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1 };
             }
             vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, SCOPE_COUNT, barriers);

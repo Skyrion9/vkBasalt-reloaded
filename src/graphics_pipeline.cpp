@@ -35,7 +35,7 @@ namespace vkBasalt
             pipelineLayoutCreateInfo.pPushConstantRanges    = nullptr;
         }
 
-        VkPipelineLayout pipelineLayout;
+        VkPipelineLayout pipelineLayout = nullptr;
         VkResult result = pLogicalDevice->vkd.CreatePipelineLayout(pLogicalDevice->device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
         ASSERT_VULKAN(result);
         return pipelineLayout;
@@ -56,7 +56,7 @@ namespace vkBasalt
     {
         VkResult result;
 
-        VkPipeline pipeline;
+        VkPipeline pipeline = nullptr;
 
         VkPipelineShaderStageCreateInfo shaderStageCreateInfoVert;
         shaderStageCreateInfoVert.sType               = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -103,8 +103,8 @@ namespace vkBasalt
         viewport.maxDepth = 1.0f;
 
         VkRect2D scissor;
-        scissor.offset = {0, 0};
-        scissor.extent = {extent.width, extent.height};
+        scissor.offset = {.x=0, .y=0};
+        scissor.extent = {.width=extent.width, .height=extent.height};
 
         VkPipelineViewportStateCreateInfo viewportStateCreateInfo;
         viewportStateCreateInfo.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;

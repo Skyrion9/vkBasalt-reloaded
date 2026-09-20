@@ -17,10 +17,10 @@ namespace vkBasalt
         std::string key;
         std::string label;
         ParamType   type;
-        double      defaultVal;
-        double      minVal;
-        double      maxVal;
-        double      step;
+        double      defaultVal{};
+        double      minVal{};
+        double      maxVal{};
+        double      step{};
         std::vector<std::string> comboOptions;
         std::string category;      // optional, empty auto-detects.
         std::string tooltip = "";  // optional, empty auto-generates, shown on hover.
@@ -49,7 +49,7 @@ namespace vkBasalt
         void setInPlace(bool inPlace) { m_isInPlace = inPlace; }
         bool isInPlace() const { return m_isInPlace; }
 
-        virtual ~Effect(){};
+        virtual ~Effect()= default;
 
         // Functions for UI related Read/Updating of params.
         virtual std::string getName() const { return "unknown"; }
@@ -69,7 +69,7 @@ namespace vkBasalt
         }
 
         // Returns the maximum quality level at which a parameter is active. If current quality level > returned value, the param is disabled in UI. Default 4 = always active (iGPU minimum). Effects override as needed.
-        virtual int minQualityForParam(const std::string& key) const { return 4; }
+        virtual int minQualityForParam(const std::string&  /*key*/) const { return 4; }
 
         virtual bool setParam(const std::string& key, double value) {
             auto it = m_paramValues.find(key);

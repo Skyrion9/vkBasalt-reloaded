@@ -92,10 +92,10 @@ namespace vkBasalt
                                                        0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
             }
 
-            for (uint32_t j = 0; j < effects.size(); j++)
+            for (const auto & effect : effects)
             {
-                Logger::debug("before applying effect " + convertToString(effects[j]));
-                effects[j]->applyEffect(i, commandBuffers[i]);
+                Logger::debug("before applying effect " + convertToString(effect));
+                effect->applyEffect(i, commandBuffers[i]);
             }
 
             // Record compute passes after all effects. Compute passes read from the final output slice (real swapchain or last fake slice) and write to their own resources.
@@ -114,7 +114,7 @@ namespace vkBasalt
                     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.image               = pLogicalSwapchain->images[i];
-                    barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                    barrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
                     pLogicalDevice->vkd.CmdPipelineBarrier(
                         commandBuffers[i], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -137,7 +137,7 @@ namespace vkBasalt
                     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.image               = pLogicalSwapchain->images[i];
-                    barrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                    barrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
                     pLogicalDevice->vkd.CmdPipelineBarrier(
                         commandBuffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -159,7 +159,7 @@ namespace vkBasalt
                 restoreBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
                 restoreBarrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
                 restoreBarrier.image                = pLogicalSwapchain->fakeImages[i]; // Slice 0 for this frame index
-                restoreBarrier.subresourceRange     = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                restoreBarrier.subresourceRange     = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
                 pLogicalDevice->vkd.CmdPipelineBarrier(
                     commandBuffers[i],

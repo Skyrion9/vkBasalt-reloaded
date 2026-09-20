@@ -21,7 +21,7 @@ namespace vkBasalt
             setCount = std::min(setCount, poolSizes[i].descriptorCount);
         }
 
-        VkDescriptorPool descriptorPool;
+        VkDescriptorPool descriptorPool = nullptr;
         VkDescriptorPoolCreateInfo descriptorPoolCreateInfo;
         descriptorPoolCreateInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         descriptorPoolCreateInfo.pNext         = nullptr;
@@ -37,7 +37,7 @@ namespace vkBasalt
 
     VkDescriptorSetLayout createUniformBufferDescriptorSetLayout(LogicalDevice* pLogicalDevice)
     {
-        VkDescriptorSetLayout descriptorSetLayout;
+        VkDescriptorSetLayout descriptorSetLayout = nullptr;
 
         VkDescriptorSetLayoutBinding descriptorSetLayoutBinding;
         descriptorSetLayoutBinding.binding            = 0;
@@ -65,7 +65,7 @@ namespace vkBasalt
                                              VkDescriptorSetLayout descriptorSetLayout,
                                              VkBuffer              buffer)
     {
-        VkDescriptorSet descriptorSet;
+        VkDescriptorSet descriptorSet = nullptr;
 
         VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
         descriptorSetAllocateInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -103,7 +103,7 @@ namespace vkBasalt
 
     VkDescriptorSetLayout createImageSamplerDescriptorSetLayout(LogicalDevice* pLogicalDevice, uint32_t count)
     {
-        VkDescriptorSetLayout descriptorSetLayout;
+        VkDescriptorSetLayout descriptorSetLayout = nullptr;
 
         std::vector<VkDescriptorSetLayoutBinding> bindigs(count);
         for (uint32_t i = 0; i < count; i++)

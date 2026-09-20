@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "stb_image.h"
@@ -39,7 +40,7 @@ namespace vkBasalt
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
-        std::string lutFile = pConfig->getOption<std::string>("lutFile", "");
+        auto lutFile = pConfig->getOption<std::string>("lutFile", "");
         m_paramValues["lutFile"] = 0.0; // FilePath type, value unused in m_paramValues
 
         int      height = 0;
@@ -77,7 +78,7 @@ namespace vkBasalt
             }
             useIdentityLut();
         } else {
-            usingPNG = (int32_t)(lutFile.find(".cube") == std::string::npos && lutFile.find(".CUBE") == std::string::npos);
+            usingPNG = static_cast<int32_t>(lutFile.find(".cube") == std::string::npos && lutFile.find(".CUBE") == std::string::npos);
             if (!usingPNG) {
                 lutCube = LutCube(lutFile);
                 if (lutCube.size == 0) {
@@ -88,7 +89,7 @@ namespace vkBasalt
                     height = lutCube.size;
                 }
             } else {
-                int channels, width;
+                int channels = 0, width = 0;
                 pixels = stbi_load(lutFile.c_str(), &width, &height, &channels, STBI_rgb_alpha);
                 if (!pixels) {
                     Logger::err("Failed to load LUT PNG: " + lutFile + ". Falling back to identity LUT.");
@@ -109,9 +110,9 @@ namespace vkBasalt
         specData.colorSpaceMode = static_cast<int32_t>(csm);
 
         VkSpecializationMapEntry mapEntries[] = {
-            {0, offsetof(LutSpecData, lutSize), sizeof(int32_t)},
-            {1, offsetof(LutSpecData, flipGB),  sizeof(int32_t)},
-            {65535, offsetof(LutSpecData, colorSpaceMode), sizeof(int32_t)}
+            {.constantID=0, .offset=offsetof(LutSpecData, lutSize), .size=sizeof(int32_t)},
+            {.constantID=1, .offset=offsetof(LutSpecData, flipGB),  .size=sizeof(int32_t)},
+            {.constantID=65535, .offset=offsetof(LutSpecData, colorSpaceMode), .size=sizeof(int32_t)}
         };
 
         VkSpecializationInfo fragmentSpecializationInfo;
@@ -123,7 +124,7 @@ namespace vkBasalt
         pVertexSpecInfo   = nullptr;
         pFragmentSpecInfo = &fragmentSpecializationInfo;
 
-        VkExtent3D lutImageExtent = {(uint32_t)height, (uint32_t)height, (uint32_t)height};
+        VkExtent3D lutImageExtent = {.width=static_cast<uint32_t>(height), .height=static_cast<uint32_t>(height), .depth=static_cast<uint32_t>(height)};
         lutImage = createImages(pLogicalDevice, 1, lutImageExtent,
                                 VK_FORMAT_R8G8B8A8_UNORM,
                                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -148,7 +149,7 @@ namespace vkBasalt
         std::vector<VkDescriptorPoolSize> poolSizes = {imagePoolSize};
         lutDescriptorPool = createDescriptorPool(pLogicalDevice, poolSizes);
 
-        init(pLogicalDevice, format, imageExtent, inputImages, outputImages, pConfig);
+        init(pLogicalDevice, format, imageExtent, std::move(inputImages), std::move(outputImages), pConfig);
 
         lutDescriptorSet = allocateAndWriteImageSamplerDescriptorSets(pLogicalDevice,
                             lutDescriptorPool, lutDescriptorSetLayout, {sampler},

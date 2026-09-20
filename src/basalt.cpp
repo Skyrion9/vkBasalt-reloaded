@@ -1,5 +1,6 @@
 #include "vkdispatch.hpp"
 #include <X11/X.h>
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <sys/types.h>
@@ -22,6 +23,7 @@
 #undef True
 #undef False
 
+#include <memory>
 #include <mutex>
 #include <vector>
 #include <unordered_map>
@@ -95,7 +97,7 @@ namespace vkBasalt
     static std::string getX11MonitorName(Display* dpy, Window win) {
         if (!dpy || !win) return "";
         int x = 0, y = 0;
-        Window child;
+        Window child = 0;
         XWindowAttributes win_attrs;
         if (!XGetWindowAttributes(dpy, win, &win_attrs)) return "";
         
@@ -138,14 +140,14 @@ namespace vkBasalt
 #ifdef _GCC_
     using scoped_lock __attribute__((unused)) = std::lock_guard<std::mutex>;
 #else
-    using scoped_lock = std::lock_guard<std::mutex>;
+    using scoped_lock = std::scoped_lock<std::mutex>;
 #endif
 
     static void ensureConfig()
     {
         if (pConfig == nullptr)
         {
-            scoped_lock l(globalLock);
+            std::scoped_lock l(globalLock);
             if (pConfig == nullptr)
             {
                 pConfig = std::make_shared<Config>();
@@ -166,7 +168,7 @@ namespace vkBasalt
         if (g_layer_init_pid == 0) {
             g_layer_init_pid = getpid();
         }
-        VkLayerInstanceCreateInfo* layerCreateInfo = (VkLayerInstanceCreateInfo*) pCreateInfo->pNext;
+        auto* layerCreateInfo = (VkLayerInstanceCreateInfo*) pCreateInfo->pNext;
 
         // step through the chain of pNext until we get to the link info
         while (layerCreateInfo
@@ -187,7 +189,7 @@ namespace vkBasalt
         // move chain on for next layer
         layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
 
-        PFN_vkCreateInstance createFunc = (PFN_vkCreateInstance) gpa(VK_NULL_HANDLE, "vkCreateInstance");
+        auto createFunc = reinterpret_cast<PFN_vkCreateInstance>(gpa(VK_NULL_HANDLE, "vkCreateInstance"));
 
         VkInstanceCreateInfo modifiedCreateInfo = *pCreateInfo;
         VkApplicationInfo    appInfo;
@@ -219,7 +221,7 @@ namespace vkBasalt
 
         // store the table by key
         {
-            scoped_lock l(globalLock);
+            std::scoped_lock l(globalLock);
             instanceDispatchMap[GetKey(*pInstance)] = dispatchTable;
             instanceMap[GetKey(*pInstance)]         = *pInstance;
             instanceVersionMap[GetKey(*pInstance)]  = modifiedCreateInfo.pApplicationInfo->apiVersion;
@@ -232,7 +234,7 @@ namespace vkBasalt
     {
         if (!instance)
             return;
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
         Logger::trace("vkDestroyInstance");
         // Don't shutdownWaylandInput() here. Games with launchers (Naraka/NEAC) destroy the launcher instance and create a new one for
         // the main game. Destroying Wayland input here kills hotkeys for the main game instance.
@@ -248,9 +250,9 @@ namespace vkBasalt
                                                const VkAllocationCallbacks* pAllocator,
                                                VkDevice*                    pDevice)
     {
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
         Logger::trace("vkCreateDevice");
-        VkLayerDeviceCreateInfo* layerCreateInfo = (VkLayerDeviceCreateInfo*) pCreateInfo->pNext;
+        auto* layerCreateInfo = (VkLayerDeviceCreateInfo*) pCreateInfo->pNext;
 
         // step through the chain of pNext until we get to the link info
         while (layerCreateInfo
@@ -270,7 +272,7 @@ namespace vkBasalt
         // move chain on for next layer
         layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
 
-        PFN_vkCreateDevice createFunc = (PFN_vkCreateDevice) gipa(VK_NULL_HANDLE, "vkCreateDevice");
+        auto createFunc = reinterpret_cast<PFN_vkCreateDevice>(gipa(VK_NULL_HANDLE, "vkCreateDevice"));
 
         // check and activate extentions
         uint32_t extensionCount = 0;
@@ -349,7 +351,7 @@ namespace vkBasalt
         if (ret != VK_SUCCESS)
             return ret;
 
-        std::shared_ptr<LogicalDevice> pLogicalDevice(new LogicalDevice());
+        std::shared_ptr<LogicalDevice> pLogicalDevice = std::make_shared<LogicalDevice>();
         pLogicalDevice->vki                   = instanceDispatchMap[GetKey(physicalDevice)];
         pLogicalDevice->device                = *pDevice;
         pLogicalDevice->physicalDevice        = physicalDevice;
@@ -363,7 +365,7 @@ namespace vkBasalt
 
         fillDispatchTableDevice(*pDevice, gdpa, &pLogicalDevice->vkd);
 
-        uint32_t count;
+        uint32_t count = 0;
 
         pLogicalDevice->vki.GetPhysicalDeviceQueueFamilyProperties(pLogicalDevice->physicalDevice, &count, nullptr);
 
@@ -417,7 +419,7 @@ namespace vkBasalt
         if (!device)
             return;
 
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
 
         Logger::trace("vkDestroyDevice");
 
@@ -449,19 +451,19 @@ namespace vkBasalt
         const VkAllocationCallbacks*                pAllocator,
         VkSurfaceKHR*                               pSurface)
     {
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
         Logger::trace("vkCreateWaylandSurfaceKHR");
 
         // Grab display pointer
         if (pCreateInfo && pCreateInfo->display)
         {
             setInputBackend(true); // Confirm Wayland backend
-            initWaylandInput((void*)pCreateInfo->display, (void*)pCreateInfo->surface);
+            initWaylandInput(reinterpret_cast<void*>(pCreateInfo->display), reinterpret_cast<void*>(pCreateInfo->surface));
         }
 
         InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
-        PFN_vkCreateWaylandSurfaceKHR fpCreateWaylandSurfaceKHR = 
-            (PFN_vkCreateWaylandSurfaceKHR)dispatchTable.GetInstanceProcAddr(instance, "vkCreateWaylandSurfaceKHR");
+        auto fpCreateWaylandSurfaceKHR = 
+            reinterpret_cast<PFN_vkCreateWaylandSurfaceKHR>(dispatchTable.GetInstanceProcAddr(instance, "vkCreateWaylandSurfaceKHR"));
             
         if (fpCreateWaylandSurfaceKHR)
         {
@@ -478,24 +480,24 @@ namespace vkBasalt
     const VkAllocationCallbacks*                pAllocator,
     VkSurfaceKHR*                               pSurface)
     {
-    scoped_lock l(globalLock);
+    std::scoped_lock l(globalLock);
     Logger::trace("vkCreateXlibSurfaceKHR");
         // Grab display pointer and window handle for X11 input
         if (pCreateInfo && pCreateInfo->dpy)
         {
             setInputBackend(false); // Confirm X11/XWayland backend
-            initX11Input((void*)pCreateInfo->dpy, (void*)(uintptr_t)pCreateInfo->window);
+            initX11Input(reinterpret_cast<void*>(pCreateInfo->dpy), (void*)static_cast<uintptr_t>(pCreateInfo->window));
         }
         InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];
-        PFN_vkCreateXlibSurfaceKHR fpCreateXlibSurfaceKHR = 
-            (PFN_vkCreateXlibSurfaceKHR)dispatchTable.GetInstanceProcAddr(instance, "vkCreateXlibSurfaceKHR");
+        auto fpCreateXlibSurfaceKHR = 
+            reinterpret_cast<PFN_vkCreateXlibSurfaceKHR>(dispatchTable.GetInstanceProcAddr(instance, "vkCreateXlibSurfaceKHR"));
         if (fpCreateXlibSurfaceKHR)
         {
             VkResult res = fpCreateXlibSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
             if (res == VK_SUCCESS) {
                 SurfacePlatformInfo info;
                 info.type = SurfacePlatformInfo::Type::Xlib;
-                info.display = (void*)pCreateInfo->dpy;
+                info.display = reinterpret_cast<void*>(pCreateInfo->dpy);
                 info.window = (void*)pCreateInfo->window;
                 info.monitor_name = getX11MonitorName(pCreateInfo->dpy, pCreateInfo->window);
                 if (!info.monitor_name.empty()) {
@@ -514,7 +516,7 @@ namespace vkBasalt
                                                                  const VkAllocationCallbacks*    pAllocator,
                                                                  VkSwapchainKHR*                 pSwapchain)
     {
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
 
         Logger::trace("vkCreateSwapchainKHR");
 
@@ -553,7 +555,7 @@ namespace vkBasalt
         Logger::debug("format " + std::to_string(modifiedCreateInfo.imageFormat));
         Logger::debug("colorSpace " + std::to_string(modifiedCreateInfo.imageColorSpace));
 
-        std::shared_ptr<LogicalSwapchain> pLogicalSwapchain(new LogicalSwapchain());
+        std::shared_ptr<LogicalSwapchain> pLogicalSwapchain = std::make_shared<LogicalSwapchain>();
         pLogicalSwapchain->pLogicalDevice      = pLogicalDevice;
         pLogicalSwapchain->swapchainCreateInfo = *pCreateInfo;
         pLogicalSwapchain->imageExtent         = modifiedCreateInfo.imageExtent;
@@ -569,7 +571,7 @@ namespace vkBasalt
 #ifdef VK_USE_PLATFORM_XLIB_KHR
             // Re-evaluate X11 position in case window moved since surface creation
             if (surfIt->second.type == SurfacePlatformInfo::Type::Xlib) {
-                std::string currentMonitor = getX11MonitorName((Display*)surfIt->second.display, (Window)surfIt->second.window);
+                std::string currentMonitor = getX11MonitorName(static_cast<Display*>(surfIt->second.display), (Window)surfIt->second.window);
                 if (!currentMonitor.empty()) {
                     pLogicalSwapchain->monitorName = currentMonitor;
                 }
@@ -578,7 +580,7 @@ namespace vkBasalt
         }
 
         // Auto HDR: Mutate real swapchain to HDR10 if display supports it and config is enabled
-        std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
+        auto autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
         bool autoHdrEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
         ColorSpaceMode srcCsm = getColorSpaceMode(pCreateInfo->imageFormat, pCreateInfo->imageColorSpace);
 
@@ -594,7 +596,7 @@ namespace vkBasalt
                 VkColorSpaceKHR colorSpace;
                 int priority; // lower is better
             };
-            HdrTarget bestTarget = { VK_FORMAT_UNDEFINED, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, 999 };
+            HdrTarget bestTarget = { .format=VK_FORMAT_UNDEFINED, .colorSpace=VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, .priority=999 };
 
             for (const auto& f : surfaceFormats) {
                 int prio = 999;
@@ -622,7 +624,7 @@ namespace vkBasalt
                 }
 
                 if (prio < bestTarget.priority) {
-                    bestTarget = { f.format, f.colorSpace, prio };
+                    bestTarget = { .format=f.format, .colorSpace=f.colorSpace, .priority=prio };
                 }
             }
 
@@ -659,7 +661,7 @@ namespace vkBasalt
                                                                    uint32_t*      pCount,
                                                                    VkImage*       pSwapchainImages)
     {
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
         Logger::trace("vkGetSwapchainImagesKHR " + std::to_string(*pCount));
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
@@ -726,7 +728,7 @@ namespace vkBasalt
         uint32_t totalEffectCount = calculateTotalEffectCount(pConfig.get(), pLogicalSwapchain);
 
         // Ping pong cap at 2 slices (game input + 1 working buffer) regardless of chain length
-        uint32_t requiredSlices;
+        uint32_t requiredSlices = 0;
         if (totalEffectCount == 0) requiredSlices = 1;
         else if (totalEffectCount == 1) requiredSlices = pLogicalDevice->supportsMutableFormat ? 1 : 2;
         else requiredSlices = 2;
@@ -957,7 +959,7 @@ namespace vkBasalt
             }
 
             if (g_effectsEnabled.load()) {
-                std::lock_guard<std::mutex> lock(pLogicalSwapchain->effectMutex);
+                std::scoped_lock lock(pLogicalSwapchain->effectMutex);
                 for (auto& effect : pLogicalSwapchain->effects)
                 {
                     effect->updateEffect();
@@ -1008,8 +1010,8 @@ namespace vkBasalt
             if (g_triggerScreenshot.load()) {
                 g_triggerScreenshot = false;
                 bool beforeAfter = pConfig->getOption<bool>("screenshotBeforeAfter", false);
-                std::string path = pConfig->getOption<std::string>("screenshotPath", "");
-                std::string fmt = pConfig->getOption<std::string>("screenshotFormat", "png");
+                auto path = pConfig->getOption<std::string>("screenshotPath", "");
+                auto fmt = pConfig->getOption<std::string>("screenshotFormat", "png");
                 int quality = pConfig->getOption<int>("screenshotQuality", 95);
                 ColorSpaceMode csm = getColorSpaceMode(pLogicalSwapchain->format, pLogicalSwapchain->colorSpace);
                 captureScreenshot(pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path, fmt, quality, csm);
@@ -1035,7 +1037,7 @@ namespace vkBasalt
     VKAPI_ATTR void VKAPI_CALL vkBasalt_DestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks* pAllocator)
     {
         if (!surface) return;
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
         
         // Clean up platform surface tracking to prevent memory leaks and stale handle reuse
         g_surfaceMap.erase(surface);
@@ -1050,7 +1052,7 @@ namespace vkBasalt
     {
         if (!swapchain)
             return;
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
         
         auto it = swapchainMap.find(swapchain);
         if (it == swapchainMap.end()) {
@@ -1102,7 +1104,7 @@ namespace vkBasalt
 
     static void bindTrackedDepthImage(LogicalDevice* pLogicalDevice, VkImage image)
     {
-        auto it = std::find(pLogicalDevice->depthImages.begin(), pLogicalDevice->depthImages.end(), image);
+        auto it = std::ranges::find(pLogicalDevice->depthImages, image);
         if (it == pLogicalDevice->depthImages.end()) return;
 
         size_t index = std::distance(pLogicalDevice->depthImages.begin(), it);
@@ -1163,7 +1165,7 @@ namespace vkBasalt
                                                         const VkAllocationCallbacks* pAllocator,
                                                         VkImage*                     pImage)
     {
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
         if (isDepthFormat(pCreateInfo->format) && pCreateInfo->samples == VK_SAMPLE_COUNT_1_BIT
@@ -1190,7 +1192,7 @@ namespace vkBasalt
 
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_BindImageMemory(VkDevice device, VkImage image, VkDeviceMemory memory, VkDeviceSize memoryOffset)
     {
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
 
@@ -1203,7 +1205,7 @@ namespace vkBasalt
     {
         if (!image)
             return;
-        scoped_lock l(globalLock);
+        std::scoped_lock l(globalLock);
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
 
         untrackDepthImage(pLogicalDevice, image);
@@ -1229,7 +1231,7 @@ namespace vkBasalt
         return VK_SUCCESS;
     }
 
-    VkResult VKAPI_CALL vkBasalt_EnumerateDeviceLayerProperties(VkPhysicalDevice   physicalDevice,
+    VkResult VKAPI_CALL vkBasalt_EnumerateDeviceLayerProperties(VkPhysicalDevice    /*physicalDevice*/,
                                                                  uint32_t*          pPropertyCount,
                                                                  VkLayerProperties* pProperties)
     {
@@ -1238,9 +1240,9 @@ namespace vkBasalt
 
     VkResult VKAPI_CALL vkBasalt_EnumerateInstanceExtensionProperties(const char*            pLayerName,
                                                                        uint32_t*              pPropertyCount,
-                                                                       VkExtensionProperties* pProperties)
+                                                                       VkExtensionProperties*  /*pProperties*/)
     {
-        if (pLayerName == NULL || std::strcmp(pLayerName, VKBASALT_NAME))
+        if (pLayerName == nullptr || std::strcmp(pLayerName, VKBASALT_NAME) != 0)
         {
             return VK_ERROR_LAYER_NOT_PRESENT;
         }
@@ -1259,14 +1261,14 @@ namespace vkBasalt
                                                                      VkExtensionProperties* pProperties)
     {
         // pass through any queries that aren't to us
-        if (pLayerName == NULL || std::strcmp(pLayerName, VKBASALT_NAME))
+        if (pLayerName == nullptr || std::strcmp(pLayerName, VKBASALT_NAME) != 0)
         {
             if (physicalDevice == VK_NULL_HANDLE)
             {
                 return VK_SUCCESS;
             }
 
-            scoped_lock l(globalLock);
+            std::scoped_lock l(globalLock);
             return instanceDispatchMap[GetKey(physicalDevice)].EnumerateDeviceExtensionProperties(
                 physicalDevice, pLayerName, pPropertyCount, pProperties);
         }
@@ -1345,7 +1347,7 @@ extern "C"
         INTERCEPT_CALLS
 
         {
-            vkBasalt::scoped_lock l(vkBasalt::globalLock);
+            std::scoped_lock l(vkBasalt::globalLock);
             return vkBasalt::deviceMap[vkBasalt::GetKey(device)]->vkd.GetDeviceProcAddr(device, pName);
         }
     }
@@ -1357,7 +1359,7 @@ extern "C"
         INTERCEPT_CALLS
 
         {
-            vkBasalt::scoped_lock l(vkBasalt::globalLock);
+            std::scoped_lock l(vkBasalt::globalLock);
             return vkBasalt::instanceDispatchMap[vkBasalt::GetKey(instance)].GetInstanceProcAddr(instance, pName);
         }
     }

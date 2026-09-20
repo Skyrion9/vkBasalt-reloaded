@@ -98,8 +98,8 @@ namespace vkBasalt
     uploadToImage(LogicalDevice* pLogicalDevice, VkImage image, VkExtent3D extent, uint32_t size, const unsigned char* writeData, uint32_t mipLevels)
     {
 
-        VkBuffer       stagingBuffer;
-        VkDeviceMemory stagingMemory;
+        VkBuffer       stagingBuffer = nullptr;
+        VkDeviceMemory stagingMemory = nullptr;
 
         createBuffer(pLogicalDevice,
                      size,
@@ -107,7 +107,7 @@ namespace vkBasalt
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                      stagingBuffer,
                      stagingMemory);
-        void*    data;
+        void*    data = nullptr;
         VkResult result = pLogicalDevice->vkd.MapMemory(pLogicalDevice->device, stagingMemory, 0, size, 0, &data);
         ASSERT_VULKAN(result);
         std::memcpy(data, writeData, size);
@@ -120,7 +120,7 @@ namespace vkBasalt
         allocInfo.commandPool        = pLogicalDevice->commandPool;
         allocInfo.commandBufferCount = 1;
 
-        VkCommandBuffer commandBuffer;
+        VkCommandBuffer commandBuffer = nullptr;
         pLogicalDevice->vkd.AllocateCommandBuffers(pLogicalDevice->device, &allocInfo, &commandBuffer);
         // initialize dispatch table for commandBuffer since it is a dispatchable object
         initializeDispatchTable(commandBuffer, pLogicalDevice->device);
@@ -159,7 +159,7 @@ namespace vkBasalt
         region.imageSubresource.mipLevel       = 0;
         region.imageSubresource.baseArrayLayer = 0;
         region.imageSubresource.layerCount     = 1;
-        region.imageOffset                     = {0, 0, 0};
+        region.imageOffset                     = {.x=0, .y=0, .z=0};
         region.imageExtent                     = extent;
 
         pLogicalDevice->vkd.CmdCopyBufferToImage(commandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
@@ -199,7 +199,7 @@ namespace vkBasalt
         pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, stagingBuffer, nullptr);
     }
 
-    void changeImageLayout(LogicalDevice* pLogicalDevice, std::vector<VkImage> images, uint32_t mipLevels)
+    void changeImageLayout(LogicalDevice* pLogicalDevice, const std::vector<VkImage>& images, uint32_t mipLevels)
     {
         VkCommandBufferAllocateInfo allocInfo = {};
 
@@ -208,7 +208,7 @@ namespace vkBasalt
         allocInfo.commandPool        = pLogicalDevice->commandPool;
         allocInfo.commandBufferCount = 1;
 
-        VkCommandBuffer commandBuffer;
+        VkCommandBuffer commandBuffer = nullptr;
         pLogicalDevice->vkd.AllocateCommandBuffers(pLogicalDevice->device, &allocInfo, &commandBuffer);
         // initialize dispatch table for commandBuffer since it is a dispatchable object
         initializeDispatchTable(commandBuffer, pLogicalDevice->device);
@@ -315,8 +315,8 @@ namespace vkBasalt
             imageBlit.srcSubresource.mipLevel       = i - 1;
             imageBlit.srcSubresource.baseArrayLayer = 0;
             imageBlit.srcSubresource.layerCount     = 1;
-            imageBlit.srcOffsets[0]                 = {0, 0, 0};
-            imageBlit.srcOffsets[1]                 = {mipWidth, mipHeight, mipDepth};
+            imageBlit.srcOffsets[0]                 = {.x=0, .y=0, .z=0};
+            imageBlit.srcOffsets[1]                 = {.x=mipWidth, .y=mipHeight, .z=mipDepth};
 
             mipWidth  = (mipWidth == 1) ? 1 : mipWidth / 2;
             mipHeight = (mipHeight == 1) ? 1 : mipHeight / 2;
@@ -326,8 +326,8 @@ namespace vkBasalt
             imageBlit.dstSubresource.mipLevel       = i;
             imageBlit.dstSubresource.baseArrayLayer = 0;
             imageBlit.dstSubresource.layerCount     = 1;
-            imageBlit.dstOffsets[0]                 = {0, 0, 0};
-            imageBlit.dstOffsets[1]                 = {mipWidth, mipHeight, mipDepth};
+            imageBlit.dstOffsets[0]                 = {.x=0, .y=0, .z=0};
+            imageBlit.dstOffsets[1]                 = {.x=mipWidth, .y=mipHeight, .z=mipDepth};
 
             pLogicalDevice->vkd.CmdBlitImage(
                 commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,

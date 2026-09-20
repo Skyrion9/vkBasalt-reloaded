@@ -51,14 +51,14 @@ namespace vkBasalt {
             return pLogicalSwapchain->autoHdrActive;
         } else {
             // Native HDR: "off" - no processing, "passthrough" and "manual" both require the effect in the chain.
-            std::string mode = pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
+            auto mode = pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
             return mode != "off";
         }
     }
 
     uint32_t calculateTotalEffectCount(Config* pConfig, LogicalSwapchain* pLogicalSwapchain) {
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
-        uint32_t totalEffectCount = (uint32_t)effectStrings.size();
+        auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+        auto totalEffectCount = static_cast<uint32_t>(effectStrings.size());
         if (isHdrOutputNeeded(pConfig, pLogicalSwapchain)) {
             totalEffectCount += 1;
         }
@@ -159,31 +159,31 @@ namespace vkBasalt {
     )>;
 
     static const std::unordered_map<std::string, EffectCreator> builtinEffects = {
-        {"fxaa", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"fxaa", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
         return std::make_shared<FxaaEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"cas", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"cas", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<CasEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"deband", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"deband", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<DebandEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"smaa", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"smaa", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"lut", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"lut", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<LutEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"dls", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"dls", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<DlsEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"clarity", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"clarity", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<ClarityEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"clarityrcas", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"clarityrcas", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<ClarityRcasEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
-        {"crystalclear", [](LogicalDevice* dev, VkFormat uf, VkFormat sf, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
+        {"crystalclear", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
             return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs);
         }},
     };
@@ -211,10 +211,10 @@ namespace vkBasalt {
                           VkSwapchainKHR swapchain, Config* pConfig,
                           OverlayManager& overlayManager)
     {
-        std::vector<std::string> effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+        auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
 
         // Append HDR Output Effect (Auto HDR or Nit Calibration)
-        std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
+        auto autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
         bool autoHdrEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
         
@@ -244,7 +244,7 @@ namespace vkBasalt {
                 Logger::debug("current effectString " + effectStrings[i]);
                 
                 uint32_t srcSlice = currentSlice;
-                uint32_t dstSlice;
+                uint32_t dstSlice = 0;
                 
                 bool isInPlace = (effectStrings[i] == "cmaa2");
                 bool isLastWritingToReal = (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput);
@@ -289,7 +289,7 @@ namespace vkBasalt {
                 else
                 {
                     // ReShade fallback
-                    std::string shaderPath = pConfig->getOption<std::string>("reshadeShaderPath", "");
+                    auto shaderPath = pConfig->getOption<std::string>("reshadeShaderPath", "");
                     if (shaderPath.empty()) shaderPath = pConfig->getOption<std::string>("reshadeTexturePath", "");
                     if (shaderPath.empty()) shaderPath = pConfig->getOption<std::string>("reshadeIncludePath", "");
 
@@ -492,7 +492,7 @@ namespace vkBasalt {
         
         // Detect AutoHDR config changes that require a full swapchain rebuild. The real swapchain format is fixed at creation time, so toggling AutoHDR must too.
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
-        std::string autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
+        auto autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
         bool autoHdrConfigEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
         
         if (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrConfigEnabled != pLogicalSwapchain->autoHdrActive) {

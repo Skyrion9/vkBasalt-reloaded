@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <utility>
 #include <vector>
 #include <cstring>
 #include <cmath>
@@ -16,7 +17,7 @@
 namespace vkBasalt {
 
     static bool fileExists(const char* path) {
-        struct stat st;
+        struct stat st{};
         return stat(path, &st) == 0;
     }
 
@@ -37,7 +38,7 @@ namespace vkBasalt {
         outData.resize(size);
         size_t read = fread(outData.data(), 1, size, f);
         fclose(f);
-        if (read != (size_t)size) {
+        if (std::cmp_not_equal(read ,size)) {
             Logger::debug(std::string("readBinaryFile: Short read on ") + path);
             return false;
         }
@@ -112,7 +113,7 @@ namespace vkBasalt {
     // Tier 1: kscreen-doctor (KDE Plasma specific & usually calibrated by user)
     static bool tryReadKscreenDoctor(DisplayHdrCapabilities& caps) {
         const char* kscreenPath = nullptr;
-        struct stat st;
+        struct stat st{};
         if (stat("/usr/bin/kscreen-doctor", &st) == 0) {
             kscreenPath = "/usr/bin/kscreen-doctor";
         } else if (stat("/usr/local/bin/kscreen-doctor", &st) == 0) {
@@ -149,7 +150,7 @@ namespace vkBasalt {
 
         while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
             std::string line(buffer);
-            if (line.find("Output:") == 0) {
+            if (line.starts_with("Output:")) {
                 finalizeOutput();
             } else if (line.find("HDR: enabled") != std::string::npos) {
                 currentHdrEnabled = true;
@@ -187,8 +188,8 @@ namespace vkBasalt {
             caps.minLuminance = 0.0f;
             caps.source = "kscreen";
             Logger::info("Display HDR capabilities from kscreen-doctor: max=" +
-                         std::to_string((int)caps.maxLuminance) + " nits, SDR white=" +
-                         std::to_string((int)caps.maxFrameAvgLuminance) + " nits");
+                         std::to_string(static_cast<int>(caps.maxLuminance)) + " nits, SDR white=" +
+                         std::to_string(static_cast<int>(caps.maxFrameAvgLuminance)) + " nits");
             return true;
         }
         return false;
@@ -206,7 +207,7 @@ namespace vkBasalt {
         };
         std::vector<EdidCandidate> candidates;
 
-        struct dirent* entry;
+        struct dirent* entry = nullptr;
         while ((entry = readdir(dir)) != nullptr) {
             std::string name = entry->d_name;
             if (name == "." || name == "..") continue;
@@ -283,8 +284,8 @@ namespace vkBasalt {
         caps.source = "edid";
 
         Logger::info(std::string("Display HDR capabilities from EDID (") + best->name + "): " +
-                     "max=" + std::to_string((int)caps.maxLuminance) + " nits, " +
-                     "maxFALL=" + std::to_string((int)caps.maxFrameAvgLuminance) + " nits, " +
+                     "max=" + std::to_string(static_cast<int>(caps.maxLuminance)) + " nits, " +
+                     "maxFALL=" + std::to_string(static_cast<int>(caps.maxFrameAvgLuminance)) + " nits, " +
                      "min=" + std::to_string(caps.minLuminance) + " nits, " +
                      "HDR=" + (caps.hdrSupported ? "yes" : "no"));
         return true;

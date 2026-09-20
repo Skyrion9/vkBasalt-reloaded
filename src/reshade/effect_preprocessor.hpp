@@ -50,7 +50,7 @@ namespace reshadefx
 		/// <param name="name">The name of the macro to define.</param>
 		/// <param name="value">The value to define that macro to.</param>
 		/// <returns></returns>
-		bool add_macro_definition(const std::string &name, std::string value = "1") { return add_macro_definition(name, macro { std::move(value), {} }); }
+		bool add_macro_definition(const std::string &name, std::string value = "1") { return add_macro_definition(name, macro { .replacement_list=std::move(value), .parameters={} }); }
 
 		/// <summary>
 		/// Open the specified file, parse its contents and append them to the output.
@@ -90,10 +90,10 @@ namespace reshadefx
 	private:
 		struct if_level
 		{
-			bool value;
-			bool skipping;
+			bool value{};
+			bool skipping{};
 			token pp_token;
-			size_t input_index;
+			size_t input_index{};
 		};
 		struct input_level
 		{

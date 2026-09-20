@@ -17,10 +17,10 @@ namespace vkBasalt {
 
     HdrDebugEffect::HdrDebugEffect(LogicalDevice* pLogicalDevice, VkFormat format, VkExtent2D imageExtent,
                                    const std::vector<VkImage>& outputImages,
-                                   Config* pConfig) {
-        m_dev = pLogicalDevice;
-        m_extent = imageExtent;
-        m_outImages = outputImages;
+                                   Config*  /*pConfig*/) : m_dev(pLogicalDevice), m_extent(imageExtent), m_outImages(outputImages) {
+        
+        
+        
 
         // Create image views for output images (Storage Images)
         m_outImageViews = createImageViews(pLogicalDevice, format, outputImages);
@@ -39,10 +39,10 @@ namespace vkBasalt {
         m_dev->vkd.CreateDescriptorSetLayout(m_dev->device, &layoutInfo, nullptr, &m_setLayout);
 
         // Create descriptor pool
-        VkDescriptorPoolSize poolSize = {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (uint32_t)m_outImages.size()};
+        VkDescriptorPoolSize poolSize = {.type=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount=static_cast<uint32_t>(m_outImages.size())};
         VkDescriptorPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.maxSets = (uint32_t)m_outImages.size();
+        poolInfo.maxSets = static_cast<uint32_t>(m_outImages.size());
         poolInfo.poolSizeCount = 1;
         poolInfo.pPoolSizes = &poolSize;
         m_dev->vkd.CreateDescriptorPool(m_dev->device, &poolInfo, nullptr, &m_descPool);
@@ -53,7 +53,7 @@ namespace vkBasalt {
         VkDescriptorSetAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = m_descPool;
-        allocInfo.descriptorSetCount = (uint32_t)m_outImages.size();
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(m_outImages.size());
         allocInfo.pSetLayouts = layouts.data();
         m_dev->vkd.AllocateDescriptorSets(m_dev->device, &allocInfo, m_descSets.data());
 
@@ -94,7 +94,7 @@ namespace vkBasalt {
         smInfo.codeSize = spirv.size() * sizeof(uint32_t);
         smInfo.pCode = spirv.data();
         
-        VkShaderModule shaderModule;
+        VkShaderModule shaderModule = nullptr;
         m_dev->vkd.CreateShaderModule(m_dev->device, &smInfo, nullptr, &shaderModule);
 
         VkComputePipelineCreateInfo cpInfo = {};
@@ -134,7 +134,7 @@ namespace vkBasalt {
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.image = m_outImages[imageIndex];
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         m_dev->vkd.CmdPipelineBarrier(
             commandBuffer,
@@ -147,7 +147,7 @@ namespace vkBasalt {
         m_dev->vkd.CmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_pipelineLayout, 0, 1, &m_descSets[imageIndex], 0, nullptr);
 
         // Push constants
-        UboData pc = { s_debugPeakNits.load(), s_windowSize.load(), s_patternType.load() };
+        UboData pc = { .peakNits=s_debugPeakNits.load(), .windowSize=s_windowSize.load(), .patternType=s_patternType.load() };
         m_dev->vkd.CmdPushConstants(commandBuffer, m_pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(UboData), &pc);
 
         // Dispatch
@@ -165,7 +165,7 @@ namespace vkBasalt {
         barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier2.image = m_outImages[imageIndex];
-        barrier2.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        barrier2.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
 
         m_dev->vkd.CmdPipelineBarrier(
             commandBuffer,

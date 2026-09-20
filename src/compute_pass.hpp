@@ -23,7 +23,7 @@ namespace vkBasalt
         virtual void updatePass() {}
 
         virtual void setEnabled(bool enabled) { m_enabled = enabled; }
-        virtual bool isEnabled() const { return m_enabled; }
+        [[nodiscard]] virtual bool isEnabled() const { return m_enabled; }
 
         // Propagate overlay visibility (e.g. to skip GPU work when UI is hidden).
         virtual void setOverlayVisible(bool) {}
@@ -32,7 +32,7 @@ namespace vkBasalt
         virtual FrameAnalyzer* asFrameAnalyzer() { return nullptr; }
 
         // Name for UI / config lookup.
-        virtual std::string getName() const = 0;
+        [[nodiscard]] virtual std::string getName() const = 0;
 
     protected:
         bool m_enabled = false;

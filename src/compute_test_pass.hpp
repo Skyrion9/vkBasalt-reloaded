@@ -13,13 +13,13 @@ namespace vkBasalt
                         const std::vector<VkImage>& inputImages);
         ~ComputeTestPass() override;
 
-        std::string getName() const override { return "compute_test"; }
+        [[nodiscard]] std::string getName() const override { return "compute_test"; }
 
     protected:
-        const std::vector<uint32_t>& getShaderCode() const override;
-        std::vector<VkDescriptorSetLayoutBinding> getBindings() const override;
+        [[nodiscard]] const std::vector<uint32_t>& getShaderCode() const override;
+        [[nodiscard]] std::vector<VkDescriptorSetLayoutBinding> getBindings() const override;
         void writeDescriptors(VkDescriptorSet set, uint32_t imageIndex) override;
-        const VkSpecializationInfo* getSpecializationInfo() const override { return &m_specInfo; }
+        [[nodiscard]] const VkSpecializationInfo* getSpecializationInfo() const override { return &m_specInfo; }
 
         void getDispatchSize(uint32_t& x, uint32_t& y, uint32_t& z) const override;
 
@@ -37,8 +37,8 @@ namespace vkBasalt
             uint32_t width;
             uint32_t height;
         };
-        SpecData m_specData;
+        SpecData m_specData{};
         std::vector<VkSpecializationMapEntry> m_specMapEntries;
-        VkSpecializationInfo m_specInfo;
+        VkSpecializationInfo m_specInfo{};
     };
 } // namespace vkBasalt

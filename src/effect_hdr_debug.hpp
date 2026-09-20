@@ -26,7 +26,7 @@ namespace vkBasalt {
 
     private:
         LogicalDevice* m_dev;
-        VkExtent2D m_extent;
+        VkExtent2D m_extent{};
         std::vector<VkImage> m_outImages;
         std::vector<VkImageView> m_outImageViews;
         

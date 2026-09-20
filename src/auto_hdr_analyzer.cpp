@@ -27,7 +27,7 @@ namespace vkBasalt {
         info.size = size;
         info.usage = usage;
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VkBuffer buffer;
+        VkBuffer buffer = nullptr;
         if (pLogicalDevice->vkd.CreateBuffer(pLogicalDevice->device, &info, nullptr, &buffer) != VK_SUCCESS) {
             return VK_NULL_HANDLE;
         }
@@ -52,23 +52,23 @@ namespace vkBasalt {
 
         // 1. Populate Specialization Data
         m_accSpecData = {
-            extent.width, extent.height,
-            1.0f / static_cast<float>(extent.width),
-            1.0f / static_cast<float>(extent.height),
-            sourceColorSpace
+            .width=extent.width, .height=extent.height,
+            .invWidth=1.0f / static_cast<float>(extent.width),
+            .invHeight=1.0f / static_cast<float>(extent.height),
+            .sourceColorSpace=sourceColorSpace
         };
         m_accSpecMapEntries = {
-            {0, offsetof(AccumulateSpecData, width), sizeof(uint32_t)},
-            {1, offsetof(AccumulateSpecData, height), sizeof(uint32_t)},
-            {2, offsetof(AccumulateSpecData, invWidth), sizeof(float)},
-            {3, offsetof(AccumulateSpecData, invHeight), sizeof(float)},
-            {65535, offsetof(AccumulateSpecData, sourceColorSpace), sizeof(int32_t)}
+            {.constantID=0, .offset=offsetof(AccumulateSpecData, width), .size=sizeof(uint32_t)},
+            {.constantID=1, .offset=offsetof(AccumulateSpecData, height), .size=sizeof(uint32_t)},
+            {.constantID=2, .offset=offsetof(AccumulateSpecData, invWidth), .size=sizeof(float)},
+            {.constantID=3, .offset=offsetof(AccumulateSpecData, invHeight), .size=sizeof(float)},
+            {.constantID=65535, .offset=offsetof(AccumulateSpecData, sourceColorSpace), .size=sizeof(int32_t)}
         };
         m_accSpecInfo = {
-            (uint32_t)m_accSpecMapEntries.size(),
-            m_accSpecMapEntries.data(),
-            sizeof(AccumulateSpecData),
-            &m_accSpecData
+            .mapEntryCount=static_cast<uint32_t>(m_accSpecMapEntries.size()),
+            .pMapEntries=m_accSpecMapEntries.data(),
+            .dataSize=sizeof(AccumulateSpecData),
+            .pData=&m_accSpecData
         };
 
         // Fetch system detected display values to use as intelligent fallbacks
@@ -77,26 +77,26 @@ namespace vkBasalt {
         float fallbackPeak = (detected.detected && detected.peakBrightnessNits > 0.0f) ? detected.peakBrightnessNits : 1000.0f;
 
         m_redSpecData = {
-            std::clamp(pConfig->getOption<float>("hdrAdaptiveSpeed", 0.1f), 0.01f, 2.0f),
-            pConfig->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
-            pConfig->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
-            std::clamp(pConfig->getOption<float>("hdrAdaptivePeakScale", 1.0f), 0.0f, 1.0f),
-            std::clamp(pConfig->getOption<float>("hdrAdaptiveMidtoneRange", 0.05f), 0.0f, 0.2f),
-            calibrationMode
+            .adaptationSpeed=std::clamp(pConfig->getOption<float>("hdrAdaptiveSpeed", 0.1f), 0.01f, 2.0f),
+            .targetWhite=pConfig->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
+            .targetPeak=pConfig->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
+            .peakScale=std::clamp(pConfig->getOption<float>("hdrAdaptivePeakScale", 1.0f), 0.0f, 1.0f),
+            .midtoneRange=std::clamp(pConfig->getOption<float>("hdrAdaptiveMidtoneRange", 0.05f), 0.0f, 0.2f),
+            .calibrationMode=calibrationMode
         };
         m_redSpecMapEntries = {
-            {10, offsetof(ReduceSpecData, adaptationSpeed), sizeof(float)},
-            {11, offsetof(ReduceSpecData, targetWhite), sizeof(float)},
-            {12, offsetof(ReduceSpecData, targetPeak), sizeof(float)},
-            {13, offsetof(ReduceSpecData, peakScale), sizeof(float)},
-            {14, offsetof(ReduceSpecData, midtoneRange), sizeof(float)},
-            {15, offsetof(ReduceSpecData, calibrationMode), sizeof(int32_t)}
+            {.constantID=10, .offset=offsetof(ReduceSpecData, adaptationSpeed), .size=sizeof(float)},
+            {.constantID=11, .offset=offsetof(ReduceSpecData, targetWhite), .size=sizeof(float)},
+            {.constantID=12, .offset=offsetof(ReduceSpecData, targetPeak), .size=sizeof(float)},
+            {.constantID=13, .offset=offsetof(ReduceSpecData, peakScale), .size=sizeof(float)},
+            {.constantID=14, .offset=offsetof(ReduceSpecData, midtoneRange), .size=sizeof(float)},
+            {.constantID=15, .offset=offsetof(ReduceSpecData, calibrationMode), .size=sizeof(int32_t)}
         };
         m_redSpecInfo = {
-            (uint32_t)m_redSpecMapEntries.size(),
-            m_redSpecMapEntries.data(),
-            sizeof(ReduceSpecData),
-            &m_redSpecData
+            .mapEntryCount=static_cast<uint32_t>(m_redSpecMapEntries.size()),
+            .pMapEntries=m_redSpecMapEntries.data(),
+            .dataSize=sizeof(ReduceSpecData),
+            .pData=&m_redSpecData
         };
 
         // 2. Create Buffers
@@ -116,7 +116,7 @@ namespace vkBasalt {
         }
 
         // 3. Create Sampler
-        VkSamplerCreateInfo samplerInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        VkSamplerCreateInfo samplerInfo = {.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         samplerInfo.magFilter = VK_FILTER_LINEAR;
         samplerInfo.minFilter = VK_FILTER_LINEAR;
         samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
@@ -127,29 +127,29 @@ namespace vkBasalt {
 
         // 4. Create Descriptor Set Layouts
         std::vector<VkDescriptorSetLayoutBinding> accBindings(2);
-        accBindings[0] = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        accBindings[1] = {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        VkDescriptorSetLayoutCreateInfo accLayoutInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 2, accBindings.data()};
+        accBindings[0] = {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr};
+        accBindings[1] = {.binding=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr};
+        VkDescriptorSetLayoutCreateInfo accLayoutInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .pNext=nullptr, .flags=0, .bindingCount=2, .pBindings=accBindings.data()};
         pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &accLayoutInfo, nullptr, &m_accumulateSetLayout);
 
         std::vector<VkDescriptorSetLayoutBinding> redBindings(3);
-        redBindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        redBindings[1] = {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        redBindings[2] = {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        VkDescriptorSetLayoutCreateInfo redLayoutInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 3, redBindings.data()};
+        redBindings[0] = {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr};
+        redBindings[1] = {.binding=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr};
+        redBindings[2] = {.binding=2, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr};
+        VkDescriptorSetLayoutCreateInfo redLayoutInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .pNext=nullptr, .flags=0, .bindingCount=3, .pBindings=redBindings.data()};
         pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &redLayoutInfo, nullptr, &m_reduceSetLayout);
 
         std::vector<VkDescriptorSetLayoutBinding> metBindings(1);
-        metBindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-        VkDescriptorSetLayoutCreateInfo metLayoutInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 1, metBindings.data()};
+        metBindings[0] = {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT, .pImmutableSamplers=nullptr};
+        VkDescriptorSetLayoutCreateInfo metLayoutInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .pNext=nullptr, .flags=0, .bindingCount=1, .pBindings=metBindings.data()};
         pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &metLayoutInfo, nullptr, &m_metricsSetLayout);
 
         // 5. Descriptor Pool
         std::vector<VkDescriptorPoolSize> poolSizes = {
-            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, m_imageCount},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, m_imageCount * 5}
+            {.type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=m_imageCount},
+            {.type=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=m_imageCount * 5}
         };
-        VkDescriptorPoolCreateInfo poolInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, m_imageCount * 3, (uint32_t)poolSizes.size(), poolSizes.data()};
+        VkDescriptorPoolCreateInfo poolInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .pNext=nullptr, .flags=0, .maxSets=m_imageCount * 3, .poolSizeCount=static_cast<uint32_t>(poolSizes.size()), .pPoolSizes=poolSizes.data()};
         pLogicalDevice->vkd.CreateDescriptorPool(pLogicalDevice->device, &poolInfo, nullptr, &m_descriptorPool);
 
         // 6. Allocate Descriptor Sets
@@ -161,7 +161,7 @@ namespace vkBasalt {
         std::vector<VkDescriptorSetLayout> redLayouts(m_imageCount, m_reduceSetLayout);
         std::vector<VkDescriptorSetLayout> metLayouts(m_imageCount, m_metricsSetLayout);
 
-        VkDescriptorSetAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, m_descriptorPool, m_imageCount, accLayouts.data()};
+        VkDescriptorSetAllocateInfo allocInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .pNext=nullptr, .descriptorPool=m_descriptorPool, .descriptorSetCount=m_imageCount, .pSetLayouts=accLayouts.data()};
         pLogicalDevice->vkd.AllocateDescriptorSets(pLogicalDevice->device, &allocInfo, m_accumulateSets.data());
         allocInfo.pSetLayouts = redLayouts.data();
         pLogicalDevice->vkd.AllocateDescriptorSets(pLogicalDevice->device, &allocInfo, m_reduceSets.data());
@@ -169,26 +169,26 @@ namespace vkBasalt {
         pLogicalDevice->vkd.AllocateDescriptorSets(pLogicalDevice->device, &allocInfo, m_metricsDescriptorSets.data());
 
         // 7. Write Static Descriptors
-        VkDescriptorBufferInfo histBufInfo = {m_histogramBuffer, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo tempBufInfo = {m_temporalBuffer, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo metBufInfo = {m_metricsBuffer, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo histBufInfo = {.buffer=m_histogramBuffer, .offset=0, .range=VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo tempBufInfo = {.buffer=m_temporalBuffer, .offset=0, .range=VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo metBufInfo = {.buffer=m_metricsBuffer, .offset=0, .range=VK_WHOLE_SIZE};
 
         for (uint32_t i = 0; i < m_imageCount; i++) {
             VkWriteDescriptorSet redWrites[3] = {};
-            redWrites[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_reduceSets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &histBufInfo, nullptr};
-            redWrites[1] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_reduceSets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &tempBufInfo, nullptr};
-            redWrites[2] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_reduceSets[i], 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &metBufInfo, nullptr};
+            redWrites[0] = {.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_reduceSets[i], .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&histBufInfo, .pTexelBufferView=nullptr};
+            redWrites[1] = {.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_reduceSets[i], .dstBinding=1, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&tempBufInfo, .pTexelBufferView=nullptr};
+            redWrites[2] = {.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_reduceSets[i], .dstBinding=2, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&metBufInfo, .pTexelBufferView=nullptr};
             pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 3, redWrites, 0, nullptr);
 
-            VkWriteDescriptorSet metWrite = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_metricsDescriptorSets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &metBufInfo, nullptr};
+            VkWriteDescriptorSet metWrite = {.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_metricsDescriptorSets[i], .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&metBufInfo, .pTexelBufferView=nullptr};
             pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &metWrite, 0, nullptr);
             
-            VkWriteDescriptorSet accWrite = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_accumulateSets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &histBufInfo, nullptr};
+            VkWriteDescriptorSet accWrite = {.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_accumulateSets[i], .dstBinding=1, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&histBufInfo, .pTexelBufferView=nullptr};
             pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &accWrite, 0, nullptr);
         }
 
         // 8. Shader Modules
-        VkShaderModuleCreateInfo smInfo = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        VkShaderModuleCreateInfo smInfo = {.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
         const auto& accumulateSpirv = decompressShaderCached(auto_hdr_accumulate_comp);
         smInfo.codeSize = accumulateSpirv.size() * sizeof(uint32_t);
         smInfo.pCode = accumulateSpirv.data();
@@ -200,22 +200,22 @@ namespace vkBasalt {
         pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &smInfo, nullptr, &m_reduceModule);
 
         // 9. Pipeline Layouts & Pipelines
-        VkPipelineLayoutCreateInfo accPlInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 1, &m_accumulateSetLayout, 0, nullptr};
+        VkPipelineLayoutCreateInfo accPlInfo = {.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .pNext=nullptr, .flags=0, .setLayoutCount=1, .pSetLayouts=&m_accumulateSetLayout, .pushConstantRangeCount=0, .pPushConstantRanges=nullptr};
         pLogicalDevice->vkd.CreatePipelineLayout(pLogicalDevice->device, &accPlInfo, nullptr, &m_accumulateLayout);
 
-        VkComputePipelineCreateInfo accCpInfo = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-        accCpInfo.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_COMPUTE_BIT, m_accumulateModule, "main", nullptr};
+        VkComputePipelineCreateInfo accCpInfo = {.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        accCpInfo.stage = {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .pNext=nullptr, .flags=0, .stage=VK_SHADER_STAGE_COMPUTE_BIT, .module=m_accumulateModule, .pName="main", .pSpecializationInfo=nullptr};
         accCpInfo.stage.pSpecializationInfo = &m_accSpecInfo;
         accCpInfo.layout = m_accumulateLayout;
         pLogicalDevice->vkd.CreateComputePipelines(pLogicalDevice->device, pLogicalDevice->pipelineCache, 1, &accCpInfo, nullptr, &m_accumulatePipeline);
 
         // Reduce: Only deltaTime (4 bytes) as push constant
-        VkPushConstantRange redPushRange = {VK_SHADER_STAGE_COMPUTE_BIT, 0, 4}; 
-        VkPipelineLayoutCreateInfo redPlInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 1, &m_reduceSetLayout, 1, &redPushRange};
+        VkPushConstantRange redPushRange = {.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .offset=0, .size=4}; 
+        VkPipelineLayoutCreateInfo redPlInfo = {.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .pNext=nullptr, .flags=0, .setLayoutCount=1, .pSetLayouts=&m_reduceSetLayout, .pushConstantRangeCount=1, .pPushConstantRanges=&redPushRange};
         pLogicalDevice->vkd.CreatePipelineLayout(pLogicalDevice->device, &redPlInfo, nullptr, &m_reduceLayout);
 
-        VkComputePipelineCreateInfo redCpInfo = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-        redCpInfo.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_COMPUTE_BIT, m_reduceModule, "main", nullptr};
+        VkComputePipelineCreateInfo redCpInfo = {.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        redCpInfo.stage = {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .pNext=nullptr, .flags=0, .stage=VK_SHADER_STAGE_COMPUTE_BIT, .module=m_reduceModule, .pName="main", .pSpecializationInfo=nullptr};
         redCpInfo.stage.pSpecializationInfo = &m_redSpecInfo;
         redCpInfo.layout = m_reduceLayout;
         pLogicalDevice->vkd.CreateComputePipelines(pLogicalDevice->device, pLogicalDevice->pipelineCache, 1, &redCpInfo, nullptr, &m_reducePipeline);
@@ -228,7 +228,7 @@ namespace vkBasalt {
             outWhite = outPeak = outIntensity = 0.0f;
             return;
         }
-        const float* data = static_cast<const float*>(m_mappedMetrics);
+        const auto* data = static_cast<const float*>(m_mappedMetrics);
         outWhite     = data[0] * 100.0f; // nits * 0.01 -> nits
         outPeak      = data[1] * 100.0f;
         outIntensity = data[2];
@@ -236,7 +236,7 @@ namespace vkBasalt {
 
     bool AutoHdrAnalyzer::getUpdatedMetadata(float& outPeak, float& outWhite) {
         if (!m_mappedMetrics) return false;
-        const float* data = static_cast<const float*>(m_mappedMetrics);
+        const auto* data = static_cast<const float*>(m_mappedMetrics);
         // Shader stores nits * 0.01f, multiply by 100 to get actual nits
         float peak = data[1] * 100.0f; 
         float white = data[0] * 100.0f;
@@ -278,13 +278,13 @@ namespace vkBasalt {
 
     void AutoHdrAnalyzer::updateInputViews(const std::vector<VkImageView>& inputImageViews) {
         for (uint32_t i = 0; i < m_imageCount; i++) {
-            VkDescriptorImageInfo imgInfo = {m_sampler, inputImageViews[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-            VkWriteDescriptorSet accWrite = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_accumulateSets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imgInfo, nullptr, nullptr};
+            VkDescriptorImageInfo imgInfo = {.sampler=m_sampler, .imageView=inputImageViews[i], .imageLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            VkWriteDescriptorSet accWrite = {.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_accumulateSets[i], .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo=&imgInfo, .pBufferInfo=nullptr, .pTexelBufferView=nullptr};
             pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &accWrite, 0, nullptr);
         }
     }
 
-    void AutoHdrAnalyzer::recordCommands(VkCommandBuffer cmdBuf, VkImageView inputImageView, uint32_t imageIndex) {
+    void AutoHdrAnalyzer::recordCommands(VkCommandBuffer cmdBuf, VkImageView  /*inputImageView*/, uint32_t imageIndex) {
         // Initialize temporal buffer on first run using CmdUpdateBuffer (avoids PCIe staging buffer overhead)
         if (!m_temporalInitialized) {
             float temporalDefaults[4] = {0.5f, 0.18f, 0.0f, 0.0f}; // smoothedP99, smoothedAvg, padding
@@ -360,7 +360,7 @@ namespace vkBasalt {
         pLogicalDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 
             0, 0, nullptr, 1, &reduceToCopyBarrier, 0, nullptr);
 
-        VkBufferCopy copyRegion = {0, 0, 16};
+        VkBufferCopy copyRegion = {.srcOffset=0, .dstOffset=0, .size=16};
         pLogicalDevice->vkd.CmdCopyBuffer(cmdBuf, m_metricsBuffer, m_stagingMetricsBuffer, 1, &copyRegion);
     }
 } // namespace vkBasalt

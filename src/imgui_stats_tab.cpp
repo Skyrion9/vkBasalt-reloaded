@@ -38,7 +38,7 @@ namespace vkBasalt {
             ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
             std::string exeName = "Unknown";
             if (len > 0) {
-                exeName = std::string(exePath, (size_t)len);
+                exeName = std::string(exePath, static_cast<size_t>(len));
                 size_t slash = exeName.find_last_of('/');
                 if (slash != std::string::npos) exeName = exeName.substr(slash + 1);
             }
@@ -90,7 +90,7 @@ namespace vkBasalt {
                     }
                 }
                 char vramBuf[32];
-                snprintf(vramBuf, sizeof(vramBuf), "%.2f GB", (float)totalVRAM / (1024.0f * 1024.0f * 1024.0f));
+                snprintf(vramBuf, sizeof(vramBuf), "%.2f GB", static_cast<float>(totalVRAM) / (1024.0f * 1024.0f * 1024.0f));
                 statRow("Total VRAM", vramBuf);
             }
         }
@@ -114,7 +114,7 @@ namespace vkBasalt {
                 char fakeImgBuf[64];
                 size_t fakeCount = m_pSwapchain->fakeImages.size();
                 uint32_t bpp = getBytesPerPixel(m_pSwapchain->sourceFormat);
-                float poolMB = (float)(fakeCount * m_pSwapchain->imageExtent.width * m_pSwapchain->imageExtent.height * bpp) / (1024.0f * 1024.0f);
+                float poolMB = static_cast<float>(fakeCount * m_pSwapchain->imageExtent.width * m_pSwapchain->imageExtent.height * bpp) / (1024.0f * 1024.0f);
                 snprintf(fakeImgBuf, sizeof(fakeImgBuf), "%zu images (%.1f MB)", fakeCount, poolMB);
                 statRow("Fake Image Pool", fakeImgBuf);
 

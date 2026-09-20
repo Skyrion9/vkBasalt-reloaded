@@ -1,10 +1,12 @@
 #include "effect_nit_calibration.hpp"
 
+#include <math.h>
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+#include <utility>
 
 #include "effect_hdr_debug.hpp"
 #include "shader_sources.hpp"
@@ -13,7 +15,7 @@
 
 namespace vkBasalt 
 {
-    #define SPEC(id, field) .specId = id, .specOffset = offsetof(NitCalibrationSpecData, field), .specSize = sizeof(((NitCalibrationSpecData*)0)->field)
+    #define SPEC(id, field) .specId = (id), .specOffset = offsetof(NitCalibrationSpecData, field), .specSize = sizeof(((NitCalibrationSpecData*)0)->field)
 
     // Static accessor, callable without an instance (used by AutoHDR tab when effect isn't in chain)
     const std::vector<EffectParamDesc>& NitCalibrationEffect::getCalibrationParams()
@@ -55,17 +57,17 @@ namespace vkBasalt
                                                Config* pConfig,
                                                VkColorSpaceKHR sourceColorSpace, VkColorSpaceKHR destColorSpace,
                                                bool autoHdrActive,
-                                               const std::string& monitorName) {
+                                               const std::string& monitorName) : m_pConfigRef(pConfig), m_monitorName(monitorName) {
         Logger::debug("Creating HDR Output Effect");
         vertexCode   = decompressShaderCached(full_screen_triangle_vert);
         fragmentCode = decompressShaderCached(nit_calibration_frag);
         
-        m_pConfigRef = pConfig;
-        m_autoHdrActive = autoHdrActive;
-        m_monitorName = monitorName;
+        
+        
+        
         
         // Determine calibration mode for native HDR passthrough
-        std::string calibMode = pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
+        auto calibMode = pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
         bool isPassthrough = (calibMode == "passthrough");
         int32_t applyGainVal = (autoHdrActive || !isPassthrough) ? 1 : 0;
         int32_t analyzerCalibMode = autoHdrActive ? 0 : (isPassthrough ? 1 : 0);
@@ -87,10 +89,10 @@ namespace vkBasalt
             if (p.key == "sdrWhitePointNits" && detected.detected && detected.sdrWhitePointNits > 0.0f) def = detected.sdrWhitePointNits;
             if (p.key == "hdrPeakNits" && detected.detected && detected.peakBrightnessNits > 0.0f) def = detected.peakBrightnessNits;
             
-            double val;
+            double val = NAN;
             
             if (p.type == ParamType::Combo) {
-                std::string strVal = pConfig->getOption<std::string>(p.key, "");
+                auto strVal = pConfig->getOption<std::string>(p.key, "");
                 int idx = static_cast<int>(p.defaultVal);
                 for (size_t ci = 0; ci < p.comboOptions.size(); ci++) {
                     if (p.comboOptions[ci] == strVal) {
@@ -109,28 +111,28 @@ namespace vkBasalt
             m_paramValues[p.key] = val;
             
             if (p.type == ParamType::Float) {
-                float f = (float)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &f, sizeof(float));
+                auto f = static_cast<float>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &f, sizeof(float));
             } else {
-                int32_t i = (int32_t)val;
-                std::memcpy((uint8_t*)&specData + p.specOffset, &i, sizeof(int32_t));
+                auto i = static_cast<int32_t>(val);
+                std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &i, sizeof(int32_t));
             }
             
-            mapEntries.push_back({(uint32_t)p.specId, (uint32_t)p.specOffset, p.specSize});
+            mapEntries.push_back({.constantID=static_cast<uint32_t>(p.specId), .offset=static_cast<uint32_t>(p.specOffset), .size=p.specSize});
         }
 
         // Add non-user-configurable specialization constants
         specData.autoHdrEnabled = autoHdrActive ? 1 : 0;
-        mapEntries.push_back({2, offsetof(NitCalibrationSpecData, autoHdrEnabled), sizeof(int32_t)});
+        mapEntries.push_back({.constantID=2, .offset=offsetof(NitCalibrationSpecData, autoHdrEnabled), .size=sizeof(int32_t)});
         
         specData.applyGain = applyGainVal;
-        mapEntries.push_back({3, offsetof(NitCalibrationSpecData, applyGain), sizeof(int32_t)});
+        mapEntries.push_back({.constantID=3, .offset=offsetof(NitCalibrationSpecData, applyGain), .size=sizeof(int32_t)});
         
         specData.sourceColorSpace = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
-        mapEntries.push_back({65534, offsetof(NitCalibrationSpecData, sourceColorSpace), sizeof(int32_t)});
+        mapEntries.push_back({.constantID=65534, .offset=offsetof(NitCalibrationSpecData, sourceColorSpace), .size=sizeof(int32_t)});
         
         specData.destColorSpace = static_cast<int32_t>(getColorSpaceMode(destFormat, destColorSpace));
-        mapEntries.push_back({65535, offsetof(NitCalibrationSpecData, destColorSpace), sizeof(int32_t)});
+        mapEntries.push_back({.constantID=65535, .offset=offsetof(NitCalibrationSpecData, destColorSpace), .size=sizeof(int32_t)});
         
         // Determine if adaptive analyzer should be created before setting spec data
         m_hdrAdaptive = pConfig->getOption<bool>("hdrAdaptive", true);
@@ -139,7 +141,7 @@ namespace vkBasalt
         m_specData = specData;
         m_specMapEntries = mapEntries;
         
-        m_specInfo.mapEntryCount = (uint32_t)m_specMapEntries.size();
+        m_specInfo.mapEntryCount = static_cast<uint32_t>(m_specMapEntries.size());
         m_specInfo.pMapEntries = m_specMapEntries.data();
         m_specInfo.dataSize = sizeof(NitCalibrationSpecData);
         m_specInfo.pData = &m_specData;
@@ -149,25 +151,25 @@ namespace vkBasalt
         
     // Create analyzer or dummy metrics buffer and add its descriptor set layout before init()
     if (willCreateAnalyzer) {
-        int32_t srcCsmInt = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
+        auto srcCsmInt = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
         m_autoHdrAnalyzer = std::make_unique<AutoHdrAnalyzer>(pLogicalDevice, imageExtent, inputImages.size(), pConfig, srcCsmInt, analyzerCalibMode, monitorName);
         this->descriptorSetLayouts.push_back(m_autoHdrAnalyzer->getMetricsSetLayout());
     } else {
         // Create dummy metrics set layout
         std::vector<VkDescriptorSetLayoutBinding> metBindings(1);
-        metBindings[0] = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-        VkDescriptorSetLayoutCreateInfo metLayoutInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 1, metBindings.data()};
+        metBindings[0] = {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT, .pImmutableSamplers=nullptr};
+        VkDescriptorSetLayoutCreateInfo metLayoutInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .pNext=nullptr, .flags=0, .bindingCount=1, .pBindings=metBindings.data()};
         pLogicalDevice->vkd.CreateDescriptorSetLayout(pLogicalDevice->device, &metLayoutInfo, nullptr, &m_dummyMetricsSetLayout);
         this->descriptorSetLayouts.push_back(m_dummyMetricsSetLayout);
 
         // Create dummy metrics buffer (DEVICE_LOCAL for optimal GPU cache behavior)
-        VkBufferCreateInfo bufInfo = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        VkBufferCreateInfo bufInfo = {.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bufInfo.size = 16;
         bufInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         pLogicalDevice->vkd.CreateBuffer(pLogicalDevice->device, &bufInfo, nullptr, &m_dummyMetricsBuffer);
         VkMemoryRequirements memReqs;
         pLogicalDevice->vkd.GetBufferMemoryRequirements(pLogicalDevice->device, m_dummyMetricsBuffer, &memReqs);
-        VkMemoryAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        VkMemoryAllocateInfo allocInfo = {.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         allocInfo.allocationSize = memReqs.size;
         
         auto findMemType = [&](uint32_t typeBits, VkMemoryPropertyFlags props) -> uint32_t {
@@ -182,24 +184,24 @@ namespace vkBasalt
         pLogicalDevice->vkd.BindBufferMemory(pLogicalDevice->device, m_dummyMetricsBuffer, m_dummyMetricsMemory, 0);
 
         // Create descriptor pool and sets
-        VkDescriptorPoolSize poolSize = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (uint32_t)inputImages.size()};
-        VkDescriptorPoolCreateInfo poolInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, (uint32_t)inputImages.size(), 1, &poolSize};
+        VkDescriptorPoolSize poolSize = {.type=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount=static_cast<uint32_t>(inputImages.size())};
+        VkDescriptorPoolCreateInfo poolInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .pNext=nullptr, .flags=0, .maxSets=static_cast<uint32_t>(inputImages.size()), .poolSizeCount=1, .pPoolSizes=&poolSize};
         pLogicalDevice->vkd.CreateDescriptorPool(pLogicalDevice->device, &poolInfo, nullptr, &m_dummyMetricsPool);
 
         m_dummyMetricsSets.resize(inputImages.size());
         std::vector<VkDescriptorSetLayout> layouts(inputImages.size(), m_dummyMetricsSetLayout);
-        VkDescriptorSetAllocateInfo allocSetInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, m_dummyMetricsPool, (uint32_t)inputImages.size(), layouts.data()};
+        VkDescriptorSetAllocateInfo allocSetInfo = {.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .pNext=nullptr, .descriptorPool=m_dummyMetricsPool, .descriptorSetCount=static_cast<uint32_t>(inputImages.size()), .pSetLayouts=layouts.data()};
         pLogicalDevice->vkd.AllocateDescriptorSets(pLogicalDevice->device, &allocSetInfo, m_dummyMetricsSets.data());
 
-        VkDescriptorBufferInfo bufInfoDesc = {m_dummyMetricsBuffer, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo bufInfoDesc = {.buffer=m_dummyMetricsBuffer, .offset=0, .range=VK_WHOLE_SIZE};
         for (size_t i = 0; i < inputImages.size(); i++) {
-            VkWriteDescriptorSet write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_dummyMetricsSets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &bufInfoDesc, nullptr};
+            VkWriteDescriptorSet write = {.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext=nullptr, .dstSet=m_dummyMetricsSets[i], .dstBinding=0, .dstArrayElement=0, .descriptorCount=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pImageInfo=nullptr, .pBufferInfo=&bufInfoDesc, .pTexelBufferView=nullptr};
             pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &write, 0, nullptr);
         }
     }
         
         // Init with destFormat so renderpass/framebuffers match the real HDR swapchain
-        init(pLogicalDevice, destFormat, imageExtent, inputImages, outputImages, pConfig);
+        init(pLogicalDevice, destFormat, imageExtent, inputImages, std::move(outputImages), pConfig);
 
         // Recreate input views with sourceFormat as fake images are SDR
         if (sourceFormat != destFormat) {
@@ -210,7 +212,7 @@ namespace vkBasalt
                 viewInfo.image = inputImages[i];
                 viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
                 viewInfo.format = sourceFormat;
-                viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                viewInfo.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
                 pLogicalDevice->vkd.CreateImageView(pLogicalDevice->device, &viewInfo, nullptr, &inputImageViews[i]);
 
                 VkDescriptorImageInfo imgInfo = {};
@@ -273,10 +275,10 @@ namespace vkBasalt
 
             VkHdrMetadataEXT hdrMeta = {};
             hdrMeta.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
-            hdrMeta.displayPrimaryRed   = {0.708f, 0.292f};
-            hdrMeta.displayPrimaryGreen = {0.170f, 0.797f};
-            hdrMeta.displayPrimaryBlue  = {0.131f, 0.046f};
-            hdrMeta.whitePoint          = {0.3127f, 0.3290f};
+            hdrMeta.displayPrimaryRed   = {.x=0.708f, .y=0.292f};
+            hdrMeta.displayPrimaryGreen = {.x=0.170f, .y=0.797f};
+            hdrMeta.displayPrimaryBlue  = {.x=0.131f, .y=0.046f};
+            hdrMeta.whitePoint          = {.x=0.3127f, .y=0.3290f};
             hdrMeta.maxLuminance        = peak;
             hdrMeta.minLuminance        = minLum;
             hdrMeta.maxContentLightLevel    = peak;
@@ -298,7 +300,7 @@ namespace vkBasalt
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-        memoryBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        memoryBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -353,7 +355,7 @@ namespace vkBasalt
         renderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.renderPass        = renderPass;
         renderPassBeginInfo.framebuffer       = framebuffers[imageIndex];
-        renderPassBeginInfo.renderArea.offset = {0, 0};
+        renderPassBeginInfo.renderArea.offset = {.x=0, .y=0};
         renderPassBeginInfo.renderArea.extent = imageExtent;
         pLogicalDevice->vkd.CmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         
@@ -386,7 +388,7 @@ namespace vkBasalt
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
-        secondBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        secondBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
@@ -404,7 +406,7 @@ namespace vkBasalt
             thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             thirdBarrier.image               = outputImages[imageIndex];
-            thirdBarrier.subresourceRange    = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            thirdBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer,
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,

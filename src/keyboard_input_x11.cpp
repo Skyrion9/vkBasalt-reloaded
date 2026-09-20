@@ -23,8 +23,8 @@ namespace vkBasalt
     static Display* g_fallbackDisplay = nullptr; // Cached for Wayland games in Gamescope
 
     // XInput2 dynamic loading for scroll wheel polling
-    typedef Status (*PFN_XIQueryVersion)(Display*, int*, int*);
-    typedef int (*PFN_XISelectEvents)(Display*, Window, XIEventMask*, int);
+    using PFN_XIQueryVersion = Status (*)(Display*, int*, int*);
+    using PFN_XISelectEvents = int (*)(Display*, Window, XIEventMask*, int);
 
     static void* s_libXi = nullptr;
     static PFN_XIQueryVersion s_XIQueryVersion = nullptr;
@@ -42,8 +42,8 @@ namespace vkBasalt
                 s_libXi = (void*)-1; // Mark as failed to avoid retrying
                 return false;
             }
-            s_XIQueryVersion = (PFN_XIQueryVersion)dlsym(s_libXi, "XIQueryVersion");
-            s_XISelectEvents = (PFN_XISelectEvents)dlsym(s_libXi, "XISelectEvents");
+            s_XIQueryVersion = reinterpret_cast<PFN_XIQueryVersion>(dlsym(s_libXi, "XIQueryVersion"));
+            s_XISelectEvents = reinterpret_cast<PFN_XISelectEvents>(dlsym(s_libXi, "XISelectEvents"));
         }
         if (s_libXi == (void*)-1 || !s_XIQueryVersion || !s_XISelectEvents) return false;
 
@@ -54,7 +54,7 @@ namespace vkBasalt
         g_scrollDisplay = XOpenDisplay(disVar);
         if (!g_scrollDisplay) return false;
 
-        int event, error;
+        int event = 0, error = 0;
         if (!XQueryExtension(g_scrollDisplay, "XInputExtension", &xi2_opcode, &event, &error)) {
             XCloseDisplay(g_scrollDisplay);
             g_scrollDisplay = nullptr;
@@ -84,13 +84,13 @@ namespace vkBasalt
     }
 
     void initX11Input(void* display_ptr, void* window_ptr) {
-        g_gameDisplay = (Display*)display_ptr;
-        g_gameWindow = (Window)(uintptr_t)window_ptr;
+        g_gameDisplay = static_cast<Display*>(display_ptr);
+        g_gameWindow = static_cast<Window>((uintptr_t)window_ptr);
         Logger::debug("X11 Input: Piggybacked on game's Display and Window successfully.");
     }
 
-    uint32_t convertToKeySymX11(std::string key) {
-        return (uint32_t)XStringToKeysym(key.c_str());
+    uint32_t convertToKeySymX11(const std::string& key) {
+        return static_cast<uint32_t>(XStringToKeysym(key.c_str()));
     }
 
     bool isKeyPressedX11(uint32_t ks) {
@@ -107,7 +107,7 @@ namespace vkBasalt
         
         char keys_return[32];
         XQueryKeymap(dpy, keys_return);
-        KeyCode kc2 = XKeysymToKeycode(dpy, (KeySym)ks);
+        KeyCode kc2 = XKeysymToKeycode(dpy, static_cast<KeySym>(ks));
         return !!(keys_return[kc2 >> 3] & (1 << (kc2 & 7)));
     }
 
@@ -137,7 +137,7 @@ namespace vkBasalt
             // Try XGetDefault (often fails under Wine/Proton because Xrm isn't initialized)
             char* dpi = XGetDefault(dpy, "Xft", "dpi");
             if (dpi) { 
-                float d = (float)std::atof(dpi); 
+                auto d = static_cast<float>(std::atof(dpi)); 
                 if (d > 0.0f) scale = d / 96.0f; 
             }
             
@@ -147,8 +147,8 @@ namespace vkBasalt
                 int heightPx = DisplayHeight(dpy, screen);
                 int heightMM = DisplayHeightMM(dpy, screen);
                 if (heightMM > 0) {
-                    double dpiCalc = (double)heightPx / ((double)heightMM / 25.4);
-                    scale = (float)(dpiCalc / 96.0);
+                    double dpiCalc = static_cast<double>(heightPx) / (static_cast<double>(heightMM) / 25.4);
+                    scale = static_cast<float>(dpiCalc / 96.0);
                     // XWayland sometimes reports bogus physical sizes. Clamp to reasonable bounds.
                     if (scale < 0.5f || scale > 5.0f) scale = 1.0f;
                 }
@@ -175,9 +175,9 @@ namespace vkBasalt
             dpy = g_fallbackDisplay;
         }
 
-        Window root, child;
-        int root_x, root_y, win_x, win_y;
-        unsigned int mask;
+        Window root = 0, child = 0;
+        int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
+        unsigned int mask = 0;
         Window win = g_gameWindow ? g_gameWindow : DefaultRootWindow(dpy);
         if (XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
             // X11: Button2=Middle, Button3=Right. ImGui: 1=Right, 2=Middle.
@@ -186,7 +186,7 @@ namespace vkBasalt
         }
     }
 
-    void updateX11ImGuiIO(bool overlayOpen, float scale) {
+    void updateX11ImGuiIO(bool  /*overlayOpen*/, float scale) {
         if (!ImGui::GetCurrentContext()) return;
         ImGuiIO& io = ImGui::GetIO();
         Display* dpy = g_gameDisplay;
@@ -201,11 +201,11 @@ namespace vkBasalt
             dpy = g_fallbackDisplay;
             win = DefaultRootWindow(dpy);
         }
-        Window root, child;
-        int root_x, root_y, win_x, win_y;
-        unsigned int mask;
+        Window root = 0, child = 0;
+        int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
+        unsigned int mask = 0;
         if (XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
-            io.MousePos = ImVec2((float)win_x * scale, (float)win_y * scale);
+            io.MousePos = ImVec2(static_cast<float>(win_x) * scale, static_cast<float>(win_y) * scale);
             io.MouseDown[0] = (mask & Button1Mask) != 0; // Left
             io.MouseDown[1] = (mask & Button3Mask) != 0; // Right
             io.MouseDown[2] = (mask & Button2Mask) != 0; // Middle
@@ -219,7 +219,7 @@ namespace vkBasalt
                 if (ev.type == GenericEvent && ev.xcookie.extension == xi2_opcode) {
                     if (XGetEventData(g_scrollDisplay, &ev.xcookie)) {
                         if (ev.xcookie.evtype == XI_RawButtonPress) {
-                            XIRawEvent* raw = (XIRawEvent*)ev.xcookie.data;
+                            auto* raw = static_cast<XIRawEvent*>(ev.xcookie.data);
                             if (raw->detail == 4) io.MouseWheel += 1.0f;
                             else if (raw->detail == 5) io.MouseWheel -= 1.0f;
                         }

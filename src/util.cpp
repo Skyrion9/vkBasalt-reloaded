@@ -1,7 +1,7 @@
 #include "util.hpp"
 
 #include <iostream>
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <unistd.h>
 #include <cstring>

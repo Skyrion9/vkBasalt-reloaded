@@ -8,7 +8,7 @@ namespace vkBasalt
 {
     VkSampler createSampler(LogicalDevice* pLogicalDevice)
     {
-        VkSampler sampler;
+        VkSampler sampler = nullptr;
 
         VkSamplerCreateInfo samplerCreateInfo;
         samplerCreateInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -37,7 +37,7 @@ namespace vkBasalt
 
     VkSampler createReshadeSampler(LogicalDevice* pLogicalDevice, const reshadefx::sampler_info& samplerInfo)
     {
-        VkSampler sampler;
+        VkSampler sampler = nullptr;
 
         VkFilter            minFilter;
         VkFilter            magFilter;

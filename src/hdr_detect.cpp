@@ -8,6 +8,7 @@
 #include <cstring>
 #include <string>
 #include <charconv>
+#include <utility>
 
 #include "config.hpp"
 #include "logger.hpp"
@@ -16,7 +17,7 @@
 namespace vkBasalt {
 
     static bool fileExists(const char* path) {
-        struct stat st;
+        struct stat st{};
         return stat(path, &st) == 0;
     }
 
@@ -30,7 +31,7 @@ namespace vkBasalt {
         outStr.resize(size);
         size_t read = fread(&outStr[0], 1, size, f);
         fclose(f);
-        return read == (size_t)size;
+        return std::cmp_equal(read ,size);
     }
 
     // Helper to extract a float value from a JSON block near a specific key

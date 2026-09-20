@@ -26,8 +26,8 @@ namespace vkBasalt {
     std::atomic<bool> g_triggerPreviewReload{false};
     std::atomic<bool> g_triggerRevertReload{false};
 
-    OverlayManager::OverlayManager() {}
-    OverlayManager::~OverlayManager() {}
+    OverlayManager::OverlayManager() = default;
+    OverlayManager::~OverlayManager() = default;
 
     void OverlayManager::initOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
                                      VkSwapchainKHR swapchain, VkFormat format, Config* pConfig) {

@@ -24,7 +24,7 @@ namespace vkBasalt {
     static std::string sanitizeName(const std::string& s) {
         std::string result;
         for (char c : s) {
-            if (std::isalnum((unsigned char)c)) result += c;
+            if (std::isalnum(static_cast<unsigned char>(c))) result += c;
             else if (c == ' ' || c == '-' || c == '_') result += '_';
         }
         std::string collapsed;
@@ -38,7 +38,7 @@ namespace vkBasalt {
     static std::string getExePath() {
         char buf[4096] = {0};
         ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-        return (len > 0) ? std::string(buf, (size_t)len) : "";
+        return (len > 0) ? std::string(buf, static_cast<size_t>(len)) : "";
     }
 
     // Extract clean filename from a path. Handles both Unix (/) and Windows (\), strips .exe extension for Wine processes.
@@ -48,7 +48,7 @@ namespace vkBasalt {
         if (slash != std::string::npos) name = fullPath.substr(slash + 1);
         if (name.size() > 4) {
             std::string ext = name.substr(name.size() - 4);
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            std::ranges::transform(ext, ext.begin(), ::tolower);
             if (ext == ".exe") name = name.substr(0, name.size() - 4);
         }
         return name.empty() ? "unknown" : name;
@@ -141,7 +141,7 @@ namespace vkBasalt {
             std::string line;
             while (std::getline(f, line)) {
                 // Top level "name:" has no leading whitespace
-                if (line.find("name:") == 0) {
+                if (line.starts_with("name:")) {
                     std::string name = line.substr(5);
                     size_t start = name.find_first_not_of(" \t\r\n");
                     size_t end = name.find_last_not_of(" \t\r\n");
@@ -176,7 +176,7 @@ namespace vkBasalt {
         for (const auto& arg : args) {
             if (arg.size() > 4) {
                 std::string ext = arg.substr(arg.size() - 4);
-                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                std::ranges::transform(ext, ext.begin(), ::tolower);
                 if (ext == ".exe") return arg;
             }
         }
@@ -290,18 +290,18 @@ namespace vkBasalt {
         std::vector<uint8_t> data(newLen + 8, 0);
         std::memcpy(data.data(), msg.data(), origLen);
         data[origLen] = 0x80;
-        uint64_t bitLen = (uint64_t)origLen * 8;
+        uint64_t bitLen = static_cast<uint64_t>(origLen) * 8;
         std::memcpy(data.data() + newLen, &bitLen, 8);
 
         for (size_t offset = 0; offset < data.size(); offset += 64) {
             uint32_t M[16];
             for (int i = 0; i < 16; i++)
-                M[i] = (uint32_t)data[offset+i*4] | ((uint32_t)data[offset+i*4+1] << 8) |
-                    ((uint32_t)data[offset+i*4+2] << 16) | ((uint32_t)data[offset+i*4+3] << 24);
+                M[i] = static_cast<uint32_t>(data[offset+i*4]) | (static_cast<uint32_t>(data[offset+i*4+1]) << 8) |
+                    (static_cast<uint32_t>(data[offset+i*4+2]) << 16) | (static_cast<uint32_t>(data[offset+i*4+3]) << 24);
 
             uint32_t A = h0, B = h1, C = h2, D = h3;
             for (int i = 0; i < 64; i++) {
-                uint32_t F, g;
+                uint32_t F = 0, g = 0;
                 if (i < 16)      { F = (B & C) | (~B & D); g = i; }
                 else if (i < 32) { F = (D & B) | (~D & C); g = (5*i + 1) % 16; }
                 else if (i < 48) { F = B ^ C ^ D;          g = (3*i + 5) % 16; }
@@ -335,7 +335,7 @@ namespace vkBasalt {
         const size_t CHUNK = 4 * 1024 * 1024; // 4MB
         std::vector<char> buf(CHUNK);
         f.read(buf.data(), CHUNK);
-        size_t bytesRead = (size_t)f.gcount();
+        auto bytesRead = static_cast<size_t>(f.gcount());
         if (bytesRead == 0) return "";
 
         std::string content(buf.data(), bytesRead);
@@ -503,7 +503,7 @@ namespace vkBasalt {
 
         if (id.isSteam && !id.steamName.empty()) {
             std::string readable = id.steamName;
-            std::replace(readable.begin(), readable.end(), '_', ' ');
+            std::ranges::replace(readable, '_', ' ');
             cachedName = readable;
             return cachedName;
         }
