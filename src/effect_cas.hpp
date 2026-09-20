@@ -16,20 +16,22 @@ namespace vkBasalt
     class CasEffect : public SimpleEffect
     {
     public:
-        CasEffect(LogicalDevice*       pLogicalDevice,
-                  VkFormat             format,
-                  VkExtent2D           imageExtent,
-                  std::vector<VkImage> inputImages,
-                  std::vector<VkImage> outputImages,
-                  Config*              pConfig,
-                  VkColorSpaceKHR      colorSpace);
+        CasEffect(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            std::vector<VkImage> inputImages,
+            std::vector<VkImage> outputImages,
+            Config* pConfig,
+            VkColorSpaceKHR colorSpace);
         ~CasEffect() override;
 
         std::string getName() const override { return "cas"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
 
     private:
-        struct CasSpecData {
+        struct CasSpecData
+        {
             float sharpness;
             float contrastLimit;
             int32_t colorSpaceMode;

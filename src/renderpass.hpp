@@ -7,9 +7,10 @@
 namespace vkBasalt
 {
     // finalLayout defaults to PRESENT_SRC_KHR for final output, but must be SHADER_READ_ONLY_OPTIMAL for intermediate passes (SMAA etc.).
-    VkRenderPass createRenderPass(LogicalDevice* pLogicalDevice, 
-                                  VkFormat format, 
-                                  bool clear = false, 
-                                  VkImageLayout finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-}
+    VkRenderPass createRenderPass(
+        LogicalDevice* pLogicalDevice,
+        VkFormat format,
+        bool clear                = false,
+        VkImageLayout finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+} // namespace vkBasalt
 #endif // RENDERPASS_HPP_INCLUDED

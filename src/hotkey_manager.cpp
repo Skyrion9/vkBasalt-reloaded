@@ -17,7 +17,8 @@
 #include <memory>
 #include <unordered_map>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
     bool processHotkeysAndReloads(
         std::shared_ptr<Config>& pConfig,
@@ -27,34 +28,35 @@ namespace vkBasalt {
         static uint32_t keySymbol        = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
         static uint32_t reloadKeySymbol  = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
         static uint32_t overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
-        static uint32_t screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
+        static uint32_t screenshotKeySymbol =
+            convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
         static std::string cachedToggleKey, cachedReloadKey, cachedOverlayKey, cachedScreenshotKey;
-        static bool pressed       = false;
-        static bool reloadPressed = false;
-        static bool overlayPressed = false;
+        static bool pressed         = false;
+        static bool reloadPressed   = false;
+        static bool overlayPressed  = false;
         static bool skipNextPresent = false;
-        
+
         // Read enableOnLaunch from config only once upon init, so runtime toggles don't conflict with it.
         static bool initialized = false;
         if (!initialized) {
             g_effectsEnabled = pConfig->getOption<bool>("enableOnLaunch", true);
-            initialized = true;
+            initialized      = true;
         }
 
         // Helpers
         auto reloadConfig = [&]() {
-            pConfig = std::make_shared<Config>();
-            keySymbol        = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
-            reloadKeySymbol  = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
-            overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
+            pConfig             = std::make_shared<Config>();
+            keySymbol           = convertToKeySym(pConfig->getOption<std::string>("toggleKey", "Insert"));
+            reloadKeySymbol     = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
+            overlayKeySymbol    = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
             screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
-            
+
             // Sync caches to prevent the refresh block below from desync
-            cachedToggleKey  = pConfig->getOption<std::string>("toggleKey", "Insert");
-            cachedReloadKey  = pConfig->getOption<std::string>("reloadConfigKey", "End");
-            cachedOverlayKey = pConfig->getOption<std::string>("overlayToggleKey", "Home");
+            cachedToggleKey     = pConfig->getOption<std::string>("toggleKey", "Insert");
+            cachedReloadKey     = pConfig->getOption<std::string>("reloadConfigKey", "End");
+            cachedOverlayKey    = pConfig->getOption<std::string>("overlayToggleKey", "Home");
             cachedScreenshotKey = pConfig->getOption<std::string>("screenshotKey", "Delete");
-            
+
             // Consume the dirty flag since we just manually synced everything
             g_configDirty = false;
         };
@@ -71,11 +73,23 @@ namespace vkBasalt {
             auto rk = pConfig->getOption<std::string>("reloadConfigKey", "End");
             auto ok = pConfig->getOption<std::string>("overlayToggleKey", "Home");
             auto sk = pConfig->getOption<std::string>("screenshotKey", "Delete");
-            
-            if (tk != cachedToggleKey)  { keySymbol = convertToKeySym(tk);        cachedToggleKey = tk; }
-            if (rk != cachedReloadKey)  { reloadKeySymbol = convertToKeySym(rk);  cachedReloadKey = rk; }
-            if (ok != cachedOverlayKey) { overlayKeySymbol = convertToKeySym(ok); cachedOverlayKey = ok; }
-            if (sk != cachedScreenshotKey) { screenshotKeySymbol = convertToKeySym(sk); cachedScreenshotKey = sk; }
+
+            if (tk != cachedToggleKey) {
+                keySymbol       = convertToKeySym(tk);
+                cachedToggleKey = tk;
+            }
+            if (rk != cachedReloadKey) {
+                reloadKeySymbol = convertToKeySym(rk);
+                cachedReloadKey = rk;
+            }
+            if (ok != cachedOverlayKey) {
+                overlayKeySymbol = convertToKeySym(ok);
+                cachedOverlayKey = ok;
+            }
+            if (sk != cachedScreenshotKey) {
+                screenshotKeySymbol = convertToKeySym(sk);
+                cachedScreenshotKey = sk;
+            }
         }
 
         // Check if any overlay is in keybinding mode (suppress all hotkeys)
@@ -84,7 +98,7 @@ namespace vkBasalt {
         if (!anyBinding && isKeyPressed(keySymbol)) {
             if (!pressed) {
                 g_effectsEnabled = !g_effectsEnabled.load();
-                pressed = true;
+                pressed          = true;
                 Logger::debug(g_effectsEnabled.load() ? "vkBasalt effects enabled" : "vkBasalt effects disabled");
             }
         } else {
@@ -93,7 +107,7 @@ namespace vkBasalt {
 
         if (!anyBinding && isKeyPressed(reloadKeySymbol)) {
             if (!reloadPressed) {
-                reloadPressed = true;
+                reloadPressed   = true;
                 skipNextPresent = true;
                 Logger::debug("Reloading vkBasalt config...");
                 reloadConfig();

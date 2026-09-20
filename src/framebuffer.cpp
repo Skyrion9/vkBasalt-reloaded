@@ -9,14 +9,16 @@ namespace vkBasalt
 {
     std::vector<VkFramebuffer>
     // pass by reference instead of by value to avoid copying the vector.
-    createFramebuffers(LogicalDevice* pLogicalDevice, VkRenderPass renderPass, const VkExtent2D& extent, const std::vector<std::vector<VkImageView>>& imageViews)
+    createFramebuffers(
+        LogicalDevice* pLogicalDevice,
+        VkRenderPass renderPass,
+        const VkExtent2D& extent,
+        const std::vector<std::vector<VkImageView>>& imageViews)
     {
         std::vector<VkFramebuffer> framebuffers(imageViews[0].size());
-        std::vector<VkImageView>   perFrameImageViews;
-        for (uint32_t i = 0; i < imageViews[0].size(); i++)
-        {
-            for (auto& iv : imageViews)
-            {
+        std::vector<VkImageView> perFrameImageViews;
+        for (uint32_t i = 0; i < imageViews[0].size(); i++) {
+            for (auto& iv : imageViews) {
                 perFrameImageViews.push_back(iv[i]);
             }
 
@@ -31,7 +33,8 @@ namespace vkBasalt
             framebufferCreateInfo.height          = extent.height;
             framebufferCreateInfo.layers          = 1;
 
-            VkResult result = pLogicalDevice->vkd.CreateFramebuffer(pLogicalDevice->device, &framebufferCreateInfo, nullptr, &(framebuffers[i]));
+            VkResult result = pLogicalDevice->vkd.CreateFramebuffer(
+                pLogicalDevice->device, &framebufferCreateInfo, nullptr, &(framebuffers[i]));
             ASSERT_VULKAN(result);
             perFrameImageViews.clear();
         }

@@ -9,8 +9,7 @@ namespace vkBasalt
 {
     void addUniqueCString(std::vector<const char*>& stringVector, const char* addString);
 
-    enum class Color
-    {
+    enum class Color {
         defaultColor,
 
         black,

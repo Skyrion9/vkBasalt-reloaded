@@ -8,12 +8,13 @@
 namespace vkBasalt
 {
     // Fixed: Pass vector by const reference to prevent unnecessary heap allocation
-    std::vector<VkImageView> createImageViews(LogicalDevice*              pLogicalDevice,
-                                              VkFormat                    format,
-                                              const std::vector<VkImage>& images,
-                                              VkImageViewType             viewType,
-                                              VkImageAspectFlags          aspectMask,
-                                              uint32_t                    mipLevels)
+    std::vector<VkImageView> createImageViews(
+        LogicalDevice* pLogicalDevice,
+        VkFormat format,
+        const std::vector<VkImage>& images,
+        VkImageViewType viewType,
+        VkImageAspectFlags aspectMask,
+        uint32_t mipLevels)
     {
         std::vector<VkImageView> imageViews(images.size());
 
@@ -36,10 +37,10 @@ namespace vkBasalt
         imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
         imageViewCreateInfo.subresourceRange.layerCount     = 1;
 
-        for (uint32_t i = 0; i < images.size(); i++)
-        {
+        for (uint32_t i = 0; i < images.size(); i++) {
             imageViewCreateInfo.image = images[i];
-            VkResult result           = pLogicalDevice->vkd.CreateImageView(pLogicalDevice->device, &imageViewCreateInfo, nullptr, &(imageViews[i]));
+            VkResult result           = pLogicalDevice->vkd.CreateImageView(
+                pLogicalDevice->device, &imageViewCreateInfo, nullptr, &(imageViews[i]));
             if (result != VK_SUCCESS) {
                 for (uint32_t j = 0; j < i; j++)
                     pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageViews[j], nullptr);

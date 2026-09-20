@@ -12,28 +12,32 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    std::string getPipelineCachePath(VkPhysicalDevice physicalDevice, InstanceDispatch& vki) {
+    std::string getPipelineCachePath(VkPhysicalDevice physicalDevice, InstanceDispatch& vki)
+    {
         VkPhysicalDeviceProperties props;
         vki.GetPhysicalDeviceProperties(physicalDevice, &props);
 
         // Use vendorID + deviceID + driverVersion as cache key.
         // Uniquely identifies the GPU + driver combination without needing Vulkan 1.1 structs.
         char filename[256];
-        std::snprintf(filename, sizeof(filename), "pipeline_cache_%04x_%04x_%u.bin",
-                      props.vendorID, props.deviceID, props.driverVersion);
+        std::snprintf(
+            filename, sizeof(filename), "pipeline_cache_%04x_%04x_%u.bin", props.vendorID, props.deviceID,
+            props.driverVersion);
 
         const char* home = std::getenv("HOME");
         std::string root = home ? home : ".";
         return root + "/.config/vkBasalt-reloaded/" + filename;
     }
 
-    std::vector<uint8_t> loadPipelineCacheData(const std::string& path) {
+    std::vector<uint8_t> loadPipelineCacheData(const std::string& path)
+    {
         std::ifstream f(path, std::ios::binary | std::ios::ate);
         if (!f.good()) return {};
 
-        size_t size = (size_t)f.tellg();
+        size_t size = (size_t) f.tellg();
         if (size == 0) return {};
 
         // Basic sanity check: cache header must start with VK_PIPELINE_CACHE_HEADER_VERSION_ONE
@@ -47,7 +51,8 @@ namespace vkBasalt {
         return data;
     }
 
-    void savePipelineCacheData(VkDevice device, DeviceDispatch& vkd, VkPipelineCache cache, const std::string& path) {
+    void savePipelineCacheData(VkDevice device, DeviceDispatch& vkd, VkPipelineCache cache, const std::string& path)
+    {
         if (cache == VK_NULL_HANDLE) return;
 
         size_t dataSize = 0;

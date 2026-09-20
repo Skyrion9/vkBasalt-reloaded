@@ -6,7 +6,8 @@
 #include <memory>
 #include <atomic>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     struct LogicalDevice;
     struct LogicalSwapchain;
     class Config;
@@ -19,19 +20,24 @@ namespace vkBasalt {
     extern std::atomic<bool> g_triggerPreviewReload;
     extern std::atomic<bool> g_triggerRevertReload;
 
-    class OverlayManager {
+    class OverlayManager
+    {
     public:
         OverlayManager();
         ~OverlayManager();
 
         // Initialize overlay for a newly created swapchain. Called from initializeSwapchainEffects when swapchain != VK_NULL_HANDLE.
-        void initOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
-                         VkSwapchainKHR swapchain, VkFormat format, Config* pConfig);
+        void initOverlay(
+            LogicalDevice* pDevice,
+            LogicalSwapchain* pSwapchain,
+            VkSwapchainKHR swapchain,
+            VkFormat format,
+            Config* pConfig);
 
         // Render overlay into the command buffer if open. Called from QueuePresentKHR after effect submission.
         // Returns true if the overlay was actually rendered this frame
-        bool renderOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
-                           VkSwapchainKHR swapchain, uint32_t imageIndex);
+        bool renderOverlay(
+            LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, VkSwapchainKHR swapchain, uint32_t imageIndex);
 
         // Cleanup overlay resources when swapchain is destroyed.
         void destroyOverlay(LogicalDevice* pDevice, VkSwapchainKHR swapchain);
@@ -57,7 +63,7 @@ namespace vkBasalt {
 
     private:
         bool m_lastOverlayOpenState = false;
-        int  m_lastActiveTab = 0;
+        int m_lastActiveTab         = 0;
 
         std::unordered_map<VkSwapchainKHR, std::shared_ptr<ImGuiOverlay>> m_overlayMap;
         std::unordered_map<VkSwapchainKHR, std::vector<VkCommandBuffer>> m_commandBuffersMap;

@@ -13,22 +13,25 @@
 
 namespace vkBasalt
 {
-    VkDescriptorPool createDescriptorPool(LogicalDevice* pLogicalDevice, const std::vector<VkDescriptorPoolSize>& poolSizes);
+    VkDescriptorPool
+    createDescriptorPool(LogicalDevice* pLogicalDevice, const std::vector<VkDescriptorPoolSize>& poolSizes);
 
     VkDescriptorSetLayout createUniformBufferDescriptorSetLayout(LogicalDevice* pLogicalDevice);
 
-    VkDescriptorSet writeBufferDescriptorSet(LogicalDevice*        pLogicalDevice,
-                                             VkDescriptorPool      descriptorPool,
-                                             VkDescriptorSetLayout descriptorSetLayout,
-                                             VkBuffer              buffer);
+    VkDescriptorSet writeBufferDescriptorSet(
+        LogicalDevice* pLogicalDevice,
+        VkDescriptorPool descriptorPool,
+        VkDescriptorSetLayout descriptorSetLayout,
+        VkBuffer buffer);
 
     VkDescriptorSetLayout createImageSamplerDescriptorSetLayout(LogicalDevice* pLogicalDevice, uint32_t count);
 
-    std::vector<VkDescriptorSet> allocateAndWriteImageSamplerDescriptorSets(LogicalDevice*                               pLogicalDevice,
-                                                                            VkDescriptorPool                             descriptorPool,
-                                                                            VkDescriptorSetLayout                        descriptorSetLayout,
-                                                                            const std::vector<VkSampler>&                samplers,
-                                                                            const std::vector<std::vector<VkImageView>>& imageViewsVectors);
+    std::vector<VkDescriptorSet> allocateAndWriteImageSamplerDescriptorSets(
+        LogicalDevice* pLogicalDevice,
+        VkDescriptorPool descriptorPool,
+        VkDescriptorSetLayout descriptorSetLayout,
+        const std::vector<VkSampler>& samplers,
+        const std::vector<std::vector<VkImageView>>& imageViewsVectors);
 } // namespace vkBasalt
 
 #endif // DESCRIPTOR_SET_HPP_INCLUDED

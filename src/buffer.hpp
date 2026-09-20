@@ -13,12 +13,13 @@
 
 namespace vkBasalt
 {
-    void createBuffer(LogicalDevice*        pLogicalDevice,
-                      VkDeviceSize          size,
-                      VkBufferUsageFlags    usage,
-                      VkMemoryPropertyFlags properties,
-                      VkBuffer&             buffer,
-                      VkDeviceMemory&       bufferMemory);
+    void createBuffer(
+        LogicalDevice* pLogicalDevice,
+        VkDeviceSize size,
+        VkBufferUsageFlags usage,
+        VkMemoryPropertyFlags properties,
+        VkBuffer& buffer,
+        VkDeviceMemory& bufferMemory);
 }
 
 #endif // BUFFER_HPP_INCLUDED

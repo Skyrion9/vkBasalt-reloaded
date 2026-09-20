@@ -7,7 +7,8 @@
 #include <string>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
     extern std::atomic<bool> g_triggerScreenshot;
 
@@ -15,11 +16,15 @@ namespace vkBasalt {
     // write happens on the next frame via processPendingScreenshot().
     // format: "png", "jpg", "bmp", "tga", "hdr"
     // quality: JPEG quality 1-100 (ignored for other formats)
-    void captureScreenshot(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
-                           uint32_t imageIndex, bool saveBeforeAfter,
-                           const std::string& outputPath,
-                           const std::string& format, int quality,
-                           ColorSpaceMode csm);
+    void captureScreenshot(
+        LogicalDevice* pDevice,
+        LogicalSwapchain* pSwapchain,
+        uint32_t imageIndex,
+        bool saveBeforeAfter,
+        const std::string& outputPath,
+        const std::string& format,
+        int quality,
+        ColorSpaceMode csm);
 
     // Returns true if a screenshot GPU copy is in flight.
     bool hasPendingScreenshot();

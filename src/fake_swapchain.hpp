@@ -13,10 +13,11 @@
 
 namespace vkBasalt
 {
-    std::vector<VkImage> createFakeSwapchainImages(LogicalDevice*                  pLogicalDevice,
-                                                   const VkSwapchainCreateInfoKHR& swapchainCreateInfo,
-                                                   uint32_t                        count,
-                                                   VkDeviceMemory&                 deviceMemory);
+    std::vector<VkImage> createFakeSwapchainImages(
+        LogicalDevice* pLogicalDevice,
+        const VkSwapchainCreateInfoKHR& swapchainCreateInfo,
+        uint32_t count,
+        VkDeviceMemory& deviceMemory);
 }
 
 #endif // FAKE_SWAPCHAIN_HPP_INCLUDED

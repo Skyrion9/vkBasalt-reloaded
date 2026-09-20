@@ -2,7 +2,8 @@
 
 #include <string>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     class Config;
 
     // Hex color utilities

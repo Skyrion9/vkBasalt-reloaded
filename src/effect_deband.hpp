@@ -16,27 +16,30 @@ namespace vkBasalt
     class DebandEffect : public SimpleEffect
     {
     public:
-        DebandEffect(LogicalDevice*       pLogicalDevice,
-                     VkFormat             format,
-                     VkExtent2D           imageExtent,
-                     std::vector<VkImage> inputImages,
-                     std::vector<VkImage> outputImages,
-                     Config*              pConfig,
-                     VkColorSpaceKHR      colorSpace);
+        DebandEffect(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            std::vector<VkImage> inputImages,
+            std::vector<VkImage> outputImages,
+            Config* pConfig,
+            VkColorSpaceKHR colorSpace);
         ~DebandEffect() override;
 
         std::string getName() const override { return "deband"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
+
     private:
-        struct DebandSpecData {
-            float   screenWidth;
-            float   screenHeight;
-            float   reverseScreenWidth;
-            float   reverseScreenHeight;
-            float   debandAvgdiff;
-            float   debandMaxdiff;
-            float   debandMiddiff;
-            float   range;
+        struct DebandSpecData
+        {
+            float screenWidth;
+            float screenHeight;
+            float reverseScreenWidth;
+            float reverseScreenHeight;
+            float debandAvgdiff;
+            float debandMaxdiff;
+            float debandMiddiff;
+            float range;
             int32_t iterations;
             int32_t colorSpaceMode;
         };

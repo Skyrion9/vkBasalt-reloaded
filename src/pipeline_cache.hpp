@@ -5,7 +5,8 @@
 #include <string>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     // Generate a unique cache path based on GPU UUID + driver version. Automatically invalidates when the driver is updated.
     std::string getPipelineCachePath(VkPhysicalDevice physicalDevice, InstanceDispatch& vki);
 

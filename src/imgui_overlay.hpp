@@ -13,25 +13,37 @@
 #include <string>
 #include <unordered_map>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     struct LogicalDevice;
     struct LogicalSwapchain;
     class Config;
 
-    class ImGuiOverlay {
+    class ImGuiOverlay
+    {
     public:
         ImGuiOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, Config* pConfig);
         ~ImGuiOverlay();
 
-        void processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height);
+        void
+        processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height);
         void toggleOverlay();
-        int  getActiveTab() const { return m_activeTab; }
-        void setActiveTab(int tab) { m_activeTab = tab; m_forceSelectTab = true; }
+        int getActiveTab() const { return m_activeTab; }
+        void setActiveTab(int tab)
+        {
+            m_activeTab      = tab;
+            m_forceSelectTab = true;
+        }
         void initImGui(VkFormat format);
         void reinitImGui();
         void updateConfig(Config* pConfig) { m_pConfig = pConfig; }
-        void clearUnsavedChanges() { m_hasUnsavedChanges = false; m_previewDirty = false; m_showCloseWarning = false; }
-    
+        void clearUnsavedChanges()
+        {
+            m_hasUnsavedChanges = false;
+            m_previewDirty      = false;
+            m_showCloseWarning  = false;
+        }
+
         bool isOverlayOpen() const { return m_isOpen; }
         bool isBindingKeys() const { return m_bindingField >= 0; }
 
@@ -58,13 +70,20 @@ namespace vkBasalt {
         void setConfigDebounced(const std::string& key, const std::string& value, bool perGame);
         void setConfigImmediate(const std::string& key, const std::string& value, bool perGame);
         void resetParamToConfig(const EffectParamDesc& p, bool perGame, Effect* effect = nullptr);
-        void drawAdaptiveSlider(const char* id, const char* label, const char* key,
-                                float defaultVal, float minVal, float maxVal,
-                                const char* fmt, const char* tooltip, bool perGameCalib);
+        void drawAdaptiveSlider(
+            const char* id,
+            const char* label,
+            const char* key,
+            float defaultVal,
+            float minVal,
+            float maxVal,
+            const char* fmt,
+            const char* tooltip,
+            bool perGameCalib);
         void createRenderResources(VkFormat format);
         void resolveScales();
         void initImGuiBackend();
-    
+
         double getUIParam(const std::string& key, Effect* effect);
         void setUIParam(const std::string& key, double val);
 
@@ -74,34 +93,34 @@ namespace vkBasalt {
 
         static std::string doubleToConfigString(double val);
         std::atomic<bool> m_isOpen{false};
-        bool m_isInitialized = false;
-        bool m_justOpened = false;
-        bool m_focusSearch = false;
-        float m_cursorScale = 1.0f;
-        float m_uiScale     = 1.0f;
-        float m_fontScale   = 1.0f;
-        float m_lastWidth = 0.0f;
-        VkFormat m_format = VK_FORMAT_UNDEFINED;
+        bool m_isInitialized         = false;
+        bool m_justOpened            = false;
+        bool m_focusSearch           = false;
+        float m_cursorScale          = 1.0f;
+        float m_uiScale              = 1.0f;
+        float m_fontScale            = 1.0f;
+        float m_lastWidth            = 0.0f;
+        VkFormat m_format            = VK_FORMAT_UNDEFINED;
         size_t m_selectedEffectIndex = 0;
-        char m_searchFilter[256] = {};
-        int m_activeTab = 0;
-        bool m_forceSelectTab = false;
-        int m_bindingField = -1; // -1=none, 0=toggle, 1=reload, 2=overlay
-        bool        m_showBrowser = false;
+        char m_searchFilter[256]     = {};
+        int m_activeTab              = 0;
+        bool m_forceSelectTab        = false;
+        int m_bindingField           = -1; // -1=none, 0=toggle, 1=reload, 2=overlay
+        bool m_showBrowser           = false;
         std::string m_browserDir;
-        bool        m_showDirBrowser = false;
+        bool m_showDirBrowser = false;
         std::string m_dirBrowserDir;
 
-        bool m_hasUnsavedChanges = false;
-        bool m_previewDirty = false;
-        float m_lastChangeTime = 0.0f;
-        bool m_chainCacheDirty = true;
-        bool m_showCloseWarning = false;
-        int  m_screenshotReopenCounter = 0;
-        bool m_snapPending = false;
-        bool m_wasWindowMoving = false;
-        bool m_wasMouseDown = false;
-        ImVec2 m_lastWindowPos = {0, 0};
+        bool m_hasUnsavedChanges      = false;
+        bool m_previewDirty           = false;
+        float m_lastChangeTime        = 0.0f;
+        bool m_chainCacheDirty        = true;
+        bool m_showCloseWarning       = false;
+        int m_screenshotReopenCounter = 0;
+        bool m_snapPending            = false;
+        bool m_wasWindowMoving        = false;
+        bool m_wasMouseDown           = false;
+        ImVec2 m_lastWindowPos        = {0, 0};
 
         VkRenderPass m_renderPass = VK_NULL_HANDLE;
         std::vector<VkFramebuffer> m_framebuffers;
@@ -110,19 +129,20 @@ namespace vkBasalt {
         std::vector<std::string> m_cachedAllEffects;
 
         std::unordered_map<std::string, double> m_uiParamCache;
-        bool m_pendingCacheClear = false;
-        float m_windowWidth = 0.0f;
-        std::string m_windowSide = "left";
+        bool m_pendingCacheClear      = false;
+        float m_windowWidth           = 0.0f;
+        std::string m_windowSide      = "left";
         bool m_windowStateInitialized = false;
 
         std::array<ImTextureID, 3> m_scopeTextureIDs = {};
         std::vector<ImTextureID> m_pendingScopeTextureRemovals;
         bool m_scopeTexturesRegistered = false;
-        void* m_lastAnalyzerPtr = nullptr;
+        void* m_lastAnalyzerPtr        = nullptr;
 
         int m_lastScopeTab = -1;
 
-        struct BrowserEntry {
+        struct BrowserEntry
+        {
             std::string path;
             std::string name;
             bool isDir{};

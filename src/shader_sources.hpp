@@ -1,8 +1,8 @@
 #pragma once
 #include "shader_decompress.hpp"
 
-
-namespace vkBasalt {
+namespace vkBasalt
+{
     extern const CompressedShader cas_frag;
     extern const CompressedShader clarity_frag;
     extern const CompressedShader clarityrcas_frag;

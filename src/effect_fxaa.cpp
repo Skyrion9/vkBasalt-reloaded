@@ -17,18 +17,19 @@
 #include "format.hpp"
 #include "shader_sources.hpp"
 
-
 namespace vkBasalt
 {
-    #define SPEC(id, field) .specId = (id), .specOffset = offsetof(FxaaSpecData, field), .specSize = sizeof(((FxaaSpecData*)0)->field)
+#define SPEC(id, field) \
+    .specId = (id), .specOffset = offsetof(FxaaSpecData, field), .specSize = sizeof(((FxaaSpecData*) 0)->field)
 
-    FxaaEffect::FxaaEffect(LogicalDevice*       pLogicalDevice,
-                           VkFormat             format,
-                           VkExtent2D           imageExtent,
-                           std::vector<VkImage> inputImages,
-                           std::vector<VkImage> outputImages,
-                           Config*              pConfig,
-                           VkColorSpaceKHR      colorSpace)
+    FxaaEffect::FxaaEffect(
+        LogicalDevice* pLogicalDevice,
+        VkFormat format,
+        VkExtent2D imageExtent,
+        std::vector<VkImage> inputImages,
+        std::vector<VkImage> outputImages,
+        Config* pConfig,
+        VkColorSpaceKHR colorSpace)
     {
         vertexCode   = decompressShaderCached(full_screen_triangle_vert);
         fragmentCode = decompressShaderCached(fxaa_frag);
@@ -38,7 +39,7 @@ namespace vkBasalt
 
         ColorSpaceMode csm = getColorSpaceMode(format, colorSpace);
 
-        const auto& params = getParamDescs();
+        const auto& params    = getParamDescs();
         FxaaSpecData specData = {};
         std::vector<VkSpecializationMapEntry> mapEntries;
         mapEntries.reserve(params.size() + 3);
@@ -53,7 +54,7 @@ namespace vkBasalt
                 val = static_cast<double>(pConfig->getOption<int32_t>(p.key, static_cast<int32_t>(p.defaultVal)));
             }
 
-            val = std::clamp(val, p.minVal, p.maxVal);
+            val                  = std::clamp(val, p.minVal, p.maxVal);
             m_paramValues[p.key] = val;
 
             if (p.type == ParamType::Float) {
@@ -64,16 +65,20 @@ namespace vkBasalt
                 std::memcpy(reinterpret_cast<uint8_t*>(&specData) + p.specOffset, &i, sizeof(int32_t));
             }
 
-            mapEntries.push_back({.constantID=static_cast<uint32_t>(p.specId), .offset=static_cast<uint32_t>(p.specOffset), .size=p.specSize});
+            mapEntries.push_back(
+                {.constantID = static_cast<uint32_t>(p.specId),
+                 .offset     = static_cast<uint32_t>(p.specOffset),
+                 .size       = p.specSize});
         }
 
-        specData.screenWidth  = static_cast<float>(imageExtent.width);
-        specData.screenHeight = static_cast<float>(imageExtent.height);
+        specData.screenWidth    = static_cast<float>(imageExtent.width);
+        specData.screenHeight   = static_cast<float>(imageExtent.height);
         specData.colorSpaceMode = static_cast<int32_t>(csm);
 
-        mapEntries.push_back({.constantID=3, .offset=offsetof(FxaaSpecData, screenWidth),  .size=sizeof(float)});
-        mapEntries.push_back({.constantID=4, .offset=offsetof(FxaaSpecData, screenHeight), .size=sizeof(float)});
-        mapEntries.push_back({.constantID=65535, .offset=offsetof(FxaaSpecData, colorSpaceMode), .size=sizeof(int32_t)});
+        mapEntries.push_back({.constantID = 3, .offset = offsetof(FxaaSpecData, screenWidth), .size = sizeof(float)});
+        mapEntries.push_back({.constantID = 4, .offset = offsetof(FxaaSpecData, screenHeight), .size = sizeof(float)});
+        mapEntries.push_back(
+            {.constantID = 65535, .offset = offsetof(FxaaSpecData, colorSpaceMode), .size = sizeof(int32_t)});
 
         VkSpecializationInfo fragmentSpecializationInfo;
         fragmentSpecializationInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
@@ -89,19 +94,38 @@ namespace vkBasalt
 
     FxaaEffect::~FxaaEffect() = default;
 
-    const std::vector<EffectParamDesc>& FxaaEffect::getParamDescs() const {
+    const std::vector<EffectParamDesc>& FxaaEffect::getParamDescs() const
+    {
         static const std::vector<EffectParamDesc> params = {
-            {.key = "fxaaQualitySubpix", .label = "Subpixel Smoothing", .type = ParamType::Float,
-             .defaultVal = 0.75, .minVal = 0.0, .maxVal = 1.0, .step = 0.01,
-             .category = "Anti-Aliasing", SPEC(0, subpix)},
+            {.key        = "fxaaQualitySubpix",
+             .label      = "Subpixel Smoothing",
+             .type       = ParamType::Float,
+             .defaultVal = 0.75,
+             .minVal     = 0.0,
+             .maxVal     = 1.0,
+             .step       = 0.01,
+             .category   = "Anti-Aliasing",
+             SPEC(0, subpix)},
 
-            {.key = "fxaaQualityEdgeThreshold", .label = "Edge Threshold", .type = ParamType::Float,
-             .defaultVal = 0.125, .minVal = 0.0, .maxVal = 1.0, .step = 0.001,
-             .category = "Anti-Aliasing", SPEC(1, edgeThreshold)},
+            {.key        = "fxaaQualityEdgeThreshold",
+             .label      = "Edge Threshold",
+             .type       = ParamType::Float,
+             .defaultVal = 0.125,
+             .minVal     = 0.0,
+             .maxVal     = 1.0,
+             .step       = 0.001,
+             .category   = "Anti-Aliasing",
+             SPEC(1, edgeThreshold)},
 
-            {.key = "fxaaQualityEdgeThresholdMin", .label = "Edge Threshold Min", .type = ParamType::Float,
-             .defaultVal = 0.0312, .minVal = 0.0, .maxVal = 1.0, .step = 0.001,
-             .category = "Anti-Aliasing", SPEC(2, edgeThresholdMin)},
+            {.key        = "fxaaQualityEdgeThresholdMin",
+             .label      = "Edge Threshold Min",
+             .type       = ParamType::Float,
+             .defaultVal = 0.0312,
+             .minVal     = 0.0,
+             .maxVal     = 1.0,
+             .step       = 0.001,
+             .category   = "Anti-Aliasing",
+             SPEC(2, edgeThresholdMin)},
         };
         return params;
     }

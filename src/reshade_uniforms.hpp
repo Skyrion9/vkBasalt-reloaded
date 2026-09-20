@@ -20,7 +20,7 @@ namespace vkBasalt
     {
     public:
         void virtual update(void* mapedBuffer) = 0;
-        virtual ~ReshadeUniform()= default;
+        virtual ~ReshadeUniform()              = default;
 
     protected:
         uint32_t offset{};

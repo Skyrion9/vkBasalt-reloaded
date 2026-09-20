@@ -2,15 +2,17 @@
 #include <string>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    struct DisplayHdrInfo {
+    struct DisplayHdrInfo
+    {
         std::string name;
         std::string monitorName;
         float peakBrightnessNits = 1000.0f;
-        float sdrWhitePointNits = 203.0f;
-        bool detected = false;
-        std::string source = "default";
+        float sdrWhitePointNits  = 203.0f;
+        bool detected            = false;
+        std::string source       = "default";
     };
 
     class Config; // Forward declaration

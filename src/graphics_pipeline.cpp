@@ -9,50 +9,52 @@
 namespace vkBasalt
 {
     // Fixed: Added 'uint32_t pushConstantSize' to the function signature to match the header
-    VkPipelineLayout createGraphicsPipelineLayout(LogicalDevice* pLogicalDevice, const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, uint32_t pushConstantSize)
+    VkPipelineLayout createGraphicsPipelineLayout(
+        LogicalDevice* pLogicalDevice,
+        const std::vector<VkDescriptorSetLayout>& descriptorSetLayouts,
+        uint32_t pushConstantSize)
     {
         VkPushConstantRange pushConstantRange = {};
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        pushConstantRange.offset = 0;
-        pushConstantRange.size = pushConstantSize; // dynamic size passed from the effect
+        pushConstantRange.stageFlags          = VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.offset              = 0;
+        pushConstantRange.size                = pushConstantSize; // dynamic size passed from the effect
 
         VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-        pipelineLayoutCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutCreateInfo.pNext                  = nullptr;
-        pipelineLayoutCreateInfo.flags                  = 0;
-        pipelineLayoutCreateInfo.setLayoutCount         = descriptorSetLayouts.size();
-        pipelineLayoutCreateInfo.pSetLayouts            = descriptorSetLayouts.data();
+        pipelineLayoutCreateInfo.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutCreateInfo.pNext          = nullptr;
+        pipelineLayoutCreateInfo.flags          = 0;
+        pipelineLayoutCreateInfo.setLayoutCount = descriptorSetLayouts.size();
+        pipelineLayoutCreateInfo.pSetLayouts    = descriptorSetLayouts.data();
 
-        if (pushConstantSize > 0)
-        {
+        if (pushConstantSize > 0) {
             // Attach the push constant range only if the effect requires it
             pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
             pipelineLayoutCreateInfo.pPushConstantRanges    = &pushConstantRange;
-        }
-        else
-        {
+        } else {
             pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
             pipelineLayoutCreateInfo.pPushConstantRanges    = nullptr;
         }
 
         VkPipelineLayout pipelineLayout = nullptr;
-        VkResult result = pLogicalDevice->vkd.CreatePipelineLayout(pLogicalDevice->device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
+        VkResult result                 = pLogicalDevice->vkd.CreatePipelineLayout(
+            pLogicalDevice->device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout);
         ASSERT_VULKAN(result);
         return pipelineLayout;
     }
 
     // Pass by reference instead of by value to avoid copying strings.
-    VkPipeline createGraphicsPipeline(LogicalDevice*        pLogicalDevice,
-                                      VkShaderModule        vertexModule,
-                                      VkSpecializationInfo* vertexSpecializationInfo,
-                                      const std::string&    vertexEntryPoint,
-                                      VkShaderModule        fragmentModule,
-                                      VkSpecializationInfo* fragmentSpecializationInfo,
-                                      const std::string&    fragmentEntryPoint,
-                                      VkExtent2D            extent,
-                                      VkRenderPass          renderPass,
-                                      VkPipelineLayout      pipelineLayout,
-                                      bool                  flip)
+    VkPipeline createGraphicsPipeline(
+        LogicalDevice* pLogicalDevice,
+        VkShaderModule vertexModule,
+        VkSpecializationInfo* vertexSpecializationInfo,
+        const std::string& vertexEntryPoint,
+        VkShaderModule fragmentModule,
+        VkSpecializationInfo* fragmentSpecializationInfo,
+        const std::string& fragmentEntryPoint,
+        VkExtent2D extent,
+        VkRenderPass renderPass,
+        VkPipelineLayout pipelineLayout,
+        bool flip)
     {
         VkResult result;
 
@@ -79,11 +81,11 @@ namespace vkBasalt
         VkPipelineShaderStageCreateInfo shaderStages[] = {shaderStageCreateInfoVert, shaderStageCreateInfoFrag};
 
         VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo;
-        vertexInputCreateInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputCreateInfo.pNext                           = nullptr;
-        vertexInputCreateInfo.flags                           = 0;
-        vertexInputCreateInfo.vertexBindingDescriptionCount   = 0;
-        vertexInputCreateInfo.pVertexBindingDescriptions      = nullptr;
+        vertexInputCreateInfo.sType                         = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputCreateInfo.pNext                         = nullptr;
+        vertexInputCreateInfo.flags                         = 0;
+        vertexInputCreateInfo.vertexBindingDescriptionCount = 0;
+        vertexInputCreateInfo.pVertexBindingDescriptions    = nullptr;
         vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
         vertexInputCreateInfo.pVertexAttributeDescriptions    = nullptr;
 
@@ -103,8 +105,8 @@ namespace vkBasalt
         viewport.maxDepth = 1.0f;
 
         VkRect2D scissor;
-        scissor.offset = {.x=0, .y=0};
-        scissor.extent = {.width=extent.width, .height=extent.height};
+        scissor.offset = {.x = 0, .y = 0};
+        scissor.extent = {.width = extent.width, .height = extent.height};
 
         VkPipelineViewportStateCreateInfo viewportStateCreateInfo;
         viewportStateCreateInfo.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -194,7 +196,8 @@ namespace vkBasalt
         pipelineCreateInfo.basePipelineHandle  = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex   = -1;
 
-        result = pLogicalDevice->vkd.CreateGraphicsPipelines(pLogicalDevice->device, pLogicalDevice->pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        result = pLogicalDevice->vkd.CreateGraphicsPipelines(
+            pLogicalDevice->device, pLogicalDevice->pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         ASSERT_VULKAN(result);
 
         return pipeline;

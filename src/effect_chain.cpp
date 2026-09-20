@@ -38,14 +38,16 @@
 #include "effect_nit_calibration.hpp"
 #include "effect_hdr_debug.hpp"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
     // Defined in basalt.cpp
     extern bool g_vramReclaimedForCurrentBypass;
     extern bool g_passthroughActive;
     extern bool g_passthroughTimerActive;
 
-    bool isHdrOutputNeeded(Config* pConfig, LogicalSwapchain* pLogicalSwapchain) {
+    bool isHdrOutputNeeded(Config* pConfig, LogicalSwapchain* pLogicalSwapchain)
+    {
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
         if (srcCsm == ColorSpaceMode::SDR_SRGB) {
             return pLogicalSwapchain->autoHdrActive;
@@ -56,8 +58,9 @@ namespace vkBasalt {
         }
     }
 
-    uint32_t calculateTotalEffectCount(Config* pConfig, LogicalSwapchain* pLogicalSwapchain) {
-        auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+    uint32_t calculateTotalEffectCount(Config* pConfig, LogicalSwapchain* pLogicalSwapchain)
+    {
+        auto effectStrings    = pConfig->getOption<std::vector<std::string>>("effects", {});
         auto totalEffectCount = static_cast<uint32_t>(effectStrings.size());
         if (isHdrOutputNeeded(pConfig, pLogicalSwapchain)) {
             totalEffectCount += 1;
@@ -68,21 +71,24 @@ namespace vkBasalt {
         return totalEffectCount;
     }
 
-    static void buildDefaultNoEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig) {
+    static void
+    buildDefaultNoEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig)
+    {
         std::vector<std::shared_ptr<Effect>> noEffectChain;
 
         // Free old no effect command buffers before allocating new ones to prevent leaks
         if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                                                   pLogicalSwapchain->commandBuffersNoEffect.size(),
-                                                   pLogicalSwapchain->commandBuffersNoEffect.data());
+            pLogicalDevice->vkd.FreeCommandBuffers(
+                pLogicalDevice->device, pLogicalDevice->commandPool, pLogicalSwapchain->commandBuffersNoEffect.size(),
+                pLogicalSwapchain->commandBuffersNoEffect.data());
             pLogicalSwapchain->commandBuffersNoEffect.clear();
         }
 
         if (pLogicalSwapchain->fakeImages.size() < pLogicalSwapchain->imageCount) {
-            Logger::err("buildDefaultNoEffectChain: fakeImages pool too small (" +
-                        std::to_string(pLogicalSwapchain->fakeImages.size()) + " < " +
-                        std::to_string(pLogicalSwapchain->imageCount) + "). Skipping.");
+            Logger::err(
+                "buildDefaultNoEffectChain: fakeImages pool too small ("
+                + std::to_string(pLogicalSwapchain->fakeImages.size()) + " < "
+                + std::to_string(pLogicalSwapchain->imageCount) + "). Skipping.");
             return;
         }
 
@@ -91,10 +97,10 @@ namespace vkBasalt {
                 pLogicalSwapchain->fakeImages.begin(),
                 pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
 
-        pLogicalSwapchain->defaultHdrEffect = std::make_shared<NitCalibrationEffect>(
+            pLogicalSwapchain->defaultHdrEffect = std::make_shared<NitCalibrationEffect>(
                 pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
-                pLogicalSwapchain->imageExtent, slice0Images, pLogicalSwapchain->images,
-                pConfig, pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
+                pLogicalSwapchain->imageExtent, slice0Images, pLogicalSwapchain->images, pConfig,
+                pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
                 pLogicalSwapchain->autoHdrActive, pLogicalSwapchain->monitorName);
 
             pLogicalSwapchain->defaultHdrEffect->setChainPosition(true, true);
@@ -103,32 +109,37 @@ namespace vkBasalt {
         } else {
             pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
                 pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
-                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                std::vector<VkImage>(
+                    pLogicalSwapchain->fakeImages.begin(),
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
                 pLogicalSwapchain->images, pConfig));
             pLogicalSwapchain->defaultTransfer->setChainPosition(true, true);
             noEffectChain.push_back(pLogicalSwapchain->defaultTransfer);
         }
 
-        pLogicalSwapchain->commandBuffersNoEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
-        writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, noEffectChain,
-            VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
+        pLogicalSwapchain->commandBuffersNoEffect =
+            allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+        writeCommandBuffers(
+            pLogicalDevice, pLogicalSwapchain, noEffectChain, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
             pLogicalSwapchain->commandBuffersNoEffect);
     }
 
-    void rebuildFallbackChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig) {
+    void rebuildFallbackChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig)
+    {
         // Wait for GPU to finish executing the previous frame's command buffers before freeing them. Freeing in flight command buffers
         //  is undefined behavior, causes crashes when AutoHDR is toggled or the last effect is removed.
         pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
 
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                                                pLogicalSwapchain->commandBuffersEffect.size(), pLogicalSwapchain->commandBuffersEffect.data());
+            pLogicalDevice->vkd.FreeCommandBuffers(
+                pLogicalDevice->device, pLogicalDevice->commandPool, pLogicalSwapchain->commandBuffersEffect.size(),
+                pLogicalSwapchain->commandBuffersEffect.data());
             pLogicalSwapchain->commandBuffersEffect.clear();
         }
         if (!pLogicalSwapchain->commandBuffersNoEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                                                pLogicalSwapchain->commandBuffersNoEffect.size(), pLogicalSwapchain->commandBuffersNoEffect.data());
+            pLogicalDevice->vkd.FreeCommandBuffers(
+                pLogicalDevice->device, pLogicalDevice->commandPool, pLogicalSwapchain->commandBuffersNoEffect.size(),
+                pLogicalSwapchain->commandBuffersNoEffect.data());
             pLogicalSwapchain->commandBuffersNoEffect.clear();
         }
 
@@ -155,71 +166,135 @@ namespace vkBasalt {
         const std::vector<VkImage>& secondImages,
         Config* pConfig,
         VkColorSpaceKHR colorSpace,
-        const std::string& name
-    )>;
+        const std::string& name)>;
 
     static const std::unordered_map<std::string, EffectCreator> builtinEffects = {
-        {"fxaa", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-        return std::make_shared<FxaaEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"cas", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<CasEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"deband", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<DebandEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"smaa", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"lut", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<LutEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"dls", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<DlsEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"clarity", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<ClarityEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"clarityrcas", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<ClarityRcasEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
-        {"crystalclear", [](LogicalDevice* dev, VkFormat uf, VkFormat  /*sf*/, VkExtent2D ext, const std::vector<VkImage>& in, const std::vector<VkImage>& out, Config* cfg, VkColorSpaceKHR cs, const std::string&) {
-            return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs);
-        }},
+        {"fxaa", [](LogicalDevice* dev,
+                    VkFormat uf,
+                    VkFormat /*sf*/,
+                    VkExtent2D ext,
+                    const std::vector<VkImage>& in,
+                    const std::vector<VkImage>& out,
+                    Config* cfg,
+                    VkColorSpaceKHR cs,
+                    const std::string&) { return std::make_shared<FxaaEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"cas", [](LogicalDevice* dev,
+                   VkFormat uf,
+                   VkFormat /*sf*/,
+                   VkExtent2D ext,
+                   const std::vector<VkImage>& in,
+                   const std::vector<VkImage>& out,
+                   Config* cfg,
+                   VkColorSpaceKHR cs,
+                   const std::string&) { return std::make_shared<CasEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"deband", [](LogicalDevice* dev,
+                      VkFormat uf,
+                      VkFormat /*sf*/,
+                      VkExtent2D ext,
+                      const std::vector<VkImage>& in,
+                      const std::vector<VkImage>& out,
+                      Config* cfg,
+                      VkColorSpaceKHR cs,
+                      const std::string&) { return std::make_shared<DebandEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"smaa", [](LogicalDevice* dev,
+                    VkFormat uf,
+                    VkFormat /*sf*/,
+                    VkExtent2D ext,
+                    const std::vector<VkImage>& in,
+                    const std::vector<VkImage>& out,
+                    Config* cfg,
+                    VkColorSpaceKHR cs,
+                    const std::string&) { return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"lut", [](LogicalDevice* dev,
+                   VkFormat uf,
+                   VkFormat /*sf*/,
+                   VkExtent2D ext,
+                   const std::vector<VkImage>& in,
+                   const std::vector<VkImage>& out,
+                   Config* cfg,
+                   VkColorSpaceKHR cs,
+                   const std::string&) { return std::make_shared<LutEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"dls", [](LogicalDevice* dev,
+                   VkFormat uf,
+                   VkFormat /*sf*/,
+                   VkExtent2D ext,
+                   const std::vector<VkImage>& in,
+                   const std::vector<VkImage>& out,
+                   Config* cfg,
+                   VkColorSpaceKHR cs,
+                   const std::string&) { return std::make_shared<DlsEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"clarity", [](LogicalDevice* dev,
+                       VkFormat uf,
+                       VkFormat /*sf*/,
+                       VkExtent2D ext,
+                       const std::vector<VkImage>& in,
+                       const std::vector<VkImage>& out,
+                       Config* cfg,
+                       VkColorSpaceKHR cs,
+                       const std::string&) { return std::make_shared<ClarityEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"clarityrcas",
+         [](LogicalDevice* dev,
+            VkFormat uf,
+            VkFormat /*sf*/,
+            VkExtent2D ext,
+            const std::vector<VkImage>& in,
+            const std::vector<VkImage>& out,
+            Config* cfg,
+            VkColorSpaceKHR cs,
+            const std::string&) { return std::make_shared<ClarityRcasEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"crystalclear",
+         [](LogicalDevice* dev,
+            VkFormat uf,
+            VkFormat /*sf*/,
+            VkExtent2D ext,
+            const std::vector<VkImage>& in,
+            const std::vector<VkImage>& out,
+            Config* cfg,
+            VkColorSpaceKHR cs,
+            const std::string&) { return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs); }},
     };
 
     // Tracks the final active slice accounting for in-place effects that don't flip the ping-pong buffer.
-    static uint32_t getFinalSlice(const std::vector<std::string>& effectStrings, bool supportsMutable, bool shouldAppendHdrOutput) {
+    static uint32_t
+    getFinalSlice(const std::vector<std::string>& effectStrings, bool supportsMutable, bool shouldAppendHdrOutput)
+    {
         uint32_t currentSlice = 0;
         for (uint32_t i = 0; i < effectStrings.size(); i++) {
-            bool isInPlace = (effectStrings[i] == "cmaa2");
+            bool isInPlace           = (effectStrings[i] == "cmaa2");
             bool isLastWritingToReal = (i == effectStrings.size() - 1 && supportsMutable && !shouldAppendHdrOutput);
-            if (isLastWritingToReal) isInPlace = false; // In-place requires input == output, which isn't true when writing to real swapchain
+            if (isLastWritingToReal)
+                isInPlace = false; // In-place requires input == output, which isn't true when writing to real swapchain
             if (!isInPlace) currentSlice = 1 - currentSlice;
         }
         return currentSlice;
     }
 
     // Ping pong buffering: slices 0 and 1 strictly alternate. Slice 0 is the game's initial render target.
-    static uint32_t getRequiredSlices(uint32_t effectCount, bool supportsMutable) {
-        if (effectCount == 0) return 1; 
+    static uint32_t getRequiredSlices(uint32_t effectCount, bool supportsMutable)
+    {
+        if (effectCount == 0) return 1;
         if (effectCount == 1) return supportsMutable ? 1 : 2;
-        return 2; 
+        return 2;
     }
 
-    void buildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
-                          VkSwapchainKHR swapchain, Config* pConfig,
-                          OverlayManager& overlayManager)
+    void buildEffectChain(
+        LogicalDevice* pLogicalDevice,
+        LogicalSwapchain* pLogicalSwapchain,
+        VkSwapchainKHR swapchain,
+        Config* pConfig,
+        OverlayManager& overlayManager)
     {
         auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
 
         // Append HDR Output Effect (Auto HDR or Nit Calibration)
-        auto autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
-        bool autoHdrEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
+        auto autoHdrOpt       = pConfig->getOption<std::string>("autoHdr", "on");
+        bool autoHdrEnabled   = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
-        
-        bool shouldAppendHdrOutput = (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled && pLogicalSwapchain->autoHdrActive) ||
-                                     (srcCsm != ColorSpaceMode::SDR_SRGB && pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough") != "off");
+
+        bool shouldAppendHdrOutput =
+            (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled && pLogicalSwapchain->autoHdrActive)
+            || (srcCsm != ColorSpaceMode::SDR_SRGB
+                && pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough") != "off");
 
         // Normal effects operate on the fake images, which are always in the source format.
         VkFormat unormFormat = convertToUNORM(pLogicalSwapchain->sourceFormat);
@@ -229,27 +304,30 @@ namespace vkBasalt {
         // values to 1.0 during the intermediate effect's render pass, crushing bright saturated colors (like orange) into desaturated higlights before NitCalibration can tonemap.
         if (isExtendedRangeFormat(pLogicalSwapchain->sourceFormat)) {
             unormFormat = pLogicalSwapchain->sourceFormat;
-            srgbFormat = pLogicalSwapchain->sourceFormat;
+            srgbFormat  = pLogicalSwapchain->sourceFormat;
         }
 
         // Determine which slice compute passes read from. With mutable format the last effect writes to real swapchain images. Otherwise it writes to the last fake slice.
-        pLogicalSwapchain->computeSrcSlice = pLogicalDevice->supportsMutableFormat ? 0 : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
+        pLogicalSwapchain->computeSrcSlice =
+            pLogicalDevice->supportsMutableFormat
+                ? 0
+                : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
 
         bool bypassedAndReclaimed = !g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass;
 
         if (!bypassedAndReclaimed) {
-        uint32_t currentSlice = 0;
-            for (uint32_t i = 0; i < effectStrings.size(); i++)
-            {
+            uint32_t currentSlice = 0;
+            for (uint32_t i = 0; i < effectStrings.size(); i++) {
                 Logger::debug("current effectString " + effectStrings[i]);
-                
+
                 uint32_t srcSlice = currentSlice;
                 uint32_t dstSlice = 0;
-                
+
                 bool isInPlace = (effectStrings[i] == "cmaa2");
-                bool isLastWritingToReal = (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput);
+                bool isLastWritingToReal =
+                    (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput);
                 if (isLastWritingToReal) isInPlace = false; // In-place requires input == output
-                
+
                 if (isInPlace) {
                     dstSlice = srcSlice; // Read and write to the same slice
                 } else {
@@ -259,16 +337,15 @@ namespace vkBasalt {
                 std::vector<VkImage> firstImages(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
-                Logger::debug(std::to_string(firstImages.size()) + " images in firstImages (slice " + std::to_string(srcSlice) + ")");
-                
+                Logger::debug(
+                    std::to_string(firstImages.size()) + " images in firstImages (slice " + std::to_string(srcSlice)
+                    + ")");
+
                 std::vector<VkImage> secondImages;
-                if (isLastWritingToReal)
-                {
+                if (isLastWritingToReal) {
                     secondImages = pLogicalSwapchain->images;
                     Logger::debug("using swapchain images as second images");
-                }
-                else
-                {
+                } else {
                     secondImages = std::vector<VkImage>(
                         pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * dstSlice,
                         pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (dstSlice + 1));
@@ -278,16 +355,14 @@ namespace vkBasalt {
 
                 // Dispatch via factory map
                 auto it = builtinEffects.find(effectStrings[i]);
-                if (it != builtinEffects.end())
-                {
-                    auto effect = it->second(pLogicalDevice, unormFormat, srgbFormat, pLogicalSwapchain->imageExtent,
-                                            firstImages, secondImages, pConfig, pLogicalSwapchain->sourceColorSpace, effectStrings[i]);
+                if (it != builtinEffects.end()) {
+                    auto effect = it->second(
+                        pLogicalDevice, unormFormat, srgbFormat, pLogicalSwapchain->imageExtent, firstImages,
+                        secondImages, pConfig, pLogicalSwapchain->sourceColorSpace, effectStrings[i]);
                     effect->setInPlace(isInPlace);
                     pLogicalSwapchain->effects.push_back(effect);
                     Logger::debug("created " + effectStrings[i] + " effect" + (isInPlace ? " (in-place)" : ""));
-                }
-                else
-                {
+                } else {
                     // ReShade fallback
                     auto shaderPath = pConfig->getOption<std::string>("reshadeShaderPath", "");
                     if (shaderPath.empty()) shaderPath = pConfig->getOption<std::string>("reshadeTexturePath", "");
@@ -302,15 +377,16 @@ namespace vkBasalt {
                     }
 
                     if (fileExists) {
-                        pLogicalSwapchain->effects.push_back(std::make_shared<ReshadeEffect>(
-                            pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->imageExtent,
-                            firstImages, secondImages, pConfig, effectStrings[i]));
+                        pLogicalSwapchain->effects.push_back(
+                            std::make_shared<ReshadeEffect>(
+                                pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->imageExtent,
+                                firstImages, secondImages, pConfig, effectStrings[i]));
                         Logger::debug("created ReshadeEffect for " + effectStrings[i]);
                     } else {
                         Logger::err("Unknown or missing effect: '" + effectStrings[i] + "'. Skipping.");
                     }
                 }
-                
+
                 // Advance slice for the next effect, unless the current effect was in-place
                 if (!isInPlace) {
                     currentSlice = dstSlice;
@@ -327,7 +403,8 @@ namespace vkBasalt {
                     pLogicalSwapchain->fakeImages.begin(),
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
             } else {
-                uint32_t lastSlice = getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
+                uint32_t lastSlice =
+                    getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
                 hdrInputImages = std::vector<VkImage>(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * lastSlice,
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (lastSlice + 1));
@@ -336,18 +413,15 @@ namespace vkBasalt {
             // Inject HDR Metadata Debug Pattern Effect if active. It writes the test pattern to hdrInputImages, which NitCalibrationEffect will then read and tone map.
             if (g_hdrDebugToolActive.load()) {
                 auto debugEffect = std::make_shared<HdrDebugEffect>(
-                    pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->imageExtent,
-                    hdrInputImages, pConfig);
+                    pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->imageExtent, hdrInputImages,
+                    pConfig);
                 pLogicalSwapchain->effects.push_back(debugEffect);
                 Logger::debug("Injected HDR Metadata Debug Pattern Effect");
             }
 
             auto hdrEffect = std::make_shared<NitCalibrationEffect>(
-                pLogicalDevice,
-                pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
-                pLogicalSwapchain->imageExtent,
-                hdrInputImages, pLogicalSwapchain->images,
-                pConfig,
+                pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
+                pLogicalSwapchain->imageExtent, hdrInputImages, pLogicalSwapchain->images, pConfig,
                 pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
                 pLogicalSwapchain->autoHdrActive, pLogicalSwapchain->monitorName);
 
@@ -357,105 +431,105 @@ namespace vkBasalt {
         }
 
         // Non-mutable format add a final transfer from the last fake slice to real swapchain images. Skip when HDR output effect is present it already writes to real swapchain images.
-        if (!pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput)
-        {
-            uint32_t transferSrcSlice = (bypassedAndReclaimed || effectStrings.empty()) ? 0 : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
-            pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new TransferEffect(
-                pLogicalDevice,
-                pLogicalSwapchain->format,
-                pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(
-                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * transferSrcSlice,
-                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (transferSrcSlice + 1)),
-                pLogicalSwapchain->images,
-                pConfig)));
+        if (!pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput) {
+            uint32_t transferSrcSlice =
+                (bypassedAndReclaimed || effectStrings.empty())
+                    ? 0
+                    : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
+            pLogicalSwapchain->effects.push_back(
+                std::shared_ptr<Effect>(new TransferEffect(
+                    pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                    std::vector<VkImage>(
+                        pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * transferSrcSlice,
+                        pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (transferSrcSlice + 1)),
+                    pLogicalSwapchain->images, pConfig)));
         }
 
         // Fallback if no valid effects were created, use plain transfer from slice 0
-        if (pLogicalSwapchain->effects.empty())
-        {
+        if (pLogicalSwapchain->effects.empty()) {
             Logger::warn("No valid effects could be created; falling back to plain transfer.");
-            pLogicalSwapchain->effects.push_back(std::shared_ptr<Effect>(new TransferEffect(
-                pLogicalDevice,
-                pLogicalSwapchain->format,
-                pLogicalSwapchain->imageExtent,
-                std::vector<VkImage>(pLogicalSwapchain->fakeImages.begin(),
-                                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
-                pLogicalSwapchain->images,
-                pConfig)));
+            pLogicalSwapchain->effects.push_back(
+                std::shared_ptr<Effect>(new TransferEffect(
+                    pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                    std::vector<VkImage>(
+                        pLogicalSwapchain->fakeImages.begin(),
+                        pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                    pLogicalSwapchain->images, pConfig)));
         }
 
-        VkImageView depthImageView = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImageViews[0] : VK_NULL_HANDLE;
-        VkImage     depthImage     = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImages[0] : VK_NULL_HANDLE;
-        VkFormat    depthFormat    = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthFormats[0] : VK_FORMAT_UNDEFINED;
+        VkImageView depthImageView =
+            pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImageViews[0] : VK_NULL_HANDLE;
+        VkImage depthImage = pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthImages[0] : VK_NULL_HANDLE;
+        VkFormat depthFormat =
+            pLogicalDevice->depthImageViews.size() ? pLogicalDevice->depthFormats[0] : VK_FORMAT_UNDEFINED;
 
         Logger::debug("effect string count: " + std::to_string(effectStrings.size()));
         Logger::debug("effect count: " + std::to_string(pLogicalSwapchain->effects.size()));
 
-        for (uint32_t ei = 0; ei < pLogicalSwapchain->effects.size(); ei++)
-        {
+        for (uint32_t ei = 0; ei < pLogicalSwapchain->effects.size(); ei++) {
             pLogicalSwapchain->effects[ei]->useDepthImage(depthImageView);
-            pLogicalSwapchain->effects[ei]->setChainPosition(
-                ei == 0,
-                ei == pLogicalSwapchain->effects.size() - 1);
+            pLogicalSwapchain->effects[ei]->setChainPosition(ei == 0, ei == pLogicalSwapchain->effects.size() - 1);
         }
 
         pLogicalSwapchain->commandBuffersEffect = allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
         if (swapchain != VK_NULL_HANDLE) {
-            Logger::debug("allocated CommandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain " + convertToString(swapchain));
+            Logger::debug(
+                "allocated CommandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size())
+                + " for swapchain " + convertToString(swapchain));
         } else {
-            Logger::debug("allocated CommandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size()) + " for swapchain (rebuild)");
+            Logger::debug(
+                "allocated CommandBuffers " + std::to_string(pLogicalSwapchain->commandBuffersEffect.size())
+                + " for swapchain (rebuild)");
         }
 
         // Create compute passes. They read from the final output slice.
-        if (pLogicalSwapchain->computePasses.empty() && pConfig->getOption<bool>("scopesEnabled", false))
-        {
+        if (pLogicalSwapchain->computePasses.empty() && pConfig->getOption<bool>("scopesEnabled", false)) {
             std::vector<VkImage> computeSrcImages;
             VkFormat analyzerFormat;
             VkColorSpaceKHR analyzerColorSpace;
 
-            if (pLogicalDevice->supportsMutableFormat)
-            {
+            if (pLogicalDevice->supportsMutableFormat) {
                 // Reading from real swapchain images (already in destFormat/destColorSpace)
-                computeSrcImages = pLogicalSwapchain->images;
-                analyzerFormat = pLogicalSwapchain->format;
+                computeSrcImages   = pLogicalSwapchain->images;
+                analyzerFormat     = pLogicalSwapchain->format;
                 analyzerColorSpace = pLogicalSwapchain->colorSpace;
-            }
-            else
-            {
+            } else {
                 // Reading from fake images (which are in sourceFormat/sourceColorSpace)
                 uint32_t srcSlice = pLogicalSwapchain->computeSrcSlice;
-                computeSrcImages = std::vector<VkImage>(
+                computeSrcImages  = std::vector<VkImage>(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (srcSlice + 1));
-                analyzerFormat = pLogicalSwapchain->sourceFormat;
+                analyzerFormat     = pLogicalSwapchain->sourceFormat;
                 analyzerColorSpace = pLogicalSwapchain->sourceColorSpace;
             }
-            
+
             auto fa = std::make_shared<FrameAnalyzer>(
-                pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages,
-                analyzerFormat, analyzerColorSpace);
+                pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages, analyzerFormat, analyzerColorSpace);
             fa->setEnabled(true);
             pLogicalSwapchain->computePasses.push_back(fa);
             Logger::debug("created compute passes (FrameAnalyzer)");
         }
 
-        writeCommandBuffers(pLogicalDevice, pLogicalSwapchain, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat, pLogicalSwapchain->commandBuffersEffect);
+        writeCommandBuffers(
+            pLogicalDevice, pLogicalSwapchain, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat,
+            pLogicalSwapchain->commandBuffersEffect);
         Logger::debug("wrote CommandBuffers");
 
         // Only create semaphores on initial setup. Rebuilds preserve them as imageCount is fixed for a given swapchain.
         if (pLogicalSwapchain->semaphores.empty()) {
             pLogicalSwapchain->semaphores = createSemaphores(pLogicalDevice, pLogicalSwapchain->imageCount);
             if (pLogicalSwapchain->semaphores.size() != pLogicalSwapchain->imageCount) {
-                Logger::err("Failed to create all semaphores: expected " + std::to_string(pLogicalSwapchain->imageCount) +
-                            ", got " + std::to_string(pLogicalSwapchain->semaphores.size()));
+                Logger::err(
+                    "Failed to create all semaphores: expected " + std::to_string(pLogicalSwapchain->imageCount)
+                    + ", got " + std::to_string(pLogicalSwapchain->semaphores.size()));
             }
             Logger::debug("created semaphores");
         }
 
-        for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++)
-        {
-            Logger::debug(std::to_string(i) + " written commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersEffect[i]));
+        for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++) {
+            Logger::debug(
+                std::to_string(i) + " written commandbuffer "
+                + convertToString(pLogicalSwapchain->commandBuffersEffect[i]));
         }
 
         // Default chain for when effects are toggled off, preserved across rebuilds. When Auto HDR is active, we must still convert SDR->HDR even with effects off, lest the display receives SDR values in an HDR colorspace (teal/cyan artifact).
@@ -463,13 +537,15 @@ namespace vkBasalt {
             buildDefaultNoEffectChain(pLogicalDevice, pLogicalSwapchain, pConfig);
         }
 
-        for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++)
-        {
-            Logger::debug(std::to_string(i) + " written noEffect commandbuffer " + convertToString(pLogicalSwapchain->commandBuffersNoEffect[i]));
+        for (unsigned int i = 0; i < pLogicalSwapchain->imageCount; i++) {
+            Logger::debug(
+                std::to_string(i) + " written noEffect commandbuffer "
+                + convertToString(pLogicalSwapchain->commandBuffersNoEffect[i]));
         }
 
         // Passthrough eligible when no real processing is needed: No effects configured, OR effects are bypassed and VRAM was reclaimed (chain is just a fallback transfer)& no HDR output effect is needed
-        pLogicalSwapchain->passthroughEligible = (effectStrings.empty() || bypassedAndReclaimed) && !shouldAppendHdrOutput;
+        pLogicalSwapchain->passthroughEligible =
+            (effectStrings.empty() || bypassedAndReclaimed) && !shouldAppendHdrOutput;
 
         // Initialize ImGui Overlay eagerly while the queue is idle, the overlay renders on top of the real swapchain images, so it must use destFormat (HDR), not sourceFormat (SDR).
         if (swapchain != VK_NULL_HANDLE) {
@@ -479,22 +555,26 @@ namespace vkBasalt {
 
         // Save pipeline cache only on initial setup so that we don't write to disk for every slider adjustment. The cache is already saved in vkBasalt_DestroyDevice for normal exits.
         if (swapchain != VK_NULL_HANDLE) {
-            savePipelineCacheData(pLogicalDevice->device, pLogicalDevice->vkd,
-                pLogicalDevice->pipelineCache, pLogicalDevice->pipelineCachePath);
+            savePipelineCacheData(
+                pLogicalDevice->device, pLogicalDevice->vkd, pLogicalDevice->pipelineCache,
+                pLogicalDevice->pipelineCachePath);
         }
     }
 
-    void rebuildEffectChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain,
-                            Config* pConfig, OverlayManager& overlayManager,
-                            bool waitForIdle)
+    void rebuildEffectChain(
+        LogicalDevice* pLogicalDevice,
+        LogicalSwapchain* pLogicalSwapchain,
+        Config* pConfig,
+        OverlayManager& overlayManager,
+        bool waitForIdle)
     {
         Logger::debug("Rebuilding effects for swapchain...");
-        
+
         // Detect AutoHDR config changes that require a full swapchain rebuild. The real swapchain format is fixed at creation time, so toggling AutoHDR must too.
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
-        auto autoHdrOpt = pConfig->getOption<std::string>("autoHdr", "on");
+        auto autoHdrOpt       = pConfig->getOption<std::string>("autoHdr", "on");
         bool autoHdrConfigEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
-        
+
         if (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrConfigEnabled != pLogicalSwapchain->autoHdrActive) {
             Logger::debug("AutoHDR config changed, forcing swapchain rebuild to apply format change...");
             pLogicalSwapchain->forceSwapchainRebuild = true;
@@ -505,17 +585,17 @@ namespace vkBasalt {
             pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         }
 
-        uint32_t totalEffectCount = calculateTotalEffectCount(pConfig, pLogicalSwapchain);
-        uint32_t requiredSlices = getRequiredSlices(totalEffectCount, pLogicalDevice->supportsMutableFormat);
+        uint32_t totalEffectCount       = calculateTotalEffectCount(pConfig, pLogicalSwapchain);
+        uint32_t requiredSlices         = getRequiredSlices(totalEffectCount, pLogicalDevice->supportsMutableFormat);
         uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 
         // If the fake image pool is empty (e.g., passthrough mode reclaimed VRAM), Can't build any command buffers. Force a swapchain rebuild to reallocate the pool.
         if (pLogicalSwapchain->fakeImages.empty()) {
             Logger::debug("Effect pool is empty (passthrough active). Forcing swapchain rebuild to reallocate...");
-            g_passthroughActive = false;
-            g_passthroughTimerActive = false;
+            g_passthroughActive                      = false;
+            g_passthroughTimerActive                 = false;
             pLogicalSwapchain->forceSwapchainRebuild = true;
-            pLogicalSwapchain->passthroughEligible = false;
+            pLogicalSwapchain->passthroughEligible   = false;
             return;
         }
 
@@ -523,7 +603,7 @@ namespace vkBasalt {
         if (requiredFakeImageCount > pLogicalSwapchain->fakeImages.size()) {
             Logger::debug("Effect chain grew beyond allocated pool. Forcing swapchain rebuild...");
             pLogicalSwapchain->forceSwapchainRebuild = true;
-            pLogicalSwapchain->passthroughEligible = false;
+            pLogicalSwapchain->passthroughEligible   = false;
 
             rebuildFallbackChain(pLogicalDevice, pLogicalSwapchain, pConfig);
             return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
@@ -533,10 +613,12 @@ namespace vkBasalt {
         if (requiredFakeImageCount < pLogicalSwapchain->fakeImages.size()) {
             uint32_t currentSlices = pLogicalSwapchain->fakeImages.size() / pLogicalSwapchain->imageCount;
             if (currentSlices > requiredSlices) {
-                Logger::debug("Effect chain shrunk, wasting " + std::to_string(currentSlices - requiredSlices) + " slices. Forcing swapchain rebuild to reclaim VRAM...");
+                Logger::debug(
+                    "Effect chain shrunk, wasting " + std::to_string(currentSlices - requiredSlices)
+                    + " slices. Forcing swapchain rebuild to reclaim VRAM...");
                 pLogicalSwapchain->forceSwapchainRebuild = true;
-                pLogicalSwapchain->passthroughEligible = (requiredSlices == 1 && totalEffectCount == 0);
-                
+                pLogicalSwapchain->passthroughEligible   = (requiredSlices == 1 && totalEffectCount == 0);
+
                 rebuildFallbackChain(pLogicalDevice, pLogicalSwapchain, pConfig);
                 return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
             }
@@ -555,9 +637,9 @@ namespace vkBasalt {
         }
 
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool,
-                                                   pLogicalSwapchain->commandBuffersEffect.size(),
-                                                   pLogicalSwapchain->commandBuffersEffect.data());
+            pLogicalDevice->vkd.FreeCommandBuffers(
+                pLogicalDevice->device, pLogicalDevice->commandPool, pLogicalSwapchain->commandBuffersEffect.size(),
+                pLogicalSwapchain->commandBuffersEffect.data());
             pLogicalSwapchain->commandBuffersEffect.clear();
         }
         pLogicalSwapchain->effects.clear();

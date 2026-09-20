@@ -20,20 +20,21 @@ namespace vkBasalt
     class TransferEffect : public Effect
     {
     public:
-        TransferEffect(LogicalDevice*       pLogicalDevice,
-                       VkFormat             format,
-                       VkExtent2D           imageExtent,
-                       std::vector<VkImage> inputImages,
-                       std::vector<VkImage> outputImages,
-                       Config*              pConfig);
+        TransferEffect(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            std::vector<VkImage> inputImages,
+            std::vector<VkImage> outputImages,
+            Config* pConfig);
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
         ~TransferEffect() override;
 
     private:
-        LogicalDevice*       pLogicalDevice;
+        LogicalDevice* pLogicalDevice;
         std::vector<VkImage> inputImages;
         std::vector<VkImage> outputImages;
-        VkExtent2D           imageExtent{};
+        VkExtent2D imageExtent{};
     };
 } // namespace vkBasalt
 #endif // EFFECT_TRANSFER_HPP_INCLUDED

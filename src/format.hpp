@@ -20,10 +20,11 @@ namespace vkBasalt
 
     uint32_t getBytesPerPixel(VkFormat format);
 
-    VkFormat getSupportedFormat(LogicalDevice*        pLogicalDevice,
-                                const std::vector<VkFormat>& formats,
-                                VkFormatFeatureFlags  features,
-                                VkImageTiling         tiling = VK_IMAGE_TILING_OPTIMAL);
+    VkFormat getSupportedFormat(
+        LogicalDevice* pLogicalDevice,
+        const std::vector<VkFormat>& formats,
+        VkFormatFeatureFlags features,
+        VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL);
 
     VkFormat getStencilFormat(LogicalDevice* pLogicalDevice);
 

@@ -3,9 +3,11 @@
 #include "config.hpp"
 #include "imgui.h"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    void ImGuiOverlay::drawStyleTab() {
+    void ImGuiOverlay::drawStyleTab()
+    {
         ImGui::Text("UI Theme Customization");
         ImGui::Separator();
         ImGui::Spacing();
@@ -15,8 +17,8 @@ namespace vkBasalt {
         hexToRgb(m_pConfig->getOption<std::string>("themeAccent", "47bf59"), accent);
         hexToRgb(m_pConfig->getOption<std::string>("themeText", "d9f2de"), text);
 
-        auto bgAlpha  = m_pConfig->getOption<float>("themeBgAlpha", 0.88f);
-        auto rounding = m_pConfig->getOption<float>("themeRounding", 3.0f);
+        auto bgAlpha      = m_pConfig->getOption<float>("themeBgAlpha", 0.88f);
+        auto rounding     = m_pConfig->getOption<float>("themeRounding", 3.0f);
         bool themeChanged = false;
 
         if (ImGui::ColorEdit3("Background Color", bg)) {

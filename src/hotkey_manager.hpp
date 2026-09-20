@@ -4,7 +4,8 @@
 #include <unordered_map>
 #include "vulkan_include.hpp"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     class Config;
     struct LogicalSwapchain;
     class OverlayManager;
@@ -13,6 +14,5 @@ namespace vkBasalt {
     bool processHotkeysAndReloads(
         std::shared_ptr<Config>& pConfig,
         std::unordered_map<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>>& swapchainMap,
-        OverlayManager& overlayManager
-    );
+        OverlayManager& overlayManager);
 } // namespace vkBasalt

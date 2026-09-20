@@ -12,12 +12,13 @@
 #include "logical_device.hpp"
 #include "shader_decompress.hpp"
 
-
 namespace vkBasalt
 {
     void createShaderModule(LogicalDevice* pLogicalDevice, const std::vector<char>& code, VkShaderModule* shaderModule);
-    void createShaderModule(LogicalDevice* pLogicalDevice, const std::vector<uint32_t>& code, VkShaderModule* shaderModule);
-    void createShaderModule(LogicalDevice* pLogicalDevice, const CompressedShader& shader, VkShaderModule* shaderModule);
+    void
+    createShaderModule(LogicalDevice* pLogicalDevice, const std::vector<uint32_t>& code, VkShaderModule* shaderModule);
+    void
+    createShaderModule(LogicalDevice* pLogicalDevice, const CompressedShader& shader, VkShaderModule* shaderModule);
 } // namespace vkBasalt
 
 #endif // SHADER_HPP_INCLUDED

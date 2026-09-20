@@ -2,7 +2,8 @@
 
 #include <string>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
     // Compute a unique, human-readable game identifier.
     // Uses Steam AppID + game name when available, falls back to exe path + MD5.

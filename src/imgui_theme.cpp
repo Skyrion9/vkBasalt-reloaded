@@ -6,9 +6,11 @@
 #include <algorithm>
 #include <string>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    void hexToRgb(const std::string& hex, float* out) {
+    void hexToRgb(const std::string& hex, float* out)
+    {
         unsigned int r = 0, g = 0, b = 0;
         if (hex.size() >= 6) {
             int parsed = sscanf(hex.c_str(), "%02x%02x%02x", &r, &g, &b);
@@ -22,14 +24,17 @@ namespace vkBasalt {
         out[2] = b / 255.0f;
     }
 
-    std::string rgbToHex(float r, float g, float b) {
+    std::string rgbToHex(float r, float g, float b)
+    {
         char buf[8];
-        snprintf(buf, sizeof(buf), "%02x%02x%02x",
-                static_cast<int>(r * 255.0f + 0.5f), static_cast<int>(g * 255.0f + 0.5f), static_cast<int>(b * 255.0f + 0.5f));
+        snprintf(
+            buf, sizeof(buf), "%02x%02x%02x", static_cast<int>(r * 255.0f + 0.5f), static_cast<int>(g * 255.0f + 0.5f),
+            static_cast<int>(b * 255.0f + 0.5f));
         return std::string(buf);
     }
 
-    void applyThemeFromConfig(Config* pConfig) {
+    void applyThemeFromConfig(Config* pConfig)
+    {
         ImGuiStyle& style = ImGui::GetStyle();
 
         float bg[3], accent[3], text[3];
@@ -90,10 +95,10 @@ namespace vkBasalt {
         style.Colors[ImGuiCol_NavCursor]            = accentBright;
 
         style.WindowRounding = 0.0f;
-        style.ChildRounding = 0.0f;
-        style.FrameRounding = rounding;
-        style.GrabRounding = std::max(0.0f, rounding - 1.0f);
-        style.TabRounding = rounding;
+        style.ChildRounding  = 0.0f;
+        style.FrameRounding  = rounding;
+        style.GrabRounding   = std::max(0.0f, rounding - 1.0f);
+        style.TabRounding    = rounding;
     }
 
 } // namespace vkBasalt

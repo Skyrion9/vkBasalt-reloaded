@@ -16,40 +16,44 @@
 #include <string>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     std::atomic<bool> g_triggerScreenshot{false};
 
     // one at a time is sufficient
-    struct PendingScreenshot {
-        bool active = false;
-        LogicalDevice* device = nullptr;
-        VkCommandBuffer cmdBuf = VK_NULL_HANDLE;
-        VkFence fence = VK_NULL_HANDLE;
-        VkBuffer stagingBuffer = VK_NULL_HANDLE;
-        VkBuffer stagingBufferBefore = VK_NULL_HANDLE;
-        VkDeviceMemory bufferMemory = VK_NULL_HANDLE;
+    struct PendingScreenshot
+    {
+        bool active                       = false;
+        LogicalDevice* device             = nullptr;
+        VkCommandBuffer cmdBuf            = VK_NULL_HANDLE;
+        VkFence fence                     = VK_NULL_HANDLE;
+        VkBuffer stagingBuffer            = VK_NULL_HANDLE;
+        VkBuffer stagingBufferBefore      = VK_NULL_HANDLE;
+        VkDeviceMemory bufferMemory       = VK_NULL_HANDLE;
         VkDeviceMemory bufferMemoryBefore = VK_NULL_HANDLE;
-        VkDeviceSize bufferSize = 0;
-        uint32_t width = 0;
-        uint32_t height = 0;
-        bool saveBefore = false;
+        VkDeviceSize bufferSize           = 0;
+        uint32_t width                    = 0;
+        uint32_t height                   = 0;
+        bool saveBefore                   = false;
         std::string outputDir;
         std::string format;
-        int quality = 95;
-        VkFormat vkFormatAfter = VK_FORMAT_UNDEFINED;
-        ColorSpaceMode csmAfter = ColorSpaceMode::SDR_SRGB;
-        VkFormat vkFormatBefore = VK_FORMAT_UNDEFINED;
+        int quality              = 95;
+        VkFormat vkFormatAfter   = VK_FORMAT_UNDEFINED;
+        ColorSpaceMode csmAfter  = ColorSpaceMode::SDR_SRGB;
+        VkFormat vkFormatBefore  = VK_FORMAT_UNDEFINED;
         ColorSpaceMode csmBefore = ColorSpaceMode::SDR_SRGB;
     };
 
     static PendingScreenshot g_pending;
 
-    bool hasPendingScreenshot() {
+    bool hasPendingScreenshot()
+    {
         return g_pending.active;
     }
 
     // Helpers
-    static std::string formatToExtension(const std::string& format) {
+    static std::string formatToExtension(const std::string& format)
+    {
         if (format == "jpg" || format == "jpeg") return ".jpg";
         if (format == "bmp") return ".bmp";
         if (format == "tga") return ".tga";
@@ -58,27 +62,35 @@ namespace vkBasalt {
         return ".png";
     }
 
-    static std::string generateScreenshotPath(const std::string& baseDir, const std::string& suffix, const std::string& format) {
+    static std::string
+    generateScreenshotPath(const std::string& baseDir, const std::string& suffix, const std::string& format)
+    {
         static std::string gameId = computeGameId();
-        time_t now = time(nullptr);
-        struct tm* t = localtime(&now);
+        time_t now                = time(nullptr);
+        struct tm* t              = localtime(&now);
         char timeBuf[64];
         strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", t);
         std::string filename = std::string(timeBuf) + suffix + "_" + gameId + formatToExtension(format);
         return (std::filesystem::path(baseDir) / filename).string();
     }
 
-    static bool writeImage(const std::string& path, int width, int height,
-                           const std::vector<uint8_t>& pixels, const std::string& format, int quality,
-                           VkFormat vkFormat, ColorSpaceMode csm) {
-
+    static bool writeImage(
+        const std::string& path,
+        int width,
+        int height,
+        const std::vector<uint8_t>& pixels,
+        const std::string& format,
+        int quality,
+        VkFormat vkFormat,
+        ColorSpaceMode csm)
+    {
         size_t pixelCount = static_cast<size_t>(width) * height;
-        int dstChannels = 3;
-        bool wantHDR = (format == "hdr" || format == "exr");
-        
+        int dstChannels   = 3;
+        bool wantHDR      = (format == "hdr" || format == "exr");
+
         std::vector<float> linearPixels;
         std::vector<uint8_t> rgbPixels;
-        
+
         if (wantHDR) {
             linearPixels.resize(pixelCount * dstChannels);
         } else {
@@ -91,14 +103,14 @@ namespace vkBasalt {
                 case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
                 case VK_FORMAT_A2R10G10B10_UNORM_PACK32: {
                     const auto* packed = reinterpret_cast<const uint32_t*>(pixels.data());
-                    bool isA2R10 = (vkFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32);
-                    uint32_t p = packed[i];
-                    r = isA2R10 ? ((p >> 20) & 0x3FF) / 1023.0f : ((p >>  0) & 0x3FF) / 1023.0f;
-                    g = ((p >> 10) & 0x3FF) / 1023.0f;
-                    b = isA2R10 ? ((p >>  0) & 0x3FF) / 1023.0f : ((p >> 20) & 0x3FF) / 1023.0f;
-                    r = decodeColor(r, csm);
-                    g = decodeColor(g, csm);
-                    b = decodeColor(b, csm);
+                    bool isA2R10       = (vkFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32);
+                    uint32_t p         = packed[i];
+                    r                  = isA2R10 ? ((p >> 20) & 0x3FF) / 1023.0f : ((p >> 0) & 0x3FF) / 1023.0f;
+                    g                  = ((p >> 10) & 0x3FF) / 1023.0f;
+                    b                  = isA2R10 ? ((p >> 0) & 0x3FF) / 1023.0f : ((p >> 20) & 0x3FF) / 1023.0f;
+                    r                  = decodeColor(r, csm);
+                    g                  = decodeColor(g, csm);
+                    b                  = decodeColor(b, csm);
                     break;
                 }
                 case VK_FORMAT_R16G16B16A16_SFLOAT:
@@ -109,14 +121,14 @@ namespace vkBasalt {
                     uint32_t channels = getBytesPerPixel(vkFormat) / (isFP32 ? 4 : 2);
                     if (isFP32) {
                         const auto* fpixels = reinterpret_cast<const float*>(pixels.data());
-                        r = fpixels[i * channels + 0];
-                        g = fpixels[i * channels + 1];
-                        b = fpixels[i * channels + 2];
+                        r                   = fpixels[i * channels + 0];
+                        g                   = fpixels[i * channels + 1];
+                        b                   = fpixels[i * channels + 2];
                     } else {
                         const auto* fpixels = reinterpret_cast<const uint16_t*>(pixels.data());
-                        r = halfToFloat(fpixels[i * channels + 0]);
-                        g = halfToFloat(fpixels[i * channels + 1]);
-                        b = halfToFloat(fpixels[i * channels + 2]);
+                        r                   = halfToFloat(fpixels[i * channels + 0]);
+                        g                   = halfToFloat(fpixels[i * channels + 1]);
+                        b                   = halfToFloat(fpixels[i * channels + 2]);
                     }
                     r = decodeColor(r, csm);
                     g = decodeColor(g, csm);
@@ -124,7 +136,7 @@ namespace vkBasalt {
                     break;
                 }
                 default: {
-                    bool isBGR = isBGRFormat(vkFormat);
+                    bool isBGR      = isBGRFormat(vkFormat);
                     uint32_t stride = getBytesPerPixel(vkFormat);
                     uint8_t r8 = 0, g8 = 0, b8 = 0;
                     if (isBGR) {
@@ -159,19 +171,19 @@ namespace vkBasalt {
             for (size_t i = 0; i < pixelCount; i++) {
                 float r = NAN, g = NAN, b = NAN;
                 unpackPixel(i, r, g, b);
-                
+
                 if (isHDRSource) {
                     // Tonemap to compress unbounded HDR range into displayable [0,1]. Using ACES (Narkowicz fit) instead of Reinhard for better highlight roll off and contrast.
                     r = tonemapACES(r);
                     g = tonemapACES(g);
                     b = tonemapACES(b);
                 }
-                
+
                 // Convert linear light to sRGB gamma for the 8-bit file
                 r = linearToSrgb(r);
                 g = linearToSrgb(g);
                 b = linearToSrgb(b);
-                
+
                 rgbPixels[i * 3 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
                 rgbPixels[i * 3 + 1] = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
                 rgbPixels[i * 3 + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
@@ -188,17 +200,17 @@ namespace vkBasalt {
             return stbi_write_hdr(path.c_str(), width, height, dstChannels, linearPixels.data()) != 0;
         } else if (format == "exr") {
             const char* err = nullptr;
-            
+
             EXRHeader header;
             InitEXRHeader(&header);
-            
+
             EXRImage image;
             InitEXRImage(&image);
-            
+
             image.num_channels = 3;
-            image.width = width;
-            image.height = height;
-            
+            image.width        = width;
+            image.height       = height;
+
             // Separate interleaved pixels into planar channels for tinyexr
             std::vector<float> channelR(pixelCount), channelG(pixelCount), channelB(pixelCount);
             for (size_t i = 0; i < pixelCount; i++) {
@@ -206,27 +218,27 @@ namespace vkBasalt {
                 channelG[i] = linearPixels[i * 3 + 1];
                 channelB[i] = linearPixels[i * 3 + 2];
             }
-            
+
             float* image_ptr[3];
             // OpenEXR standard channel order is B, G, R
             image_ptr[0] = channelB.data();
             image_ptr[1] = channelG.data();
             image_ptr[2] = channelR.data();
             image.images = reinterpret_cast<unsigned char**>(image_ptr);
-            
+
             header.num_channels = 3;
-            header.channels = static_cast<EXRChannelInfo*>(malloc(sizeof(EXRChannelInfo) * 3));
+            header.channels     = static_cast<EXRChannelInfo*>(malloc(sizeof(EXRChannelInfo) * 3));
             snprintf(header.channels[0].name, 256, "B");
             snprintf(header.channels[1].name, 256, "G");
             snprintf(header.channels[2].name, 256, "R");
-            
-            header.pixel_types = static_cast<int*>(malloc(sizeof(int) * 3));
+
+            header.pixel_types           = static_cast<int*>(malloc(sizeof(int) * 3));
             header.requested_pixel_types = static_cast<int*>(malloc(sizeof(int) * 3));
             for (int i = 0; i < 3; i++) {
-                header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
+                header.pixel_types[i]           = TINYEXR_PIXELTYPE_FLOAT;
                 header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_HALF; // 16 bit half-float
             }
-            
+
             // Explicitly set Rec.709/sRGB chromaticities to prevent viewers from misinterpreting the color space. Format: 8 floats (red_xy, green_xy, blue_xy, white_xy)
             float chromaticities[8] = {
                 0.6400f, 0.3300f, // Red
@@ -234,21 +246,21 @@ namespace vkBasalt {
                 0.1500f, 0.0600f, // Blue
                 0.3127f, 0.3290f  // White (D65)
             };
-            
+
             header.num_custom_attributes = 1;
-            header.custom_attributes = static_cast<EXRAttribute*>(malloc(sizeof(EXRAttribute)));
+            header.custom_attributes     = static_cast<EXRAttribute*>(malloc(sizeof(EXRAttribute)));
             snprintf(header.custom_attributes[0].name, 256, "chromaticities");
             snprintf(header.custom_attributes[0].type, 256, "chromaticities");
             header.custom_attributes[0].value = reinterpret_cast<unsigned char*>(chromaticities);
-            header.custom_attributes[0].size = sizeof(chromaticities);
-            
+            header.custom_attributes[0].size  = sizeof(chromaticities);
+
             int ret = SaveEXRImageToFile(&image, &header, path.c_str(), &err);
-            
+
             free(header.channels);
             free(header.pixel_types);
             free(header.requested_pixel_types);
             free(header.custom_attributes);
-            
+
             if (ret != TINYEXR_SUCCESS) {
                 if (err) {
                     Logger::err(std::string("EXR write failed: ") + err);
@@ -261,10 +273,11 @@ namespace vkBasalt {
         return stbi_write_png(path.c_str(), width, height, dstChannels, rgbPixels.data(), width * dstChannels) != 0;
     }
 
-    static uint32_t findHostVisibleMemoryType(LogicalDevice* pDevice, uint32_t typeBits) {
+    static uint32_t findHostVisibleMemoryType(LogicalDevice* pDevice, uint32_t typeBits)
+    {
         for (uint32_t i = 0; i < pDevice->memoryProperties.memoryTypeCount; i++) {
-            if ((typeBits & (1 << i)) &&
-                (pDevice->memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+            if ((typeBits & (1 << i))
+                && (pDevice->memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
                 return i;
             }
         }
@@ -272,11 +285,16 @@ namespace vkBasalt {
     }
 
     // captureScreenshot: submit GPU copy, return immediately
-    void captureScreenshot(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
-                           uint32_t imageIndex, bool saveBeforeAfter,
-                           const std::string& outputPath,
-                           const std::string& format, int quality,
-                           ColorSpaceMode  /*csm*/) {
+    void captureScreenshot(
+        LogicalDevice* pDevice,
+        LogicalSwapchain* pSwapchain,
+        uint32_t imageIndex,
+        bool saveBeforeAfter,
+        const std::string& outputPath,
+        const std::string& format,
+        int quality,
+        ColorSpaceMode /*csm*/)
+    {
         if (!pDevice || !pSwapchain) return;
         if (g_pending.active) {
             Logger::warn("Screenshot already in progress, skipping.");
@@ -286,7 +304,7 @@ namespace vkBasalt {
         VkExtent2D extent = pSwapchain->imageExtent;
         VkFormat vkFormat = pSwapchain->format;
 
-        uint32_t bytesPerPixel = getBytesPerPixel(vkFormat);
+        uint32_t bytesPerPixel  = getBytesPerPixel(vkFormat);
         VkDeviceSize bufferSize = static_cast<VkDeviceSize>(extent.width) * extent.height * bytesPerPixel;
 
         std::string dir = outputPath;
@@ -302,10 +320,10 @@ namespace vkBasalt {
 
         // Create staging buffers
         VkBufferCreateInfo bufferInfo = {};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.sType              = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size               = bufferSize;
+        bufferInfo.usage              = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
 
         if (pDevice->vkd.CreateBuffer(pDevice->device, &bufferInfo, nullptr, &g_pending.stagingBuffer) != VK_SUCCESS) {
             Logger::err("Screenshot: Failed to create staging buffer");
@@ -316,9 +334,9 @@ namespace vkBasalt {
         VkMemoryRequirements memReqs;
         pDevice->vkd.GetBufferMemoryRequirements(pDevice->device, g_pending.stagingBuffer, &memReqs);
         VkMemoryAllocateInfo allocInfo = {};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memReqs.size;
-        allocInfo.memoryTypeIndex = findHostVisibleMemoryType(pDevice, memReqs.memoryTypeBits);
+        allocInfo.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize       = memReqs.size;
+        allocInfo.memoryTypeIndex      = findHostVisibleMemoryType(pDevice, memReqs.memoryTypeBits);
 
         if (pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &g_pending.bufferMemory) != VK_SUCCESS) {
             pDevice->vkd.DestroyBuffer(pDevice->device, g_pending.stagingBuffer, nullptr);
@@ -329,31 +347,35 @@ namespace vkBasalt {
 
         // Create before staging buffer if needed. If fakeImages is empty (passthrough mode), the game renders directly to real images.
         // We use the real image as the "before" source, but skip the copy if it's identical to the "after" image.
-        bool needBefore = saveBeforeAfter;
+        bool needBefore     = saveBeforeAfter;
         VkImage beforeImage = VK_NULL_HANDLE;
         if (!pSwapchain->fakeImages.empty() && imageIndex < pSwapchain->fakeImages.size()) {
             beforeImage = pSwapchain->fakeImages[imageIndex];
         } else {
             beforeImage = pSwapchain->images[imageIndex];
         }
-        
+
         // If before and after are the exact same image, skip the redundant GPU copy
         if (needBefore && beforeImage == pSwapchain->images[imageIndex]) {
             needBefore = false;
         }
 
         if (needBefore) {
-            if (pDevice->vkd.CreateBuffer(pDevice->device, &bufferInfo, nullptr, &g_pending.stagingBufferBefore) == VK_SUCCESS) {
+            if (pDevice->vkd.CreateBuffer(pDevice->device, &bufferInfo, nullptr, &g_pending.stagingBufferBefore)
+                == VK_SUCCESS) {
                 VkMemoryRequirements memReqsBefore;
-                pDevice->vkd.GetBufferMemoryRequirements(pDevice->device, g_pending.stagingBufferBefore, &memReqsBefore);
-                allocInfo.allocationSize = memReqsBefore.size;
+                pDevice->vkd.GetBufferMemoryRequirements(
+                    pDevice->device, g_pending.stagingBufferBefore, &memReqsBefore);
+                allocInfo.allocationSize  = memReqsBefore.size;
                 allocInfo.memoryTypeIndex = findHostVisibleMemoryType(pDevice, memReqsBefore.memoryTypeBits);
-                if (pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &g_pending.bufferMemoryBefore) == VK_SUCCESS) {
-                    pDevice->vkd.BindBufferMemory(pDevice->device, g_pending.stagingBufferBefore, g_pending.bufferMemoryBefore, 0);
+                if (pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &g_pending.bufferMemoryBefore)
+                    == VK_SUCCESS) {
+                    pDevice->vkd.BindBufferMemory(
+                        pDevice->device, g_pending.stagingBufferBefore, g_pending.bufferMemoryBefore, 0);
                 } else {
                     pDevice->vkd.DestroyBuffer(pDevice->device, g_pending.stagingBufferBefore, nullptr);
                     g_pending.stagingBufferBefore = VK_NULL_HANDLE;
-                    needBefore = false;
+                    needBefore                    = false;
                 }
             } else {
                 needBefore = false;
@@ -362,118 +384,145 @@ namespace vkBasalt {
 
         // Record command buffer
         VkCommandBufferAllocateInfo cmdAllocInfo = {};
-        cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        cmdAllocInfo.commandPool = pDevice->commandPool;
-        cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        cmdAllocInfo.commandBufferCount = 1;
+        cmdAllocInfo.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cmdAllocInfo.commandPool                 = pDevice->commandPool;
+        cmdAllocInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cmdAllocInfo.commandBufferCount          = 1;
 
         VkCommandBuffer cmdBuf = VK_NULL_HANDLE;
         pDevice->vkd.AllocateCommandBuffers(pDevice->device, &cmdAllocInfo, &cmdBuf);
 
         VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        beginInfo.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         pDevice->vkd.BeginCommandBuffer(cmdBuf, &beginInfo);
 
         VkBufferImageCopy region = {};
-        region.bufferOffset = 0;
-        region.bufferRowLength = 0;
+        region.bufferOffset      = 0;
+        region.bufferRowLength   = 0;
         region.bufferImageHeight = 0;
-        region.imageSubresource = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel=0, .baseArrayLayer=0, .layerCount=1};
-        region.imageOffset = {.x=0, .y=0, .z=0};
-        region.imageExtent = {.width=extent.width, .height=extent.height, .depth=1};
+        region.imageSubresource  = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1};
+        region.imageOffset = {.x = 0, .y = 0, .z = 0};
+        region.imageExtent = {.width = extent.width, .height = extent.height, .depth = 1};
 
         // Copy after image (post processed)
         {
             VkImageMemoryBarrier toTransfer = {};
-            toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toTransfer.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            toTransfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toTransfer.image = pSwapchain->images[imageIndex];
-            toTransfer.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
-            pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
-            pDevice->vkd.CmdCopyImageToBuffer(cmdBuf, pSwapchain->images[imageIndex],
-                                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g_pending.stagingBuffer, 1, &region);
+            toTransfer.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toTransfer.srcAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+            toTransfer.dstAccessMask        = VK_ACCESS_TRANSFER_READ_BIT;
+            toTransfer.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            toTransfer.newLayout            = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            toTransfer.image                = pSwapchain->images[imageIndex];
+            toTransfer.subresourceRange     = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1};
+            pDevice->vkd.CmdPipelineBarrier(
+                cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr,
+                1, &toTransfer);
+            pDevice->vkd.CmdCopyImageToBuffer(
+                cmdBuf, pSwapchain->images[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g_pending.stagingBuffer,
+                1, &region);
             VkImageMemoryBarrier toPresent = {};
-            toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            toPresent.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toPresent.image = pSwapchain->images[imageIndex];
-            toPresent.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
-            pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &toPresent);
+            toPresent.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toPresent.srcAccessMask        = VK_ACCESS_TRANSFER_READ_BIT;
+            toPresent.dstAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+            toPresent.oldLayout            = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            toPresent.newLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            toPresent.image                = pSwapchain->images[imageIndex];
+            toPresent.subresourceRange     = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1};
+            pDevice->vkd.CmdPipelineBarrier(
+                cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr,
+                1, &toPresent);
         }
 
         // Copy before image (game output) if requested
         if (needBefore) {
             VkImageMemoryBarrier toTransfer = {};
-            toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toTransfer.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            toTransfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toTransfer.image = beforeImage;
-            toTransfer.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
-            pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
-            pDevice->vkd.CmdCopyImageToBuffer(cmdBuf, beforeImage,
-                                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g_pending.stagingBufferBefore, 1, &region);
+            toTransfer.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toTransfer.srcAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+            toTransfer.dstAccessMask        = VK_ACCESS_TRANSFER_READ_BIT;
+            toTransfer.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            toTransfer.newLayout            = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            toTransfer.image                = beforeImage;
+            toTransfer.subresourceRange     = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1};
+            pDevice->vkd.CmdPipelineBarrier(
+                cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr,
+                1, &toTransfer);
+            pDevice->vkd.CmdCopyImageToBuffer(
+                cmdBuf, beforeImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g_pending.stagingBufferBefore, 1, &region);
             VkImageMemoryBarrier toPresent = {};
-            toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            toPresent.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toPresent.image = beforeImage;
-            toPresent.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
-            pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &toPresent);
+            toPresent.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toPresent.srcAccessMask        = VK_ACCESS_TRANSFER_READ_BIT;
+            toPresent.dstAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+            toPresent.oldLayout            = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            toPresent.newLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            toPresent.image                = beforeImage;
+            toPresent.subresourceRange     = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1};
+            pDevice->vkd.CmdPipelineBarrier(
+                cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr,
+                1, &toPresent);
         }
 
         pDevice->vkd.EndCommandBuffer(cmdBuf);
 
         // Create fence
         VkFenceCreateInfo fenceInfo = {};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         pDevice->vkd.CreateFence(pDevice->device, &fenceInfo, nullptr, &g_pending.fence);
 
         // Submit and return immediately (no wait)
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        VkSubmitInfo submitInfo       = {};
+        submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cmdBuf;
+        submitInfo.pCommandBuffers    = &cmdBuf;
         pDevice->vkd.QueueSubmit(pDevice->queue, 1, &submitInfo, g_pending.fence);
 
         g_pending.cmdBuf = cmdBuf;
 
         // Fill pending state
-        g_pending.device = pDevice;
+        g_pending.device     = pDevice;
         g_pending.bufferSize = bufferSize;
-        g_pending.width = extent.width;
-        g_pending.height = extent.height;
+        g_pending.width      = extent.width;
+        g_pending.height     = extent.height;
         g_pending.saveBefore = needBefore;
-        g_pending.outputDir = dir;
-        g_pending.format = format;
-        g_pending.quality = quality;
-        
+        g_pending.outputDir  = dir;
+        g_pending.format     = format;
+        g_pending.quality    = quality;
+
         // Store separate formats/colorspaces for before/after because the effect chain may convert SDR -> HDR
-        g_pending.vkFormatAfter = pSwapchain->format;
-        g_pending.csmAfter = getColorSpaceMode(pSwapchain->format, pSwapchain->colorSpace);
+        g_pending.vkFormatAfter  = pSwapchain->format;
+        g_pending.csmAfter       = getColorSpaceMode(pSwapchain->format, pSwapchain->colorSpace);
         g_pending.vkFormatBefore = pSwapchain->sourceFormat;
-        g_pending.csmBefore = getColorSpaceMode(pSwapchain->sourceFormat, pSwapchain->sourceColorSpace);
-        
+        g_pending.csmBefore      = getColorSpaceMode(pSwapchain->sourceFormat, pSwapchain->sourceColorSpace);
+
         g_pending.active = true;
 
         Logger::debug("Screenshot capture submitted (async).");
     }
 
     // checks fence, write file
-    bool processPendingScreenshot() {
+    bool processPendingScreenshot()
+    {
         if (!g_pending.active) return false;
 
         LogicalDevice* pDevice = g_pending.device;
@@ -490,13 +539,16 @@ namespace vkBasalt {
         // Write after screenshot
         {
             void* mapped = nullptr;
-            if (pDevice->vkd.MapMemory(pDevice->device, g_pending.bufferMemory, 0, g_pending.bufferSize, 0, &mapped) == VK_SUCCESS) {
+            if (pDevice->vkd.MapMemory(pDevice->device, g_pending.bufferMemory, 0, g_pending.bufferSize, 0, &mapped)
+                == VK_SUCCESS) {
                 std::vector<uint8_t> pixels(g_pending.bufferSize);
                 std::memcpy(pixels.data(), mapped, g_pending.bufferSize);
                 pDevice->vkd.UnmapMemory(pDevice->device, g_pending.bufferMemory);
 
                 std::string path = generateScreenshotPath(g_pending.outputDir, "_after", g_pending.format);
-                if (writeImage(path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality, g_pending.vkFormatAfter, g_pending.csmAfter)) {
+                if (writeImage(
+                        path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality,
+                        g_pending.vkFormatAfter, g_pending.csmAfter)) {
                     Logger::info("Screenshot saved: " + path);
                     wroteSomething = true;
                 } else {
@@ -508,13 +560,17 @@ namespace vkBasalt {
         // Write before screenshot
         if (g_pending.saveBefore && g_pending.stagingBufferBefore != VK_NULL_HANDLE) {
             void* mapped = nullptr;
-            if (pDevice->vkd.MapMemory(pDevice->device, g_pending.bufferMemoryBefore, 0, g_pending.bufferSize, 0, &mapped) == VK_SUCCESS) {
+            if (pDevice->vkd.MapMemory(
+                    pDevice->device, g_pending.bufferMemoryBefore, 0, g_pending.bufferSize, 0, &mapped)
+                == VK_SUCCESS) {
                 std::vector<uint8_t> pixels(g_pending.bufferSize);
                 std::memcpy(pixels.data(), mapped, g_pending.bufferSize);
                 pDevice->vkd.UnmapMemory(pDevice->device, g_pending.bufferMemoryBefore);
 
                 std::string path = generateScreenshotPath(g_pending.outputDir, "_before", g_pending.format);
-                if (writeImage(path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality, g_pending.vkFormatBefore, g_pending.csmBefore)) {
+                if (writeImage(
+                        path, g_pending.width, g_pending.height, pixels, g_pending.format, g_pending.quality,
+                        g_pending.vkFormatBefore, g_pending.csmBefore)) {
                     Logger::info("Before screenshot saved: " + path);
                     wroteSomething = true;
                 } else {

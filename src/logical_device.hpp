@@ -10,24 +10,24 @@ namespace vkBasalt
 {
     struct LogicalDevice
     {
-        DeviceDispatch                   vkd;
-        InstanceDispatch                 vki;
-        VkDevice                         device{};
-        VkPhysicalDevice                 physicalDevice{};
-        VkInstance                       instance{};
-        VkQueue                          queue{};
-        uint32_t                         queueFamilyIndex{};
-        VkCommandPool                    commandPool{};
-        bool                             supportsMutableFormat{};
-        bool                             supportsHdrMetadata = false;
-        VkFormat                         swapchainFormat = VK_FORMAT_UNDEFINED;
-        std::vector<VkImage>             depthImages;
-        std::vector<VkFormat>            depthFormats;
-        std::vector<VkImageView>         depthImageViews;
+        DeviceDispatch vkd;
+        InstanceDispatch vki;
+        VkDevice device{};
+        VkPhysicalDevice physicalDevice{};
+        VkInstance instance{};
+        VkQueue queue{};
+        uint32_t queueFamilyIndex{};
+        VkCommandPool commandPool{};
+        bool supportsMutableFormat{};
+        bool supportsHdrMetadata = false;
+        VkFormat swapchainFormat = VK_FORMAT_UNDEFINED;
+        std::vector<VkImage> depthImages;
+        std::vector<VkFormat> depthFormats;
+        std::vector<VkImageView> depthImageViews;
         VkPhysicalDeviceMemoryProperties memoryProperties{};
-        VkPhysicalDeviceProperties       physicalDeviceProperties{};
-        VkPipelineCache pipelineCache =  VK_NULL_HANDLE;
-        std::string                      pipelineCachePath;
+        VkPhysicalDeviceProperties physicalDeviceProperties{};
+        VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+        std::string pipelineCachePath;
     };
 } // namespace vkBasalt
 

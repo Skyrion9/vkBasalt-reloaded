@@ -19,13 +19,14 @@ namespace vkBasalt
 
     struct LogicalSwapchain;
 
-    void writeCommandBuffers(LogicalDevice*                                               pLogicalDevice,
-                             LogicalSwapchain*                                            pLogicalSwapchain,
-                             const std::vector<std::shared_ptr<vkBasalt::Effect>>&        effects,
-                             VkImage                                                      depthImage,
-                             VkImageView                                                  depthImageView,
-                             VkFormat                                                     depthFormat,
-                             std::vector<VkCommandBuffer>                                 commandBuffers);
+    void writeCommandBuffers(
+        LogicalDevice* pLogicalDevice,
+        LogicalSwapchain* pLogicalSwapchain,
+        const std::vector<std::shared_ptr<vkBasalt::Effect>>& effects,
+        VkImage depthImage,
+        VkImageView depthImageView,
+        VkFormat depthFormat,
+        std::vector<VkCommandBuffer> commandBuffers);
 
     std::vector<VkSemaphore> createSemaphores(LogicalDevice* pLogicalDevice, uint32_t count);
 } // namespace vkBasalt

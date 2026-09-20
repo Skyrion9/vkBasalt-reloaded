@@ -29,7 +29,7 @@ namespace vkBasalt
     {
     public:
         std::vector<unsigned char> colorCube;
-        int                        size;
+        int size;
 
         LutCube(const std::string& file);
         LutCube();

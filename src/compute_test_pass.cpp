@@ -3,57 +3,50 @@
 #include "shader_sources.hpp"
 #include "logger.hpp"
 
-
 namespace vkBasalt
 {
-    ComputeTestPass::ComputeTestPass(LogicalDevice* pLogicalDevice, VkExtent2D extent,
-                                     const std::vector<VkImage>& inputImages)
-        : SimpleComputePass(pLogicalDevice)
-        , m_extent(extent)
-        , m_inputImages(inputImages), m_histogramBuffer(createDeviceLocalBuffer(256 * sizeof(uint32_t),
-                                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+    ComputeTestPass::ComputeTestPass(
+        LogicalDevice* pLogicalDevice, VkExtent2D extent, const std::vector<VkImage>& inputImages) :
+        SimpleComputePass(pLogicalDevice), m_extent(extent), m_inputImages(inputImages),
+        m_histogramBuffer(createDeviceLocalBuffer(256 * sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
     {
-        m_specData = { .width=extent.width, .height=extent.height };
+        m_specData       = {.width = extent.width, .height = extent.height};
         m_specMapEntries = {
-            {.constantID=0, .offset=offsetof(SpecData, width), .size=sizeof(uint32_t)},
-            {.constantID=1, .offset=offsetof(SpecData, height), .size=sizeof(uint32_t)}
-        };
-        m_specInfo = {};
+            {.constantID = 0, .offset = offsetof(SpecData, width), .size = sizeof(uint32_t)},
+            {.constantID = 1, .offset = offsetof(SpecData, height), .size = sizeof(uint32_t)}};
+        m_specInfo               = {};
         m_specInfo.mapEntryCount = static_cast<uint32_t>(m_specMapEntries.size());
-        m_specInfo.pMapEntries = m_specMapEntries.data();
-        m_specInfo.dataSize = sizeof(SpecData);
-        m_specInfo.pData = &m_specData;
+        m_specInfo.pMapEntries   = m_specMapEntries.data();
+        m_specInfo.dataSize      = sizeof(SpecData);
+        m_specInfo.pData         = &m_specData;
 
         // Histogram: 256 bins of uint32_t
-        
 
         // Sampler
         VkSamplerCreateInfo samplerInfo = {};
-        samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        samplerInfo.magFilter = VK_FILTER_NEAREST;
-        samplerInfo.minFilter = VK_FILTER_NEAREST;
-        samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        samplerInfo.maxLod = 1.0f;
+        samplerInfo.sType               = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        samplerInfo.magFilter           = VK_FILTER_NEAREST;
+        samplerInfo.minFilter           = VK_FILTER_NEAREST;
+        samplerInfo.addressModeU        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeV        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeW        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.maxLod              = 1.0f;
         pLogicalDevice->vkd.CreateSampler(pLogicalDevice->device, &samplerInfo, nullptr, &m_sampler);
 
         // Input image views
         m_inputViews.resize(m_inputImages.size());
         for (size_t i = 0; i < m_inputImages.size(); i++)
             m_inputViews[i] = createImageView(m_inputImages[i], VK_FORMAT_UNDEFINED);
-            // Note: VK_FORMAT_UNDEFINED in view inherits the image's format. If createImageView requires an explicit format, pass the swapchain format instead.
+        // Note: VK_FORMAT_UNDEFINED in view inherits the image's format. If createImageView requires an explicit format, pass the swapchain format instead.
 
         init();
     }
 
     ComputeTestPass::~ComputeTestPass()
     {
-        if (m_sampler != VK_NULL_HANDLE)
-            pLogicalDevice->vkd.DestroySampler(pLogicalDevice->device, m_sampler, nullptr);
+        if (m_sampler != VK_NULL_HANDLE) pLogicalDevice->vkd.DestroySampler(pLogicalDevice->device, m_sampler, nullptr);
         for (auto v : m_inputViews)
-            if (v != VK_NULL_HANDLE)
-                pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, v, nullptr);
+            if (v != VK_NULL_HANDLE) pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, v, nullptr);
         // m_histogramBuffer memory is leaked here, track and free m_histogramMemory. The buffer itself is destroyed via the base class or here
         if (m_histogramBuffer != VK_NULL_HANDLE)
             pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, m_histogramBuffer, nullptr);
@@ -61,44 +54,53 @@ namespace vkBasalt
             pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, m_histogramMemory, nullptr);
     }
 
-    const std::vector<uint32_t>& ComputeTestPass::getShaderCode() const {
+    const std::vector<uint32_t>& ComputeTestPass::getShaderCode() const
+    {
         return decompressShaderCached(compute_test_comp);
     }
 
     std::vector<VkDescriptorSetLayoutBinding> ComputeTestPass::getBindings() const
     {
         return {
-            {.binding=0, .descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
-            {.binding=1, .descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         .descriptorCount=1, .stageFlags=VK_SHADER_STAGE_COMPUTE_BIT, .pImmutableSamplers=nullptr},
+            {.binding            = 0,
+             .descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+             .descriptorCount    = 1,
+             .stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT,
+             .pImmutableSamplers = nullptr},
+            {.binding            = 1,
+             .descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+             .descriptorCount    = 1,
+             .stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT,
+             .pImmutableSamplers = nullptr},
         };
     }
 
     void ComputeTestPass::writeDescriptors(VkDescriptorSet set, uint32_t imageIndex)
     {
         VkDescriptorImageInfo imageInfo = {};
-        imageInfo.sampler = m_sampler;
-        imageInfo.imageView = m_inputViews[imageIndex];
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.sampler               = m_sampler;
+        imageInfo.imageView             = m_inputViews[imageIndex];
+        imageInfo.imageLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
         VkDescriptorBufferInfo bufferInfo = {};
-        bufferInfo.buffer = m_histogramBuffer;
-        bufferInfo.offset = 0;
-        bufferInfo.range = VK_WHOLE_SIZE;
+        bufferInfo.buffer                 = m_histogramBuffer;
+        bufferInfo.offset                 = 0;
+        bufferInfo.range                  = VK_WHOLE_SIZE;
 
         VkWriteDescriptorSet writes[2] = {};
-        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[0].dstSet = set;
-        writes[0].dstBinding = 0;
-        writes[0].descriptorCount = 1;
-        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writes[0].pImageInfo = &imageInfo;
+        writes[0].sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet               = set;
+        writes[0].dstBinding           = 0;
+        writes[0].descriptorCount      = 1;
+        writes[0].descriptorType       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[0].pImageInfo           = &imageInfo;
 
-        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[1].dstSet = set;
-        writes[1].dstBinding = 1;
+        writes[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet          = set;
+        writes[1].dstBinding      = 1;
         writes[1].descriptorCount = 1;
-        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writes[1].pBufferInfo = &bufferInfo;
+        writes[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[1].pBufferInfo     = &bufferInfo;
 
         pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 2, writes, 0, nullptr);
     }

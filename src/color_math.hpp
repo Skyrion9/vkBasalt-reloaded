@@ -2,7 +2,8 @@
 
 #include "format.hpp"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     // FP16 (Half Float) to FP32 conversion for scRGB / HDR formats
     float halfToFloat(uint16_t h);
 
@@ -10,7 +11,7 @@ namespace vkBasalt {
     float srgbToLinear(float c);
     float pqToLinear(float c);
     float hlgToLinear(float c);
-    
+
     // Transfer Functions (Encode: Linear -> Encoded)
     float linearToSrgb(float c);
     float linearToPq(float c);
@@ -18,7 +19,7 @@ namespace vkBasalt {
 
     // Unified Dispatchers Decodes an encoded pixel value to linear light based on the active color space.
     float decodeColor(float c, ColorSpaceMode csm);
-    
+
     // Encodes a linear light pixel value to the target color space.
     float encodeColor(float c, ColorSpaceMode csm);
 
@@ -27,8 +28,8 @@ namespace vkBasalt {
     float tonemapACES(float c);
 
     // Luma Coefficients
-    static const float LUMA_REC709[3]  = { 0.2126f, 0.7152f, 0.0722f };
-    static const float LUMA_REC2020[3] = { 0.2627f, 0.6780f, 0.0593f };
+    static const float LUMA_REC709[3]  = {0.2126f, 0.7152f, 0.0722f};
+    static const float LUMA_REC2020[3] = {0.2627f, 0.6780f, 0.0593f};
 
     // Gamut Mapping (Rec.709 <-> Rec.2020) Operates on linear light RGB
     void rec709ToRec2020(float& r, float& g, float& b);

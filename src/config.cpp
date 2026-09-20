@@ -25,22 +25,24 @@ namespace vkBasalt
     std::atomic<bool> g_configDirty{true};
 
     // Helpers
-    static std::string trim(const std::string& s) {
+    static std::string trim(const std::string& s)
+    {
         size_t start = s.find_first_not_of(" \t\r\n");
         if (start == std::string::npos) return "";
         size_t end = s.find_last_not_of(" \t\r\n");
         return s.substr(start, end - start + 1);
     }
 
-    static std::string baseDir() {
+    static std::string baseDir()
+    {
         const char* home = std::getenv("HOME");
         std::string root = home ? home : ".";
         return root + "/.config/vkBasalt-reloaded";
     }
 
-    static bool writeConfigFile(const std::string& path,
-                                const std::string& header,
-                                const std::unordered_map<std::string, std::string>& data) {
+    static bool writeConfigFile(
+        const std::string& path, const std::string& header, const std::unordered_map<std::string, std::string>& data)
+    {
         std::ofstream out(path);
         if (!out.good()) return false;
         out << header;
@@ -50,13 +52,14 @@ namespace vkBasalt
     }
 
     // Construction / paths
-    Config::Config() {
+    Config::Config()
+    {
         ensureDirectories();
 
         m_globalPath = baseDir() + "/vkBasalt-reloaded.conf";
 
         std::string gameId = vkBasalt::computeGameId();
-        m_gamePath = baseDir() + "/games/" + gameId + ".conf";
+        m_gamePath         = baseDir() + "/games/" + gameId + ".conf";
 
         loadGlobal();
         loadPerGame();
@@ -69,8 +72,8 @@ namespace vkBasalt
                 if (m.find("hdrCalibrationMode") == m.end()) {
                     // Match the exact boolean aliases accepted by Config::parseOption()
                     const std::string& val = it->second;
-                    bool wasOn = (val == "True" || val == "true" || val == "1" || 
-                                  val == "on"   || val == "yes"  || val == "Yes");
+                    bool wasOn =
+                        (val == "True" || val == "true" || val == "1" || val == "on" || val == "yes" || val == "Yes");
                     m["hdrCalibrationMode"] = wasOn ? "manual" : "off";
                 }
                 // Unconditionally erase the deprecated key from memory so it doesn't get written back to disk on the next UI save.
@@ -97,23 +100,23 @@ namespace vkBasalt
         Logger::debug("Config pergame: " + m_gamePath);
     }
 
-    Config::Config(const Config& other) : m_global(other.m_global), m_game(other.m_game), m_globalPath(other.m_globalPath), m_gamePath(other.m_gamePath) {
+    Config::Config(const Config& other) :
+        m_global(other.m_global), m_game(other.m_game), m_globalPath(other.m_globalPath), m_gamePath(other.m_gamePath)
+    {
         std::scoped_lock lock(other.m_mutex);
-        
-        
-        
-        
     }
 
     Config::~Config() = default;
 
-    void Config::ensureDirectories() {
+    void Config::ensureDirectories()
+    {
         std::error_code ec;
         std::filesystem::create_directories(baseDir() + "/games", ec);
     }
 
     // Loading
-    void Config::loadGlobal() {
+    void Config::loadGlobal()
+    {
         if (!std::filesystem::exists(m_globalPath)) {
             createDefaultGlobal();
             return;
@@ -125,7 +128,8 @@ namespace vkBasalt
         }
     }
 
-    void Config::loadPerGame() {
+    void Config::loadPerGame()
+    {
         if (!std::filesystem::exists(m_gamePath)) {
             std::ofstream out(m_gamePath);
             if (out.good()) {
@@ -142,7 +146,8 @@ namespace vkBasalt
         }
     }
 
-    void Config::createDefaultGlobal() {
+    void Config::createDefaultGlobal()
+    {
         std::ofstream out(m_globalPath);
         if (!out.good()) return;
         DisplayHdrInfo defaultDetected = detectDisplayHdrCalibration(this);
@@ -186,14 +191,16 @@ namespace vkBasalt
         Logger::info("created default global config at " + m_globalPath);
     }
 
-    void Config::readConfigFile(std::ifstream& stream, std::unordered_map<std::string, std::string>& outMap) {
+    void Config::readConfigFile(std::ifstream& stream, std::unordered_map<std::string, std::string>& outMap)
+    {
         std::string line;
         while (std::getline(stream, line)) {
             readConfigLine(line, outMap);
         }
     }
 
-    void Config::readConfigLine(const std::string& line, std::unordered_map<std::string, std::string>& outMap) {
+    void Config::readConfigLine(const std::string& line, std::unordered_map<std::string, std::string>& outMap)
+    {
         std::string key;
         std::string value;
 
@@ -207,18 +214,15 @@ namespace vkBasalt
                 key += newChar;
         };
 
-        for (const char& nextChar : line)
-        {
-            if (inQuotes)
-            {
+        for (const char& nextChar : line) {
+            if (inQuotes) {
                 if (nextChar == '"')
                     inQuotes = false;
                 else
                     appendChar(nextChar);
                 continue;
             }
-            switch (nextChar)
-            {
+            switch (nextChar) {
                 case '#':
                     if (!foundEquals || key.empty() || value.empty()) goto BREAK;
                     appendChar(nextChar);
@@ -233,61 +237,74 @@ namespace vkBasalt
 
     BREAK:
 
-        key = trim(key);
+        key   = trim(key);
         value = trim(value);
 
-        if (!key.empty() && !value.empty())
-        {
+        if (!key.empty() && !value.empty()) {
             Logger::info(key + " = " + value);
             outMap[key] = value;
         }
     }
 
     // Lookup / mutation
-    bool Config::findOption(const std::string& option, std::string& outValue) const {
+    bool Config::findOption(const std::string& option, std::string& outValue) const
+    {
         std::scoped_lock lock(m_mutex);
         auto it = m_game.find(option);
-        if (it != m_game.end())   { outValue = it->second; return true; }
+        if (it != m_game.end()) {
+            outValue = it->second;
+            return true;
+        }
         it = m_global.find(option);
-        if (it != m_global.end()) { outValue = it->second; return true; }
+        if (it != m_global.end()) {
+            outValue = it->second;
+            return true;
+        }
         return false;
     }
 
-    void Config::setOption(const std::string& option, const std::string& value) {
+    void Config::setOption(const std::string& option, const std::string& value)
+    {
         std::scoped_lock lock(m_mutex);
         if (m_game[option] != value) {
             m_game[option] = value;
-            g_configDirty = true;
+            g_configDirty  = true;
         }
     }
 
-    void Config::setGlobalOption(const std::string& option, const std::string& value) {
+    void Config::setGlobalOption(const std::string& option, const std::string& value)
+    {
         std::scoped_lock lock(m_mutex);
         if (m_global[option] != value) {
             m_global[option] = value;
-            g_configDirty = true;
+            g_configDirty    = true;
         }
     }
 
-    bool Config::saveGlobal() {
+    bool Config::saveGlobal()
+    {
         std::scoped_lock lock(m_mutex);
         return writeConfigFile(m_globalPath, "# vkBasalt-reloaded global config (baseline)\n", m_global);
     }
 
-    bool Config::savePerGame() {
+    bool Config::savePerGame()
+    {
         std::scoped_lock lock(m_mutex);
-        return writeConfigFile(m_gamePath,
+        return writeConfigFile(
+            m_gamePath,
             "# vkBasalt-reloaded per-game config\n"
             "# Only overridden keys are stored here. Missing keys fall back to the global config.\n",
             m_game);
     }
 
-    bool Config::hasPerGameOption(const std::string& option) const {
+    bool Config::hasPerGameOption(const std::string& option) const
+    {
         std::scoped_lock lock(m_mutex);
         return m_game.find(option) != m_game.end();
     }
 
-    void Config::removePerGameOption(const std::string& option) {
+    void Config::removePerGameOption(const std::string& option)
+    {
         std::scoped_lock lock(m_mutex);
         auto it = m_game.find(option);
         if (it != m_game.end()) {
@@ -296,12 +313,14 @@ namespace vkBasalt
         }
     }
 
-    bool Config::hasPerGameOverrides() const {
+    bool Config::hasPerGameOverrides() const
+    {
         std::scoped_lock lock(m_mutex);
         return !m_game.empty();
     }
 
-    void Config::resetToGlobal() {
+    void Config::resetToGlobal()
+    {
         std::scoped_lock lock(m_mutex);
         if (!m_game.empty()) {
             m_game.clear();
@@ -313,14 +332,10 @@ namespace vkBasalt
     void Config::parseOption(const std::string& option, int32_t& result)
     {
         std::string value;
-        if (findOption(option, value))
-        {
-            try
-            {
+        if (findOption(option, value)) {
+            try {
                 result = std::stoi(value);
-            }
-            catch (...)
-            {
+            } catch (...) {
                 Logger::warn("invalid int32_t value for: " + option);
             }
         }
@@ -329,10 +344,9 @@ namespace vkBasalt
     void Config::parseOption(const std::string& option, float& result)
     {
         std::string value;
-        if (findOption(option, value))
-        {
+        if (findOption(option, value)) {
             std::ranges::replace(value, ',', '.');
-            char* end = nullptr;
+            char* end    = nullptr;
             float fvalue = std::strtof(value.c_str(), &end);
             if (end == value.c_str()) {
                 Logger::warn("invalid float value for: " + option);
@@ -345,18 +359,12 @@ namespace vkBasalt
     void Config::parseOption(const std::string& option, bool& result)
     {
         std::string value;
-        if (findOption(option, value))
-        {
-            if (value == "True" || value == "true" || value == "1" || value == "on" || value == "yes")
-            {
+        if (findOption(option, value)) {
+            if (value == "True" || value == "true" || value == "1" || value == "on" || value == "yes") {
                 result = true;
-            }
-            else if (value == "False" || value == "false" || value == "0" || value == "off" || value == "no")
-            {
+            } else if (value == "False" || value == "false" || value == "0" || value == "off" || value == "no") {
                 result = false;
-            }
-            else
-            {
+            } else {
                 Logger::warn("invalid bool value for: " + option);
             }
         }
@@ -365,8 +373,7 @@ namespace vkBasalt
     void Config::parseOption(const std::string& option, std::string& result)
     {
         std::string value;
-        if (findOption(option, value))
-        {
+        if (findOption(option, value)) {
             result = value;
         }
     }
@@ -374,27 +381,26 @@ namespace vkBasalt
     void Config::parseOption(const std::string& option, std::vector<std::string>& result)
     {
         std::string value;
-        if (findOption(option, value))
-        {
+        if (findOption(option, value)) {
             result = {};
             std::stringstream stringStream(value);
             std::string newString;
-            while (getline(stringStream, newString, ':'))
-            {
-                if (!newString.empty())
-                    result.push_back(newString);
+            while (getline(stringStream, newString, ':')) {
+                if (!newString.empty()) result.push_back(newString);
             }
         }
     }
 
     // Preset management
-    static std::string presetDir() {
+    static std::string presetDir()
+    {
         const char* home = std::getenv("HOME");
         std::string root = home ? home : ".";
         return root + "/.config/vkBasalt-reloaded/presets";
     }
 
-    bool Config::savePreset(const std::string& name) {
+    bool Config::savePreset(const std::string& name)
+    {
         if (name.empty()) return false;
         std::error_code ec;
         std::filesystem::create_directories(presetDir(), ec);
@@ -419,7 +425,8 @@ namespace vkBasalt
         return true;
     }
 
-    bool Config::loadPreset(const std::string& name) {
+    bool Config::loadPreset(const std::string& name)
+    {
         if (name.empty()) return false;
         std::string path = presetDir() + "/" + name + ".conf";
         std::ifstream f(path);
@@ -432,7 +439,8 @@ namespace vkBasalt
         return true;
     }
 
-    bool Config::deletePreset(const std::string& name) {
+    bool Config::deletePreset(const std::string& name)
+    {
         if (name.empty()) return false;
         std::string path = presetDir() + "/" + name + ".conf";
         std::error_code ec;
@@ -441,20 +449,21 @@ namespace vkBasalt
         return removed;
     }
 
-    std::vector<std::string> Config::listPresets() {
+    std::vector<std::string> Config::listPresets()
+    {
         std::vector<std::string> result;
         try {
-        std::string dir = presetDir();
-        if (!std::filesystem::exists(dir)) return result;
-        for (auto& entry : std::filesystem::directory_iterator(dir)) {
-            if (entry.is_regular_file()) {
-                std::string filename = entry.path().filename().string();
-                if (filename.size() > 5 && filename.substr(filename.size() - 5) == ".conf") {
-                    result.push_back(filename.substr(0, filename.size() - 5));
+            std::string dir = presetDir();
+            if (!std::filesystem::exists(dir)) return result;
+            for (auto& entry : std::filesystem::directory_iterator(dir)) {
+                if (entry.is_regular_file()) {
+                    std::string filename = entry.path().filename().string();
+                    if (filename.size() > 5 && filename.substr(filename.size() - 5) == ".conf") {
+                        result.push_back(filename.substr(0, filename.size() - 5));
+                    }
                 }
             }
-        }
-        std::ranges::sort(result);
+            std::ranges::sort(result);
         } catch (...) {
             // Filesystem error, return empty list
         }

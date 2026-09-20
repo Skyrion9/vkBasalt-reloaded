@@ -3,9 +3,11 @@
 #include <cstddef>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    struct CompressedShader {
+    struct CompressedShader
+    {
         const uint8_t* data;
         size_t compressedSize;
         size_t originalSize;

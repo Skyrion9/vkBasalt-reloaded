@@ -16,19 +16,22 @@ namespace vkBasalt
     class DlsEffect : public SimpleEffect
     {
     public:
-        DlsEffect(LogicalDevice*       pLogicalDevice,
-                  VkFormat             format,
-                  VkExtent2D           imageExtent,
-                  std::vector<VkImage> inputImages,
-                  std::vector<VkImage> outputImages,
-                  Config*              pConfig,
-                  VkColorSpaceKHR      colorSpace);
+        DlsEffect(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            std::vector<VkImage> inputImages,
+            std::vector<VkImage> outputImages,
+            Config* pConfig,
+            VkColorSpaceKHR colorSpace);
         ~DlsEffect() override;
 
         std::string getName() const override { return "dls"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
+
     private:
-        struct DlsSpecData {
+        struct DlsSpecData
+        {
             float sharpen;
             float denoise;
             int32_t colorSpaceMode;

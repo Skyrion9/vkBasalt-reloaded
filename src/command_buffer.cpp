@@ -27,10 +27,10 @@ namespace vkBasalt
         allocInfo.commandPool        = pLogicalDevice->commandPool;
         allocInfo.commandBufferCount = count;
 
-        VkResult result = pLogicalDevice->vkd.AllocateCommandBuffers(pLogicalDevice->device, &allocInfo, commandBuffers.data());
+        VkResult result =
+            pLogicalDevice->vkd.AllocateCommandBuffers(pLogicalDevice->device, &allocInfo, commandBuffers.data());
         ASSERT_VULKAN(result);
-        for (uint32_t i = 0; i < count; i++)
-        {
+        for (uint32_t i = 0; i < count; i++) {
             // initialize dispatch tables for commandBuffers since the are dispatchable objects
             initializeDispatchTable(commandBuffers[i], pLogicalDevice->device);
         }
@@ -38,13 +38,14 @@ namespace vkBasalt
         return commandBuffers;
     }
 
-    void writeCommandBuffers(LogicalDevice*                                               pLogicalDevice,
-                             LogicalSwapchain*                                            pLogicalSwapchain,
-                             const std::vector<std::shared_ptr<vkBasalt::Effect>>&        effects,
-                             VkImage                                                      depthImage,
-                             VkImageView                                                  depthImageView,
-                             VkFormat                                                     depthFormat,
-                             std::vector<VkCommandBuffer>                                 commandBuffers)
+    void writeCommandBuffers(
+        LogicalDevice* pLogicalDevice,
+        LogicalSwapchain* pLogicalSwapchain,
+        const std::vector<std::shared_ptr<vkBasalt::Effect>>& effects,
+        VkImage depthImage,
+        VkImageView depthImageView,
+        VkFormat depthFormat,
+        std::vector<VkCommandBuffer> commandBuffers)
     {
         VkCommandBufferBeginInfo beginInfo = {};
 
@@ -53,95 +54,96 @@ namespace vkBasalt
         beginInfo.flags            = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
         beginInfo.pInheritanceInfo = nullptr;
 
-        for (auto& effect : effects)
-        {
+        for (auto& effect : effects) {
             effect->useDepthImage(depthImageView);
         }
 
-        for (uint32_t i = 0; i < commandBuffers.size(); i++)
-        {
-
+        for (uint32_t i = 0; i < commandBuffers.size(); i++) {
             VkResult result = pLogicalDevice->vkd.BeginCommandBuffer(commandBuffers[i], &beginInfo);
             ASSERT_VULKAN(result);
 
             VkImageMemoryBarrier memoryBarrier;
-            memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            memoryBarrier.pNext               = nullptr;
-            memoryBarrier.image               = depthImage;
-            memoryBarrier.oldLayout           = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            memoryBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            
+            memoryBarrier.sType     = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            memoryBarrier.pNext     = nullptr;
+            memoryBarrier.image     = depthImage;
+            memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            memoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
             // Fixed: Must match the srcStageMask (LATE_FRAGMENT_TESTS writes to depth)
-            memoryBarrier.srcAccessMask       = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; 
-            memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-            
-            memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            memoryBarrier.subresourceRange.aspectMask =
-                isStencilFormat(depthFormat) ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT : VK_IMAGE_ASPECT_DEPTH_BIT;
-            memoryBarrier.subresourceRange.baseMipLevel   = 0;
-            memoryBarrier.subresourceRange.levelCount     = 1;
+            memoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            memoryBarrier.srcQueueFamilyIndex           = VK_QUEUE_FAMILY_IGNORED;
+            memoryBarrier.dstQueueFamilyIndex           = VK_QUEUE_FAMILY_IGNORED;
+            memoryBarrier.subresourceRange.aspectMask   = isStencilFormat(depthFormat)
+                                                              ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
+                                                              : VK_IMAGE_ASPECT_DEPTH_BIT;
+            memoryBarrier.subresourceRange.baseMipLevel = 0;
+            memoryBarrier.subresourceRange.levelCount   = 1;
             memoryBarrier.subresourceRange.baseArrayLayer = 0;
             memoryBarrier.subresourceRange.layerCount     = 1;
 
-            if (depthImageView)
-            {
-                pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffers[i],
-                                                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, // Don't need catch all flags.
-                                                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                                       0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            if (depthImageView) {
+                pLogicalDevice->vkd.CmdPipelineBarrier(
+                    commandBuffers[i],
+                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, // Don't need catch all flags.
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
             }
 
-            for (const auto & effect : effects)
-            {
+            for (const auto& effect : effects) {
                 Logger::debug("before applying effect " + convertToString(effect));
                 effect->applyEffect(i, commandBuffers[i]);
             }
 
             // Record compute passes after all effects. Compute passes read from the final output slice (real swapchain or last fake slice) and write to their own resources.
-            if (pLogicalSwapchain && !pLogicalSwapchain->computePasses.empty() && !effects.empty())
-            {
+            if (pLogicalSwapchain && !pLogicalSwapchain->computePasses.empty() && !effects.empty()) {
                 // Barrier: transition source images to SHADER_READ_ONLY for compute sampling.  When mutable format is used, effects leave real swapchain images in
                 // PRESENT_SRC_KHR. Otherwise they leave fake slices in SHADER_READ_ONLY.
-                if (pLogicalDevice->supportsMutableFormat)
-                {
+                if (pLogicalDevice->supportsMutableFormat) {
                     VkImageMemoryBarrier barrier = {};
-                    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    barrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                    barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-                    barrier.oldLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                    barrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.image               = pLogicalSwapchain->images[i];
-                    barrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
+                    barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                    barrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    barrier.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
+                    barrier.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                    barrier.newLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    barrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.image                = pLogicalSwapchain->images[i];
+                    barrier.subresourceRange     = {
+                        .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel   = 0,
+                        .levelCount     = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount     = 1};
 
                     pLogicalDevice->vkd.CmdPipelineBarrier(
                         commandBuffers[i], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        0, 0, nullptr, 0, nullptr, 1, &barrier);
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
                 }
 
                 for (auto& pass : pLogicalSwapchain->computePasses)
                     pass->recordCommands(commandBuffers[i], i);
 
                 // Barrier: restore real swapchain images to PRESENT_SRC_KHR if we transitioned them.
-                if (pLogicalDevice->supportsMutableFormat)
-                {
+                if (pLogicalDevice->supportsMutableFormat) {
                     VkImageMemoryBarrier barrier = {};
-                    barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    barrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-                    barrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
-                    barrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    barrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.image               = pLogicalSwapchain->images[i];
-                    barrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
+                    barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                    barrier.srcAccessMask        = VK_ACCESS_SHADER_READ_BIT;
+                    barrier.dstAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+                    barrier.oldLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    barrier.newLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                    barrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+                    barrier.image                = pLogicalSwapchain->images[i];
+                    barrier.subresourceRange     = {
+                        .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel   = 0,
+                        .levelCount     = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount     = 1};
 
                     pLogicalDevice->vkd.CmdPipelineBarrier(
-                        commandBuffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                        commandBuffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                         0, 0, nullptr, 0, nullptr, 1, &barrier);
                 }
             }
@@ -151,40 +153,45 @@ namespace vkBasalt
             if (pLogicalSwapchain && !pLogicalSwapchain->fakeImages.empty()) {
                 VkImageMemoryBarrier restoreBarrier = {};
                 restoreBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                restoreBarrier.srcAccessMask        = VK_ACCESS_SHADER_READ_BIT     | VK_ACCESS_SHADER_WRITE_BIT
-                                                      | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                restoreBarrier.dstAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
-                restoreBarrier.oldLayout            = VK_IMAGE_LAYOUT_UNDEFINED;
-                restoreBarrier.newLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                restoreBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-                restoreBarrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-                restoreBarrier.image                = pLogicalSwapchain->fakeImages[i]; // Slice 0 for this frame index
-                restoreBarrier.subresourceRange     = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
+                restoreBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
+                                               | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                restoreBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+                restoreBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+                restoreBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                restoreBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                restoreBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                restoreBarrier.image               = pLogicalSwapchain->fakeImages[i]; // Slice 0 for this frame index
+                restoreBarrier.subresourceRange    = {
+                    .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel   = 0,
+                    .levelCount     = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 1};
 
                 pLogicalDevice->vkd.CmdPipelineBarrier(
                     commandBuffers[i],
                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                    0, 0, nullptr, 0, nullptr, 1, &restoreBarrier);
+                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &restoreBarrier);
             }
 
             // Prepare the second barrier to transition depth back to the game
-            memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            
+            memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            memoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
             // Fixed: It was read by the fragment shader
-            memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT; 
+            memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
             // Fixed: The game will read/write depth in the next frame
-            memoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT; 
-            
-            if (depthImageView)
-            {
-                pLogicalDevice->vkd.CmdPipelineBarrier(commandBuffers[i],
-                                                       // Fixed: Wait for the fragment shader to finish reading
-                                                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
-                                                       // Fixed: Only block the depth test stages of the next frame, not ALL_COMMANDS
-                                                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, 
-                                                       0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            memoryBarrier.dstAccessMask =
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+            if (depthImageView) {
+                pLogicalDevice->vkd.CmdPipelineBarrier(
+                    commandBuffers[i],
+                    // Fixed: Wait for the fragment shader to finish reading
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                    // Fixed: Only block the depth test stages of the next frame, not ALL_COMMANDS
+                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, 0, 0,
+                    nullptr, 0, nullptr, 1, &memoryBarrier);
             }
 
             result = pLogicalDevice->vkd.EndCommandBuffer(commandBuffers[i]);
@@ -195,14 +202,14 @@ namespace vkBasalt
     std::vector<VkSemaphore> createSemaphores(LogicalDevice* pLogicalDevice, uint32_t count)
     {
         std::vector<VkSemaphore> semaphores(count);
-        VkSemaphoreCreateInfo    info;
+        VkSemaphoreCreateInfo info;
         info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         info.pNext = nullptr;
         info.flags = 0;
 
-        for (uint32_t i = 0; i < count; i++)
-        {
-            VkResult result = pLogicalDevice->vkd.CreateSemaphore(pLogicalDevice->device, &info, nullptr, &semaphores[i]);
+        for (uint32_t i = 0; i < count; i++) {
+            VkResult result =
+                pLogicalDevice->vkd.CreateSemaphore(pLogicalDevice->device, &info, nullptr, &semaphores[i]);
             ASSERT_VULKAN(result);
         }
         return semaphores;

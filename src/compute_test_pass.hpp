@@ -9,8 +9,7 @@ namespace vkBasalt
     class ComputeTestPass : public SimpleComputePass
     {
     public:
-        ComputeTestPass(LogicalDevice* pLogicalDevice, VkExtent2D extent,
-                        const std::vector<VkImage>& inputImages);
+        ComputeTestPass(LogicalDevice* pLogicalDevice, VkExtent2D extent, const std::vector<VkImage>& inputImages);
         ~ComputeTestPass() override;
 
         [[nodiscard]] std::string getName() const override { return "compute_test"; }
@@ -28,12 +27,13 @@ namespace vkBasalt
         std::vector<VkImage> m_inputImages;
         std::vector<VkImageView> m_inputViews;
 
-        VkBuffer m_histogramBuffer = VK_NULL_HANDLE;
+        VkBuffer m_histogramBuffer       = VK_NULL_HANDLE;
         VkDeviceMemory m_histogramMemory = VK_NULL_HANDLE;
 
         VkSampler m_sampler = VK_NULL_HANDLE;
 
-        struct SpecData {
+        struct SpecData
+        {
             uint32_t width;
             uint32_t height;
         };

@@ -18,32 +18,34 @@ namespace vkBasalt
     class LutEffect : public SimpleEffect
     {
     public:
-        LutEffect(LogicalDevice*       pLogicalDevice,
-                  VkFormat             format,
-                  VkExtent2D           imageExtent,
-                  std::vector<VkImage> inputImages,
-                  std::vector<VkImage> outputImages,
-                  Config*              pConfig,
-                  VkColorSpaceKHR      colorSpace);
+        LutEffect(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            std::vector<VkImage> inputImages,
+            std::vector<VkImage> outputImages,
+            Config* pConfig,
+            VkColorSpaceKHR colorSpace);
         ~LutEffect() override;
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-    
+
         std::string getName() const override { return "lut"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
 
     private:
-        struct LutSpecData {
+        struct LutSpecData
+        {
             int32_t lutSize;
             int32_t flipGB;
             int32_t colorSpaceMode;
         };
 
-        VkImage               lutImage;
-        VkDeviceMemory        lutMemory{};
-        VkImageView           lutImageView;
+        VkImage lutImage;
+        VkDeviceMemory lutMemory{};
+        VkImageView lutImageView;
         VkDescriptorSetLayout lutDescriptorSetLayout;
-        VkDescriptorPool      lutDescriptorPool;
-        VkDescriptorSet       lutDescriptorSet;
+        VkDescriptorPool lutDescriptorPool;
+        VkDescriptorSet lutDescriptorSet;
     };
 } // namespace vkBasalt
 

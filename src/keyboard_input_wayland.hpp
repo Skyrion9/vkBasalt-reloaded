@@ -7,14 +7,14 @@ namespace vkBasalt
     void initWaylandInput(void* display_ptr, void* surface_ptr = nullptr);
     void ensureWaylandRegistryBound();
     void updateWaylandImGuiIO(float scale);
-    
+
     // Event based input for Wayland (avoids layout/keysym issues)
     void feedWaylandKeyEventsToImGui();
     bool wasSlashTypedWayland();
-    
+
     float getWaylandUIScale();
     float consumeWaylandMouseWheel();
-    bool  isWaylandInputActive();
+    bool isWaylandInputActive();
     void shutdownWaylandInput();
     void clearWaylandInputQueues();
     uint32_t convertToKeySymWayland(const std::string& key);

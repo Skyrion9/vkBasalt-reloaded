@@ -57,7 +57,6 @@ namespace vkBasalt
     {
         Logger::debug("in creating ReshadeEffect");
 
-
         inputImageViewsSRGB  = createImageViews(pLogicalDevice, inputOutputFormatSRGB, inputImages);
         inputImageViewsUNORM = createImageViews(pLogicalDevice, inputOutputFormatUNORM, inputImages);
         Logger::debug("created input ImageViews");
@@ -71,39 +70,30 @@ namespace vkBasalt
 
         uniforms = createReshadeUniforms(module);
 
-        
-        if (bufferSize)
-        {
-            createBuffer(pLogicalDevice,
-                         bufferSize,
-                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         stagingBuffer,
-                         stagingBufferMemory);
+        if (bufferSize) {
+            createBuffer(
+                pLogicalDevice, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer,
+                stagingBufferMemory);
         }
 
         stencilFormat = getStencilFormat(pLogicalDevice);
         Logger::debug("Stencil Format: " + std::to_string(stencilFormat));
         textureMemory.push_back(VK_NULL_HANDLE);
-        stencilImage = createImages(pLogicalDevice,
-                                    1,
-                                    {.width=imageExtent.width, .height=imageExtent.height, .depth=1},
-                                    stencilFormat,
-                                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                    textureMemory.back())[0];
+        stencilImage = createImages(
+            pLogicalDevice, 1, {.width = imageExtent.width, .height = imageExtent.height, .depth = 1}, stencilFormat,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureMemory.back())[0];
 
         stencilImageView = createImageViews(
-            pLogicalDevice, stencilFormat, {stencilImage}, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)[0];
+            pLogicalDevice, stencilFormat, {stencilImage}, VK_IMAGE_VIEW_TYPE_2D,
+            VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)[0];
 
         std::vector<std::vector<VkImageView>> imageViewVector;
 
-        for (auto & texture : module.textures)
-        {
+        for (auto& texture : module.textures) {
             textureMipLevels[texture.unique_name] = texture.levels;
-            textureExtents[texture.unique_name]   = {.width=texture.width, .height=texture.height, .depth=1};
-            if (texture.semantic == "COLOR")
-            {
+            textureExtents[texture.unique_name]   = {.width = texture.width, .height = texture.height, .depth = 1};
+            if (texture.semantic == "COLOR") {
                 textureImageViewsUNORM[texture.unique_name] = inputImageViewsUNORM;
                 renderImageViewsUNORM[texture.unique_name]  = inputImageViewsUNORM;
 
@@ -114,8 +104,7 @@ namespace vkBasalt
                 textureFormatsSRGB[texture.unique_name]  = inputOutputFormatSRGB;
                 continue;
             }
-            if (texture.semantic == "DEPTH")
-            {
+            if (texture.semantic == "DEPTH") {
                 textureImageViewsUNORM[texture.unique_name] = inputImageViewsUNORM;
                 renderImageViewsUNORM[texture.unique_name]  = inputImageViewsUNORM;
 
@@ -126,59 +115,46 @@ namespace vkBasalt
                 textureFormatsSRGB[texture.unique_name]  = inputOutputFormatSRGB;
                 continue;
             }
-            VkExtent3D textureExtent = {.width=texture.width, .height=texture.height, .depth=1};
+            VkExtent3D textureExtent = {.width = texture.width, .height = texture.height, .depth = 1};
             // TODO handle mip map levels correctly
             // TODO handle pooled textures better
             if (const auto source = std::find_if(
-                    texture.annotations.begin(), texture.annotations.end(), [](const auto& a) { return a.name == "source"; });
-                source == texture.annotations.end())
-            {
+                    texture.annotations.begin(), texture.annotations.end(),
+                    [](const auto& a) { return a.name == "source"; });
+                source == texture.annotations.end()) {
                 textureMemory.push_back(VK_NULL_HANDLE);
-                std::vector<VkImage> images = createImages(pLogicalDevice,
-                                                           1,
-                                                           textureExtent,
-                                                           convertReshadeFormat(texture.format),
-                                                           VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                                               | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                                           textureMemory.back(),
-                                                           texture.levels);
+                std::vector<VkImage> images = createImages(
+                    pLogicalDevice, 1, textureExtent, convertReshadeFormat(texture.format),
+                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+                        | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureMemory.back(), texture.levels);
 
-                textureImages[texture.unique_name] = images;
-                std::vector<VkImageView> imageViewsUNORM =
-                    std::vector<VkImageView>(inputImages.size(),
-                                             createImageViews(pLogicalDevice,
-                                                              convertToUNORM(convertReshadeFormat(texture.format)),
-                                                              images,
-                                                              VK_IMAGE_VIEW_TYPE_2D,
-                                                              VK_IMAGE_ASPECT_COLOR_BIT,
-                                                              texture.levels)[0]);
+                textureImages[texture.unique_name]       = images;
+                std::vector<VkImageView> imageViewsUNORM = std::vector<VkImageView>(
+                    inputImages.size(),
+                    createImageViews(
+                        pLogicalDevice, convertToUNORM(convertReshadeFormat(texture.format)), images,
+                        VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, texture.levels)[0]);
 
-                std::vector<VkImageView> imageViewsSRGB =
-                    std::vector<VkImageView>(inputImages.size(),
-                                             createImageViews(pLogicalDevice,
-                                                              convertToSRGB(convertReshadeFormat(texture.format)),
-                                                              images,
-                                                              VK_IMAGE_VIEW_TYPE_2D,
-                                                              VK_IMAGE_ASPECT_COLOR_BIT,
-                                                              texture.levels)[0]);
+                std::vector<VkImageView> imageViewsSRGB = std::vector<VkImageView>(
+                    inputImages.size(), createImageViews(
+                                            pLogicalDevice, convertToSRGB(convertReshadeFormat(texture.format)), images,
+                                            VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, texture.levels)[0]);
 
                 textureImageViewsUNORM[texture.unique_name] = imageViewsUNORM;
                 textureImageViewsSRGB[texture.unique_name]  = imageViewsSRGB;
 
-                if (texture.levels > 1)
-                {
-
+                if (texture.levels > 1) {
                     renderImageViewsUNORM[texture.unique_name] = std::vector<VkImageView>(
                         inputImages.size(),
-                        createImageViews(pLogicalDevice, convertToUNORM(convertReshadeFormat(texture.format)), images)[0]);
+                        createImageViews(
+                            pLogicalDevice, convertToUNORM(convertReshadeFormat(texture.format)), images)[0]);
 
                     renderImageViewsSRGB[texture.unique_name] = std::vector<VkImageView>(
                         inputImages.size(),
-                        createImageViews(pLogicalDevice, convertToSRGB(convertReshadeFormat(texture.format)), images)[0]);
-                }
-                else
-                {
+                        createImageViews(
+                            pLogicalDevice, convertToSRGB(convertReshadeFormat(texture.format)), images)[0]);
+                } else {
                     renderImageViewsUNORM[texture.unique_name] = imageViewsUNORM;
                     renderImageViewsSRGB[texture.unique_name]  = imageViewsSRGB;
                 }
@@ -187,37 +163,25 @@ namespace vkBasalt
                 textureFormatsSRGB[texture.unique_name]  = convertToSRGB(convertReshadeFormat(texture.format));
                 changeImageLayout(pLogicalDevice, images, texture.levels);
                 continue;
-            }
-            else
-            {
+            } else {
                 textureMemory.push_back(VK_NULL_HANDLE);
-                std::vector<VkImage> images =
-                    createImages(pLogicalDevice,
-                                 1,
-                                 textureExtent,
-                                 convertReshadeFormat(texture.format), // TODO search for format and save it
-                                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                 textureMemory.back(),
-                                 texture.levels);
+                std::vector<VkImage> images = createImages(
+                    pLogicalDevice, 1, textureExtent,
+                    convertReshadeFormat(texture.format), // TODO search for format and save it
+                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureMemory.back(), texture.levels);
 
                 textureImages[texture.unique_name] = images;
 
-                std::vector<VkImageView> imageViews = createImageViews(pLogicalDevice,
-                                                                       convertToUNORM(convertReshadeFormat(texture.format)),
-                                                                       images,
-                                                                       VK_IMAGE_VIEW_TYPE_2D,
-                                                                       VK_IMAGE_ASPECT_COLOR_BIT,
-                                                                       texture.levels);
+                std::vector<VkImageView> imageViews = createImageViews(
+                    pLogicalDevice, convertToUNORM(convertReshadeFormat(texture.format)), images, VK_IMAGE_VIEW_TYPE_2D,
+                    VK_IMAGE_ASPECT_COLOR_BIT, texture.levels);
 
                 std::vector<VkImageView> imageViewsUNORM = std::vector<VkImageView>(inputImages.size(), imageViews[0]);
 
-                imageViews = createImageViews(pLogicalDevice,
-                                              convertToSRGB(convertReshadeFormat(texture.format)),
-                                              images,
-                                              VK_IMAGE_VIEW_TYPE_2D,
-                                              VK_IMAGE_ASPECT_COLOR_BIT,
-                                              texture.levels);
+                imageViews = createImageViews(
+                    pLogicalDevice, convertToSRGB(convertReshadeFormat(texture.format)), images, VK_IMAGE_VIEW_TYPE_2D,
+                    VK_IMAGE_ASPECT_COLOR_BIT, texture.levels);
 
                 std::vector<VkImageView> imageViewsSRGB = std::vector<VkImageView>(inputImages.size(), imageViews[0]);
 
@@ -231,8 +195,7 @@ namespace vkBasalt
                 textureFormatsSRGB[texture.unique_name]  = convertToSRGB(convertReshadeFormat(texture.format));
 
                 int desiredChannels = 0;
-                switch (textureFormatsUNORM[texture.unique_name])
-                {
+                switch (textureFormatsUNORM[texture.unique_name]) {
                     case VK_FORMAT_R8_UNORM: desiredChannels = STBI_grey; break;
                     case VK_FORMAT_R8G8_UNORM:
                         desiredChannels = STBI_rgb_alpha; // TODO why doesn't STBI_grey_alpha work?
@@ -240,43 +203,40 @@ namespace vkBasalt
                     case VK_FORMAT_R8G8B8A8_UNORM: desiredChannels = STBI_rgb_alpha; break;
                     case VK_FORMAT_R8G8B8A8_SRGB: desiredChannels = STBI_rgb_alpha; break;
                     default:
-                        Logger::err("unsupported texture upload format" + std::to_string(textureFormatsUNORM[texture.unique_name]));
+                        Logger::err(
+                            "unsupported texture upload format"
+                            + std::to_string(textureFormatsUNORM[texture.unique_name]));
                         desiredChannels = 4;
                         break;
                 }
 
-                std::string          filePath = pConfig->getOption<std::string>("reshadeTexturePath") + "/" + source->value.string_data;
-                stbi_uc*             pixels = nullptr;
+                std::string filePath =
+                    pConfig->getOption<std::string>("reshadeTexturePath") + "/" + source->value.string_data;
+                stbi_uc* pixels = nullptr;
                 std::vector<stbi_uc> resizedPixels;
-                uint32_t             size = 0;
-                int                  width = 0;
-                int                  height = 0;
+                uint32_t size = 0;
+                int width     = 0;
+                int height    = 0;
 
                 size = textureExtent.width * textureExtent.height * desiredChannels;
 
                 FILE* const file = fopen(filePath.c_str(), "rb");
 
-                if (file == nullptr)
-                {
+                if (file == nullptr) {
                     Logger::err("couldn't open texture: " + filePath);
                 }
-                if (stbi_dds_test_file(file))
-                {
+                if (stbi_dds_test_file(file)) {
                     int channels = 0;
-                    pixels = stbi_dds_load_from_file(file, &width, &height, &channels, desiredChannels);
-                }
-                else
-                {
+                    pixels       = stbi_dds_load_from_file(file, &width, &height, &channels, desiredChannels);
+                } else {
                     int channels = 0;
-                    pixels = stbi_load_from_file(file, &width, &height, &channels, desiredChannels);
+                    pixels       = stbi_load_from_file(file, &width, &height, &channels, desiredChannels);
                 }
 
                 // change RGBA to RG
-                if (textureFormatsUNORM[texture.unique_name] == VK_FORMAT_R8G8_UNORM)
-                {
+                if (textureFormatsUNORM[texture.unique_name] == VK_FORMAT_R8G8_UNORM) {
                     uint32_t pos = 0;
-                    for (uint32_t j = 0; j < size; j += 4)
-                    {
+                    for (uint32_t j = 0; j < size; j += 4) {
                         pixels[pos] = pixels[j];
                         pos++;
                         pixels[pos] = pixels[j + 1];
@@ -286,26 +246,30 @@ namespace vkBasalt
                     desiredChannels /= 2;
                 }
 
-                if (std::cmp_not_equal(width, textureExtent.width) || std::cmp_not_equal(height, textureExtent.height))
-                {
+                if (std::cmp_not_equal(width, textureExtent.width)
+                    || std::cmp_not_equal(height, textureExtent.height)) {
                     resizedPixels.resize(size);
-                    stbir_pixel_layout layout = (desiredChannels == 4) ? STBIR_4CHANNEL : static_cast<stbir_pixel_layout>(desiredChannels);
-                    stbir_resize_uint8_linear(pixels, width, height, 0, resizedPixels.data(), textureExtent.width, textureExtent.height, 0, layout);
+                    stbir_pixel_layout layout =
+                        (desiredChannels == 4) ? STBIR_4CHANNEL : static_cast<stbir_pixel_layout>(desiredChannels);
+                    stbir_resize_uint8_linear(
+                        pixels, width, height, 0, resizedPixels.data(), textureExtent.width, textureExtent.height, 0,
+                        layout);
                 }
 
                 uploadToImage(
-                    pLogicalDevice, images[0], textureExtent, size, resizedPixels.size() ? resizedPixels.data() : pixels, texture.levels);
+                    pLogicalDevice, images[0], textureExtent, size,
+                    resizedPixels.size() ? resizedPixels.data() : pixels, texture.levels);
                 stbi_image_free(pixels);
             }
         }
 
-        for (auto info : module.samplers)
-        {
+        for (auto info : module.samplers) {
             VkSampler sampler = createReshadeSampler(pLogicalDevice, info);
 
             samplers.push_back(sampler);
 
-            imageViewVector.push_back(info.srgb ? textureImageViewsSRGB[info.texture_name] : textureImageViewsUNORM[info.texture_name]);
+            imageViewVector.push_back(
+                info.srgb ? textureImageViewsSRGB[info.texture_name] : textureImageViewsUNORM[info.texture_name]);
         }
 
         imageSamplerDescriptorSetLayout = createImageSamplerDescriptorSetLayout(pLogicalDevice, module.samplers.size());
@@ -325,41 +289,38 @@ namespace vkBasalt
         descriptorPool = createDescriptorPool(pLogicalDevice, poolSizes);
         Logger::debug("created descriptorPool");
 
-        std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {uniformDescriptorSetLayout, imageSamplerDescriptorSetLayout};
+        std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
+            uniformDescriptorSetLayout, imageSamplerDescriptorSetLayout};
 
         pipelineLayout = createGraphicsPipelineLayout(pLogicalDevice, descriptorSetLayouts);
 
         Logger::debug("created Pipeline layout");
 
         Logger::debug("output writes: " + std::to_string(outputWrites));
-        if (bufferSize)
-        {
-            bufferDescriptorSet = writeBufferDescriptorSet(pLogicalDevice, descriptorPool, uniformDescriptorSetLayout, stagingBuffer);
+        if (bufferSize) {
+            bufferDescriptorSet =
+                writeBufferDescriptorSet(pLogicalDevice, descriptorPool, uniformDescriptorSetLayout, stagingBuffer);
         }
 
-        inputDescriptorSets =
-            allocateAndWriteImageSamplerDescriptorSets(pLogicalDevice, descriptorPool, imageSamplerDescriptorSetLayout, samplers, imageViewVector);
+        inputDescriptorSets = allocateAndWriteImageSamplerDescriptorSets(
+            pLogicalDevice, descriptorPool, imageSamplerDescriptorSetLayout, samplers, imageViewVector);
 
         // count the back buffer writes
-        for (auto& pass : module.techniques[0].passes)
-        {
-            if (pass.render_target_names[0] == "")
-            {
+        for (auto& pass : module.techniques[0].passes) {
+            if (pass.render_target_names[0] == "") {
                 outputWrites++;
             }
         }
 
         // if there is only one outputWrite, we can directly write to outputImages
-        if (outputWrites > 1)
-        {
+        if (outputWrites > 1) {
             textureMemory.push_back(VK_NULL_HANDLE);
-            backBufferImages = createImages(pLogicalDevice,
-                                            inputImages.size(),
-                                            {.width=imageExtent.width, .height=imageExtent.height, .depth=1},
-                                            format, // TODO search for format and save it
-                                            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                            textureMemory.back());
+            backBufferImages = createImages(
+                pLogicalDevice, inputImages.size(),
+                {.width = imageExtent.width, .height = imageExtent.height, .depth = 1},
+                format, // TODO search for format and save it
+                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                textureMemory.back());
 
             backBufferImageViewsSRGB  = createImageViews(pLogicalDevice, inputOutputFormatSRGB, backBufferImages);
             backBufferImageViewsUNORM = createImageViews(pLogicalDevice, inputOutputFormatUNORM, backBufferImages);
@@ -370,8 +331,7 @@ namespace vkBasalt
             backBufferDescriptorSets = allocateAndWriteImageSamplerDescriptorSets(
                 pLogicalDevice, descriptorPool, imageSamplerDescriptorSetLayout, samplers, imageViewVector);
         }
-        if (outputWrites > 2)
-        {
+        if (outputWrites > 2) {
             std::ranges::replace(imageViewVector, backBufferImageViewsSRGB, outputImageViewsSRGB);
             std::ranges::replace(imageViewVector, backBufferImageViewsUNORM, outputImageViewsUNORM);
             outputDescriptorSets = allocateAndWriteImageSamplerDescriptorSets(
@@ -382,22 +342,21 @@ namespace vkBasalt
 
         bool firstTimeStencilAccess = true; // Used to clear the sttencil attachment on the first time
 
-        for (bool outputToBackBuffer = outputWrites % 2 == 0; auto& pass : module.techniques[0].passes)
-        {
-            std::vector<VkAttachmentReference>               attachmentReferences;
-            std::vector<VkAttachmentDescription>             attachmentDescriptions;
+        for (bool outputToBackBuffer = outputWrites % 2 == 0; auto& pass : module.techniques[0].passes) {
+            std::vector<VkAttachmentReference> attachmentReferences;
+            std::vector<VkAttachmentDescription> attachmentDescriptions;
             std::vector<VkPipelineColorBlendAttachmentState> attachmentBlendStates;
-            std::vector<std::vector<VkImageView>>            attachmentImageViews;
-            std::vector<std::string>                         currentRenderTargets;
+            std::vector<std::vector<VkImageView>> attachmentImageViews;
+            std::vector<std::string> currentRenderTargets;
 
-            for (int i = 0; i < 8; i++)
-            {
+            for (int i = 0; i < 8; i++) {
                 std::string target = pass.render_target_names[i];
                 Logger::debug("render target:" + target);
 
                 VkAttachmentDescription attachmentDescription;
-                attachmentDescription.flags   = 0;
-                attachmentDescription.format  = pass.srgb_write_enable ? textureFormatsSRGB[target] : textureFormatsUNORM[target];
+                attachmentDescription.flags = 0;
+                attachmentDescription.format =
+                    pass.srgb_write_enable ? textureFormatsSRGB[target] : textureFormatsUNORM[target];
                 attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
                 attachmentDescription.loadOp  = pass.clear_render_targets ? VK_ATTACHMENT_LOAD_OP_CLEAR
                                                 : pass.blend_enable       ? VK_ATTACHMENT_LOAD_OP_LOAD
@@ -409,16 +368,14 @@ namespace vkBasalt
                 attachmentDescription.initialLayout  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                 attachmentDescription.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-                if (target == "" && i == 0)
-                {
-                    attachmentDescription.format        = pass.srgb_write_enable ? inputOutputFormatSRGB : inputOutputFormatUNORM;
+                if (target == "" && i == 0) {
+                    attachmentDescription.format =
+                        pass.srgb_write_enable ? inputOutputFormatSRGB : inputOutputFormatUNORM;
                     attachmentDescription.loadOp        = VK_ATTACHMENT_LOAD_OP_LOAD;
                     attachmentDescription.storeOp       = VK_ATTACHMENT_STORE_OP_STORE;
                     attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     attachmentDescription.finalLayout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                }
-                else if (target == "")
-                {
+                } else if (target == "") {
                     break;
                 }
 
@@ -442,9 +399,9 @@ namespace vkBasalt
 
                 attachmentBlendStates.push_back(colorBlendAttachment);
 
-                attachmentImageViews.push_back(pass.srgb_write_enable ? renderImageViewsSRGB[target] : renderImageViewsUNORM[target]);
-                if (target != "")
-                {
+                attachmentImageViews.push_back(
+                    pass.srgb_write_enable ? renderImageViewsSRGB[target] : renderImageViewsUNORM[target]);
+                if (target != "") {
                     currentRenderTargets.push_back(target);
                 }
             }
@@ -452,7 +409,7 @@ namespace vkBasalt
             renderTargets.push_back(currentRenderTargets);
 
             VkRect2D scissor;
-            scissor.offset        = {.x=0, .y=0};
+            scissor.offset        = {.x = 0, .y = 0};
             scissor.extent.width  = pass.viewport_width ? pass.viewport_width : imageExtent.width;
             scissor.extent.height = pass.viewport_height ? pass.viewport_height : imageExtent.height;
 
@@ -468,8 +425,7 @@ namespace vkBasalt
 
             uint32_t depthAttachmentCount = 0;
 
-            if (scissor.extent.width == imageExtent.width && scissor.extent.height == imageExtent.height)
-            {
+            if (scissor.extent.width == imageExtent.width && scissor.extent.height == imageExtent.height) {
                 depthAttachmentCount = 1;
 
                 attachmentImageViews.emplace_back(inputImages.size(), stencilImageView);
@@ -481,12 +437,13 @@ namespace vkBasalt
                 attachmentReferences.push_back(attachmentReference);
 
                 VkAttachmentDescription attachmentDescription;
-                attachmentDescription.flags          = 0;
-                attachmentDescription.format         = stencilFormat;
-                attachmentDescription.samples        = VK_SAMPLE_COUNT_1_BIT;
-                attachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                attachmentDescription.storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                attachmentDescription.stencilLoadOp  = firstTimeStencilAccess ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+                attachmentDescription.flags   = 0;
+                attachmentDescription.format  = stencilFormat;
+                attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+                attachmentDescription.loadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                attachmentDescription.stencilLoadOp =
+                    firstTimeStencilAccess ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
                 attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
                 attachmentDescription.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
                 attachmentDescription.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -531,17 +488,18 @@ namespace vkBasalt
             renderPassCreateInfo.pDependencies   = &subpassDependency;
 
             VkRenderPass renderPass = nullptr;
-            VkResult     result = pLogicalDevice->vkd.CreateRenderPass(pLogicalDevice->device, &renderPassCreateInfo, nullptr, &renderPass);
+            VkResult result         = pLogicalDevice->vkd.CreateRenderPass(
+                pLogicalDevice->device, &renderPassCreateInfo, nullptr, &renderPass);
             ASSERT_VULKAN(result);
             renderPasses.push_back(renderPass);
 
             // Zero-initialized to prevent garbage clearValueCount crashes
             VkRenderPassBeginInfo renderPassBeginInfo = {};
-            renderPassBeginInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            renderPassBeginInfo.pNext           = nullptr;
-            renderPassBeginInfo.renderPass      = renderPass;
-            renderPassBeginInfo.framebuffer     = VK_NULL_HANDLE; // changed at apply time
-            renderPassBeginInfo.renderArea      = scissor;
+            renderPassBeginInfo.sType                 = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+            renderPassBeginInfo.pNext                 = nullptr;
+            renderPassBeginInfo.renderPass            = renderPass;
+            renderPassBeginInfo.framebuffer           = VK_NULL_HANDLE; // changed at apply time
+            renderPassBeginInfo.renderArea            = scissor;
 
             // ReShade effects that explicitly request clearing need a valid VkClearValue
             VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
@@ -554,27 +512,22 @@ namespace vkBasalt
 
             // framebuffers
 
-            if (pass.render_target_names[0] == "")
-            {
-                std::vector<VkImageView> backBufferImageViews = pass.srgb_write_enable ? backBufferImageViewsSRGB : backBufferImageViewsUNORM;
-                std::vector<VkImageView> outputImageViews     = pass.srgb_write_enable ? outputImageViewsSRGB : outputImageViewsUNORM;
-                
-                std::vector<std::vector<VkImageView>> fbViews = {
-                    outputToBackBuffer ? backBufferImageViews : outputImageViews, 
-                    std::vector<VkImageView>(inputImages.size(), stencilImageView)
-                };
+            if (pass.render_target_names[0] == "") {
+                std::vector<VkImageView> backBufferImageViews =
+                    pass.srgb_write_enable ? backBufferImageViewsSRGB : backBufferImageViewsUNORM;
+                std::vector<VkImageView> outputImageViews =
+                    pass.srgb_write_enable ? outputImageViewsSRGB : outputImageViewsUNORM;
 
-                framebuffers.push_back(createFramebuffers(
-                    pLogicalDevice,
-                    renderPass,
-                    imageExtent,
-                    fbViews));
+                std::vector<std::vector<VkImageView>> fbViews = {
+                    outputToBackBuffer ? backBufferImageViews : outputImageViews,
+                    std::vector<VkImageView>(inputImages.size(), stencilImageView)};
+
+                framebuffers.push_back(createFramebuffers(pLogicalDevice, renderPass, imageExtent, fbViews));
                 outputToBackBuffer = !outputToBackBuffer;
                 switchSamplers.push_back(true);
-            }
-            else
-            {
-                framebuffers.push_back(createFramebuffers(pLogicalDevice, renderPass, scissor.extent, attachmentImageViews));
+            } else {
+                framebuffers.push_back(
+                    createFramebuffers(pLogicalDevice, renderPass, scissor.extent, attachmentImageViews));
                 switchSamplers.push_back(false);
             }
 
@@ -582,42 +535,42 @@ namespace vkBasalt
 
             // Configure effect
             std::vector<VkSpecializationMapEntry> specMapEntrys;
-            std::vector<char>                     specData;
+            std::vector<char> specData;
 
-            for (uint32_t specId = 0, offset = 0; auto &opt : module.spec_constants)
-            {
-                if (!opt.name.empty())
-                {
+            for (uint32_t specId = 0, offset = 0; auto& opt : module.spec_constants) {
+                if (!opt.name.empty()) {
                     auto val = pConfig->getOption<std::string>(opt.name);
-                    if (!val.empty())
-                    {
+                    if (!val.empty()) {
                         std::variant<int32_t, uint32_t, float> convertedValue;
                         offset = static_cast<uint32_t>(specData.size());
-                        switch (opt.type.base)
-                        {
+                        switch (opt.type.base) {
                             case reshadefx::type::t_bool:
                                 convertedValue = static_cast<int32_t>(pConfig->getOption<bool>(opt.name));
                                 specData.resize(offset + sizeof(VkBool32));
                                 std::memcpy(specData.data() + offset, &convertedValue, sizeof(VkBool32));
-                                specMapEntrys.push_back({.constantID=specId, .offset=offset, .size=sizeof(VkBool32)});
+                                specMapEntrys.push_back(
+                                    {.constantID = specId, .offset = offset, .size = sizeof(VkBool32)});
                                 break;
                             case reshadefx::type::t_int:
                                 convertedValue = pConfig->getOption<int32_t>(opt.name);
                                 specData.resize(offset + sizeof(int32_t));
                                 std::memcpy(specData.data() + offset, &convertedValue, sizeof(int32_t));
-                                specMapEntrys.push_back({.constantID=specId, .offset=offset, .size=sizeof(int32_t)});
+                                specMapEntrys.push_back(
+                                    {.constantID = specId, .offset = offset, .size = sizeof(int32_t)});
                                 break;
                             case reshadefx::type::t_uint:
                                 convertedValue = static_cast<uint32_t>(pConfig->getOption<int32_t>(opt.name));
                                 specData.resize(offset + sizeof(uint32_t));
                                 std::memcpy(specData.data() + offset, &convertedValue, sizeof(uint32_t));
-                                specMapEntrys.push_back({.constantID=specId, .offset=offset, .size=sizeof(uint32_t)});
+                                specMapEntrys.push_back(
+                                    {.constantID = specId, .offset = offset, .size = sizeof(uint32_t)});
                                 break;
                             case reshadefx::type::t_float:
                                 convertedValue = pConfig->getOption<float>(opt.name);
                                 specData.resize(offset + sizeof(float));
                                 std::memcpy(specData.data() + offset, &convertedValue, sizeof(float));
-                                specMapEntrys.push_back({.constantID=specId, .offset=offset, .size=sizeof(float)});
+                                specMapEntrys.push_back(
+                                    {.constantID = specId, .offset = offset, .size = sizeof(float)});
                                 break;
                             default:
                                 // do nothing
@@ -629,12 +582,12 @@ namespace vkBasalt
             }
 
             VkSpecializationInfo specializationInfo;
-            if (specMapEntrys.size() > 0)
-            {
-                specializationInfo = {.mapEntryCount = static_cast<uint32_t>(specMapEntrys.size()),
-                                      .pMapEntries   = specMapEntrys.data(),
-                                      .dataSize      = specData.size(),
-                                      .pData         = specData.data()};
+            if (specMapEntrys.size() > 0) {
+                specializationInfo = {
+                    .mapEntryCount = static_cast<uint32_t>(specMapEntrys.size()),
+                    .pMapEntries   = specMapEntrys.data(),
+                    .dataSize      = specData.size(),
+                    .pData         = specData.data()};
             }
 
             VkPipelineShaderStageCreateInfo shaderStageCreateInfoVert;
@@ -658,9 +611,9 @@ namespace vkBasalt
             VkPipelineShaderStageCreateInfo shaderStages[] = {shaderStageCreateInfoVert, shaderStageCreateInfoFrag};
 
             VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo;
-            vertexInputCreateInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-            vertexInputCreateInfo.pNext                           = nullptr;
-            vertexInputCreateInfo.flags                           = 0;
+            vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+            vertexInputCreateInfo.pNext = nullptr;
+            vertexInputCreateInfo.flags = 0;
             vertexInputCreateInfo.vertexBindingDescriptionCount   = 0;
             vertexInputCreateInfo.pVertexBindingDescriptions      = nullptr;
             vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
@@ -668,21 +621,26 @@ namespace vkBasalt
 
             VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-            switch (pass.topology)
-            {
+            switch (pass.topology) {
                 case reshadefx::primitive_topology::point_list: topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST; break;
                 case reshadefx::primitive_topology::line_list: topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST; break;
                 case reshadefx::primitive_topology::line_strip: topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP; break;
-                case reshadefx::primitive_topology::triangle_list: topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; break;
-                case reshadefx::primitive_topology::triangle_strip: topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP; break;
-                default: Logger::err("unsupported primitiv type" + convertToString(static_cast<uint8_t>(pass.topology))); break;
+                case reshadefx::primitive_topology::triangle_list:
+                    topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+                    break;
+                case reshadefx::primitive_topology::triangle_strip:
+                    topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+                    break;
+                default:
+                    Logger::err("unsupported primitiv type" + convertToString(static_cast<uint8_t>(pass.topology)));
+                    break;
             }
 
             VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo;
-            inputAssemblyCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-            inputAssemblyCreateInfo.pNext                  = nullptr;
-            inputAssemblyCreateInfo.flags                  = 0;
-            inputAssemblyCreateInfo.topology               = topology;
+            inputAssemblyCreateInfo.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+            inputAssemblyCreateInfo.pNext    = nullptr;
+            inputAssemblyCreateInfo.flags    = 0;
+            inputAssemblyCreateInfo.topology = topology;
             inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
 
             VkPipelineViewportStateCreateInfo viewportStateCreateInfo;
@@ -695,10 +653,10 @@ namespace vkBasalt
             viewportStateCreateInfo.pScissors     = &scissor;
 
             VkPipelineRasterizationStateCreateInfo rasterizationCreateInfo;
-            rasterizationCreateInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-            rasterizationCreateInfo.pNext                   = nullptr;
-            rasterizationCreateInfo.flags                   = 0;
-            rasterizationCreateInfo.depthClampEnable        = VK_FALSE;
+            rasterizationCreateInfo.sType            = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+            rasterizationCreateInfo.pNext            = nullptr;
+            rasterizationCreateInfo.flags            = 0;
+            rasterizationCreateInfo.depthClampEnable = VK_FALSE;
             rasterizationCreateInfo.rasterizerDiscardEnable = VK_FALSE;
             rasterizationCreateInfo.polygonMode             = VK_POLYGON_MODE_FILL;
             rasterizationCreateInfo.cullMode                = VK_CULL_MODE_NONE;
@@ -742,11 +700,11 @@ namespace vkBasalt
 
             VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = {};
 
-            depthStencilStateCreateInfo.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depthStencilStateCreateInfo.pNext                 = nullptr;
-            depthStencilStateCreateInfo.depthTestEnable       = VK_FALSE;
-            depthStencilStateCreateInfo.depthWriteEnable      = VK_FALSE;
-            depthStencilStateCreateInfo.depthCompareOp        = VK_COMPARE_OP_ALWAYS;
+            depthStencilStateCreateInfo.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+            depthStencilStateCreateInfo.pNext            = nullptr;
+            depthStencilStateCreateInfo.depthTestEnable  = VK_FALSE;
+            depthStencilStateCreateInfo.depthWriteEnable = VK_FALSE;
+            depthStencilStateCreateInfo.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
             depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
             depthStencilStateCreateInfo.stencilTestEnable     = pass.stencil_enable;
             depthStencilStateCreateInfo.front.failOp          = convertReshadeStencilOp(pass.stencil_op_fail);
@@ -782,7 +740,8 @@ namespace vkBasalt
             pipelineCreateInfo.basePipelineIndex   = -1;
 
             VkPipeline pipeline = nullptr;
-            result = pLogicalDevice->vkd.CreateGraphicsPipelines(pLogicalDevice->device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &pipeline);
+            result              = pLogicalDevice->vkd.CreateGraphicsPipelines(
+                pLogicalDevice->device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &pipeline);
             ASSERT_VULKAN(result);
 
             graphicsPipelines.push_back(pipeline);
@@ -795,13 +754,12 @@ namespace vkBasalt
 
     void ReshadeEffect::updateEffect()
     {
-        if (bufferSize)
-        {
-            void*    data = nullptr;
-            VkResult result = pLogicalDevice->vkd.MapMemory(pLogicalDevice->device, stagingBufferMemory, 0, bufferSize, 0, &data);
+        if (bufferSize) {
+            void* data = nullptr;
+            VkResult result =
+                pLogicalDevice->vkd.MapMemory(pLogicalDevice->device, stagingBufferMemory, 0, bufferSize, 0, &data);
             ASSERT_VULKAN(result);
-            for (auto& uniform : uniforms)
-            {
+            for (auto& uniform : uniforms) {
                 uniform->update(data);
             }
             pLogicalDevice->vkd.UnmapMemory(pLogicalDevice->device, stagingBufferMemory);
@@ -812,23 +770,17 @@ namespace vkBasalt
     {
         std::vector<std::string> depthTextureNames;
 
-        for (auto& texture : module.textures)
-        {
-            if (texture.semantic == "DEPTH")
-            {
+        for (auto& texture : module.textures) {
+            if (texture.semantic == "DEPTH") {
                 depthTextureNames.push_back(texture.unique_name);
             }
         }
 
-        for (size_t i = 0; i < module.samplers.size(); i++)
-        {
+        for (size_t i = 0; i < module.samplers.size(); i++) {
             reshadefx::sampler_info info = module.samplers[i];
-            for (auto& name : depthTextureNames)
-            {
-                if (info.texture_name == name)
-                {
-                    for (uint32_t j = 0; j < inputImages.size(); j++)
-                    {
+            for (auto& name : depthTextureNames) {
+                if (info.texture_name == name) {
+                    for (uint32_t j = 0; j < inputImages.size(); j++) {
                         VkDescriptorImageInfo imageInfo;
                         imageInfo.sampler = samplers[i];
                         // Use a input image if there is no depth image to prevent a crash
@@ -848,16 +800,17 @@ namespace vkBasalt
                         writeDescriptorSet.pBufferInfo      = nullptr;
                         writeDescriptorSet.pTexelBufferView = nullptr;
 
-                        pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &writeDescriptorSet, 0, nullptr);
-                        if (outputWrites > 1)
-                        {
+                        pLogicalDevice->vkd.UpdateDescriptorSets(
+                            pLogicalDevice->device, 1, &writeDescriptorSet, 0, nullptr);
+                        if (outputWrites > 1) {
                             writeDescriptorSet.dstSet = backBufferDescriptorSets[j];
-                            pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &writeDescriptorSet, 0, nullptr);
+                            pLogicalDevice->vkd.UpdateDescriptorSets(
+                                pLogicalDevice->device, 1, &writeDescriptorSet, 0, nullptr);
                         }
-                        if (outputWrites > 2)
-                        {
+                        if (outputWrites > 2) {
                             writeDescriptorSet.dstSet = outputDescriptorSets[j];
-                            pLogicalDevice->vkd.UpdateDescriptorSets(pLogicalDevice->device, 1, &writeDescriptorSet, 0, nullptr);
+                            pLogicalDevice->vkd.UpdateDescriptorSets(
+                                pLogicalDevice->device, 1, &writeDescriptorSet, 0, nullptr);
                         }
                     }
                     break;
@@ -871,7 +824,7 @@ namespace vkBasalt
 
         // Barrier 1 inputImage -> ReShade)
         VkImageMemoryBarrier memoryBarrier = {};
-        memoryBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        memoryBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         // Wait for the game's color/transfer writes to finish and flush cache
         memoryBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
         memoryBarrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
@@ -880,66 +833,62 @@ namespace vkBasalt
         memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         memoryBarrier.image               = inputImages[imageIndex];
-        memoryBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
+        memoryBarrier.subresourceRange    = {
+            .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, 
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
-            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        
+            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+
         // outputImage -> ReShade)
         memoryBarrier.image         = outputImages[imageIndex];
         memoryBarrier.srcAccessMask = 0; // Coming from UNDEFINED, no prior access to wait for
         memoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
         memoryBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, 
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
-            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
-        
+            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
+            nullptr, 1, &memoryBarrier);
+
         // barrier 3 BackBuffer Image
-        if (outputWrites > 1)
-        {
+        if (outputWrites > 1) {
             memoryBarrier.image = backBufferImages[imageIndex];
             pLogicalDevice->vkd.CmdPipelineBarrier(
-                commandBuffer, 
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 
-                0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+                commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
+                0, nullptr, 1, &memoryBarrier);
         }
 
         // barrier 4 Stencil Image
-        memoryBarrier.image                       = stencilImage;
-        memoryBarrier.srcAccessMask               = 0;
-        memoryBarrier.dstAccessMask               = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        memoryBarrier.image         = stencilImage;
+        memoryBarrier.srcAccessMask = 0;
+        memoryBarrier.dstAccessMask =
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         memoryBarrier.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
         memoryBarrier.newLayout                   = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         memoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT | VK_IMAGE_ASPECT_DEPTH_BIT;
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
+            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, nullptr,
+            0, nullptr, 1, &memoryBarrier);
 
         Logger::debug("after the first pipeline barrier");
 
         pLogicalDevice->vkd.CmdBindDescriptorSets(
-            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &(inputDescriptorSets[imageIndex]), 0, nullptr);
+            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &(inputDescriptorSets[imageIndex]), 0,
+            nullptr);
         Logger::debug("after binding image sampler");
 
-        if (bufferSize)
-        {
+        if (bufferSize) {
             pLogicalDevice->vkd.CmdBindDescriptorSets(
                 commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &bufferDescriptorSet, 0, nullptr);
             Logger::debug("after binding uniform buffer");
         }
 
         bool backBufferNext = outputWrites % 2 == 0;
-        for (size_t i = 0; i < graphicsPipelines.size(); i++)
-        {
+        for (size_t i = 0; i < graphicsPipelines.size(); i++) {
             renderPassBeginInfos[i].framebuffer = framebuffers[i][imageIndex];
 
             Logger::debug("before beginn renderpass");
@@ -955,31 +904,29 @@ namespace vkBasalt
             pLogicalDevice->vkd.CmdEndRenderPass(commandBuffer);
             Logger::debug("after end renderpass");
 
-            if (switchSamplers[i] && outputWrites > 1)
-            {
-                if (backBufferNext)
-                {
+            if (switchSamplers[i] && outputWrites > 1) {
+                if (backBufferNext) {
                     pLogicalDevice->vkd.CmdBindDescriptorSets(
-                        commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &(backBufferDescriptorSets[imageIndex]), 0, nullptr);
-                }
-                else if (outputWrites > 2)
-                {
+                        commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1,
+                        &(backBufferDescriptorSets[imageIndex]), 0, nullptr);
+                } else if (outputWrites > 2) {
                     pLogicalDevice->vkd.CmdBindDescriptorSets(
-                        commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &(outputDescriptorSets[imageIndex]), 0, nullptr);
+                        commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1,
+                        &(outputDescriptorSets[imageIndex]), 0, nullptr);
                 }
                 backBufferNext = !backBufferNext;
             }
 
-            for (auto& renderTarget : renderTargets[i])
-            {
+            for (auto& renderTarget : renderTargets[i]) {
                 generateMipMaps(
-                    pLogicalDevice, commandBuffer, textureImages[renderTarget][0], textureExtents[renderTarget], textureMipLevels[renderTarget]);
+                    pLogicalDevice, commandBuffer, textureImages[renderTarget][0], textureExtents[renderTarget],
+                    textureMipLevels[renderTarget]);
             }
         }
-        
+
         // barrier 5 & 6 transition back to PRESENT_SRC_KHR
         VkImageMemoryBarrier secondBarrier = {};
-        secondBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        secondBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         // The render pass just finished writing to these images as color attachments we must wait for the COLOR_ATTACHMENT_OUTPUT stage
         secondBarrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         secondBarrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT; // Presentation engine reads it
@@ -988,136 +935,116 @@ namespace vkBasalt
         secondBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         secondBarrier.image               = inputImages[imageIndex];
-        secondBarrier.subresourceRange    = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
+        secondBarrier.subresourceRange    = {
+            .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, // Wait for render pass writes
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
-            
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
+
         secondBarrier.image = outputImages[imageIndex];
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer,
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &secondBarrier);
-            
+            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
+            nullptr, 0, nullptr, 1, &secondBarrier);
+
         Logger::debug("after the second pipeline barrier");
     }
 
     ReshadeEffect::~ReshadeEffect()
     {
         Logger::debug("destroying ReshadeEffect" + convertToString(this));
-        for (auto& pipeline : graphicsPipelines)
-        {
+        for (auto& pipeline : graphicsPipelines) {
             pLogicalDevice->vkd.DestroyPipeline(pLogicalDevice->device, pipeline, nullptr);
         }
 
-        if (bufferSize)
-        {
+        if (bufferSize) {
             pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, stagingBufferMemory, nullptr);
             pLogicalDevice->vkd.DestroyBuffer(pLogicalDevice->device, stagingBuffer, nullptr);
         }
 
         pLogicalDevice->vkd.DestroyPipelineLayout(pLogicalDevice->device, pipelineLayout, nullptr);
-        for (auto& renderPass : renderPasses)
-        {
+        for (auto& renderPass : renderPasses) {
             pLogicalDevice->vkd.DestroyRenderPass(pLogicalDevice->device, renderPass, nullptr);
         }
 
-        pLogicalDevice->vkd.DestroyDescriptorSetLayout(pLogicalDevice->device, imageSamplerDescriptorSetLayout, nullptr);
+        pLogicalDevice->vkd.DestroyDescriptorSetLayout(
+            pLogicalDevice->device, imageSamplerDescriptorSetLayout, nullptr);
         pLogicalDevice->vkd.DestroyDescriptorSetLayout(pLogicalDevice->device, uniformDescriptorSetLayout, nullptr);
 
         pLogicalDevice->vkd.DestroyShaderModule(pLogicalDevice->device, shaderModule, nullptr);
 
         pLogicalDevice->vkd.DestroyDescriptorPool(pLogicalDevice->device, descriptorPool, nullptr);
-        for (auto& imageView : outputImageViewsSRGB)
-        {
+        for (auto& imageView : outputImageViewsSRGB) {
             pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageView, nullptr);
         }
-        for (auto& imageView : outputImageViewsUNORM)
-        {
-            pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageView, nullptr);
-        }
-
-        for (auto& imageView : backBufferImageViewsSRGB)
-        {
-            pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageView, nullptr);
-        }
-        for (auto& imageView : backBufferImageViewsUNORM)
-        {
+        for (auto& imageView : outputImageViewsUNORM) {
             pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageView, nullptr);
         }
 
-        for (auto& fbs : framebuffers)
-        {
-            for (auto& fb : fbs)
-            {
+        for (auto& imageView : backBufferImageViewsSRGB) {
+            pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageView, nullptr);
+        }
+        for (auto& imageView : backBufferImageViewsUNORM) {
+            pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageView, nullptr);
+        }
+
+        for (auto& fbs : framebuffers) {
+            for (auto& fb : fbs) {
                 pLogicalDevice->vkd.DestroyFramebuffer(pLogicalDevice->device, fb, nullptr);
             }
         }
 
         std::set<VkImageView> imageViewSet;
 
-        for (auto& it : textureImageViewsSRGB)
-        {
-            for (auto imageView : it.second)
-            {
+        for (auto& it : textureImageViewsSRGB) {
+            for (auto imageView : it.second) {
                 imageViewSet.insert(imageView);
             }
         }
-        for (auto& it : textureImageViewsUNORM)
-        {
-            for (auto imageView : it.second)
-            {
+        for (auto& it : textureImageViewsUNORM) {
+            for (auto imageView : it.second) {
                 imageViewSet.insert(imageView);
             }
         }
 
-        for (auto& it : renderImageViewsSRGB)
-        {
-            for (auto imageView : it.second)
-            {
+        for (auto& it : renderImageViewsSRGB) {
+            for (auto imageView : it.second) {
                 imageViewSet.insert(imageView);
             }
         }
-        for (auto& it : renderImageViewsUNORM)
-        {
-            for (auto imageView : it.second)
-            {
+        for (auto& it : renderImageViewsUNORM) {
+            for (auto imageView : it.second) {
                 imageViewSet.insert(imageView);
             }
         }
 
-        for (auto imageView : imageViewSet)
-        {
+        for (auto imageView : imageViewSet) {
             pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, imageView, nullptr);
         }
         pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, stencilImageView, nullptr);
 
-        for (auto& it : textureImages)
-        {
-            for (auto image : it.second)
-            {
+        for (auto& it : textureImages) {
+            for (auto image : it.second) {
                 pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, image, nullptr);
             }
         }
 
-        for (auto& image : backBufferImages)
-        {
+        for (auto& image : backBufferImages) {
             pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, image, nullptr);
         }
 
         pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, stencilImage, nullptr);
 
-        for (auto& sampler : samplers)
-        {
+        for (auto& sampler : samplers) {
             pLogicalDevice->vkd.DestroySampler(pLogicalDevice->device, sampler, nullptr);
         }
 
-        for (auto& memory : textureMemory)
-        {
+        for (auto& memory : textureMemory) {
             pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, memory, nullptr);
         }
     }
@@ -1137,10 +1064,10 @@ namespace vkBasalt
         preprocessor.add_macro_definition("BUFFER_HEIGHT", std::to_string(imageExtent.height));
         preprocessor.add_macro_definition("BUFFER_RCP_WIDTH", "(1.0 / BUFFER_WIDTH)");
         preprocessor.add_macro_definition("BUFFER_RCP_HEIGHT", "(1.0 / BUFFER_HEIGHT)");
-        preprocessor.add_macro_definition("BUFFER_COLOR_DEPTH", (inputOutputFormatUNORM == VK_FORMAT_A2R10G10B10_UNORM_PACK32) ? "10" : "8");
+        preprocessor.add_macro_definition(
+            "BUFFER_COLOR_DEPTH", (inputOutputFormatUNORM == VK_FORMAT_A2R10G10B10_UNORM_PACK32) ? "10" : "8");
         preprocessor.add_include_path(pConfig->getOption<std::string>("reshadeIncludePath"));
-        if (!preprocessor.append_file(pConfig->getOption<std::string>(effectName)))
-        {
+        if (!preprocessor.append_file(pConfig->getOption<std::string>(effectName))) {
             Logger::err("failed to load shader file: " + pConfig->getOption<std::string>(effectName));
             Logger::err("Does the filepath exist and does it not include spaces?");
         }
@@ -1148,18 +1075,18 @@ namespace vkBasalt
         reshadefx::parser parser;
 
         std::string errors = preprocessor.errors();
-        if (errors != "")
-        {
+        if (errors != "") {
             Logger::err(errors);
         }
 
-        std::unique_ptr<reshadefx::codegen> codegen(reshadefx::create_codegen_spirv(
-            true /* vulkan semantics */, true /* debug info */, true /* uniforms to spec constants */, true /*flip vertex shader*/));
+        std::unique_ptr<reshadefx::codegen> codegen(
+            reshadefx::create_codegen_spirv(
+                true /* vulkan semantics */, true /* debug info */, true /* uniforms to spec constants */,
+                true /*flip vertex shader*/));
         parser.parse(std::move(preprocessor.output()), codegen.get());
 
         errors = parser.errors();
-        if (errors != "")
-        {
+        if (errors != "") {
             Logger::err(errors);
         }
         codegen->write_result(module);
@@ -1171,7 +1098,8 @@ namespace vkBasalt
         shaderCreateInfo.codeSize = module.spirv.size() * sizeof(uint32_t);
         shaderCreateInfo.pCode    = module.spirv.data();
 
-        VkResult result = pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, &shaderModule);
+        VkResult result =
+            pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, &shaderModule);
         ASSERT_VULKAN(result);
 
         Logger::debug("created reshade shaderModule");
@@ -1179,8 +1107,7 @@ namespace vkBasalt
 
     VkFormat ReshadeEffect::convertReshadeFormat(reshadefx::texture_format texFormat)
     {
-        switch (texFormat)
-        {
+        switch (texFormat) {
             case reshadefx::texture_format::r8: return VK_FORMAT_R8_UNORM;
             case reshadefx::texture_format::r16f: return VK_FORMAT_R16_SFLOAT;
             case reshadefx::texture_format::r32f: return VK_FORMAT_R32_SFLOAT;
@@ -1199,8 +1126,7 @@ namespace vkBasalt
 
     VkCompareOp ReshadeEffect::convertReshadeCompareOp(reshadefx::pass_stencil_func compareOp)
     {
-        switch (compareOp)
-        {
+        switch (compareOp) {
             case reshadefx::pass_stencil_func::never: return VK_COMPARE_OP_NEVER;
             case reshadefx::pass_stencil_func::less: return VK_COMPARE_OP_LESS;
             case reshadefx::pass_stencil_func::equal: return VK_COMPARE_OP_EQUAL;
@@ -1215,8 +1141,7 @@ namespace vkBasalt
 
     VkStencilOp ReshadeEffect::convertReshadeStencilOp(reshadefx::pass_stencil_op stencilOp)
     {
-        switch (stencilOp)
-        {
+        switch (stencilOp) {
             case reshadefx::pass_stencil_op::zero: return VK_STENCIL_OP_ZERO;
             case reshadefx::pass_stencil_op::keep: return VK_STENCIL_OP_KEEP;
             case reshadefx::pass_stencil_op::replace: return VK_STENCIL_OP_REPLACE;
@@ -1231,8 +1156,7 @@ namespace vkBasalt
 
     VkBlendOp ReshadeEffect::convertReshadeBlendOp(reshadefx::pass_blend_op blendOp)
     {
-        switch (blendOp)
-        {
+        switch (blendOp) {
             case reshadefx::pass_blend_op::add: return VK_BLEND_OP_ADD;
             case reshadefx::pass_blend_op::subtract: return VK_BLEND_OP_SUBTRACT;
             case reshadefx::pass_blend_op::rev_subtract: return VK_BLEND_OP_REVERSE_SUBTRACT;
@@ -1244,8 +1168,7 @@ namespace vkBasalt
 
     VkBlendFactor ReshadeEffect::convertReshadeBlendFactor(reshadefx::pass_blend_func blendFactor)
     {
-        switch (blendFactor)
-        {
+        switch (blendFactor) {
             case reshadefx::pass_blend_func::zero: return VK_BLEND_FACTOR_ZERO;
             case reshadefx::pass_blend_func::one: return VK_BLEND_FACTOR_ONE;
             case reshadefx::pass_blend_func::src_color: return VK_BLEND_FACTOR_SRC_COLOR;

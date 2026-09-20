@@ -7,14 +7,15 @@ namespace vkBasalt
     class ClarityEffect : public SimpleEffect
     {
     public:
-        ClarityEffect(LogicalDevice*       pLogicalDevice,
-                    VkFormat             format,
-                    VkExtent2D           imageExtent,
-                    std::vector<VkImage> inputImages,
-                    std::vector<VkImage> outputImages,
-                    Config*              pConfig,
-                    VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
-        
+        ClarityEffect(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            std::vector<VkImage> inputImages,
+            std::vector<VkImage> outputImages,
+            Config* pConfig,
+            VkColorSpaceKHR colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
+
         ~ClarityEffect() override;
 
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
@@ -22,9 +23,10 @@ namespace vkBasalt
         // Declarative parameter interface
         std::string getName() const override { return "clarity"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
-        
+
     private:
-        struct ClaritySpecData {
+        struct ClaritySpecData
+        {
             float radius;
             float offset;
             float strength;
@@ -40,7 +42,7 @@ namespace vkBasalt
             float step2_y;
             int32_t colorSpaceMode;
         };
-    
+
         float radius;
         float offset;
     };

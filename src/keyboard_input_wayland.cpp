@@ -29,41 +29,39 @@
 #ifdef wl_array_for_each
 #undef wl_array_for_each
 #endif
-#define wl_array_for_each(pos, array)					\
-	for ((pos) = (decltype(pos)) (array)->data;				\
-	     (array)->size != 0 &&					\
-	     (const char *) (pos) < ((const char *) (array)->data + (array)->size); \
-	     (pos)++)
+#define wl_array_for_each(pos, array) \
+    for ((pos) = (decltype(pos)) (array)->data; \
+         (array)->size != 0 && (const char*) (pos) < ((const char*) (array)->data + (array)->size); (pos)++)
 
 namespace vkBasalt
 {
-    struct xkb_context *context_xkb = nullptr;
+    struct xkb_context* context_xkb = nullptr;
 
     struct wayland_display
     {
-        int ref = 1;
-        struct wl_event_queue *queue = nullptr;
-        struct wl_seat *seat = nullptr;
-        struct wl_keyboard *keyboard = nullptr;
-        struct wl_pointer *pointer = nullptr;
-        struct xkb_keymap *keymap_xkb = nullptr;
-        struct xkb_state *state_xkb = nullptr;
+        int ref                       = 1;
+        struct wl_event_queue* queue  = nullptr;
+        struct wl_seat* seat          = nullptr;
+        struct wl_keyboard* keyboard  = nullptr;
+        struct wl_pointer* pointer    = nullptr;
+        struct xkb_keymap* keymap_xkb = nullptr;
+        struct xkb_state* state_xkb   = nullptr;
         std::vector<struct wl_output*> outputs;
         std::set<xkb_keysym_t> wl_pressed_keys;
-        
+
         float mouse_x = 0.0f, mouse_y = 0.0f;
-        bool mouse_down[5] = {false, false, false, false, false};
-        float mouse_wheel = 0.0f;
-        bool mouse_valid = false;
-        bool pointer_locked = false;  // True when game has locked cursor (FPS mode)
+        bool mouse_down[5]  = {false, false, false, false, false};
+        float mouse_wheel   = 0.0f;
+        bool mouse_valid    = false;
+        bool pointer_locked = false; // True when game has locked cursor (FPS mode)
 
         std::vector<uint32_t> typed_chars;
         std::vector<std::pair<xkb_keysym_t, bool>> key_events; // (keysym, is_pressed)
-        struct zwp_relative_pointer_manager_v1* relative_manager = nullptr;
-        struct zwp_relative_pointer_v1* relative_pointer = nullptr;
+        struct zwp_relative_pointer_manager_v1* relative_manager  = nullptr;
+        struct zwp_relative_pointer_v1* relative_pointer          = nullptr;
         struct wp_fractional_scale_manager_v1* fractional_manager = nullptr;
-        struct wp_fractional_scale_v1* fractional_scale = nullptr;
-        float fractional_scale_value = 0.0f; // 0 = not yet received from compositor
+        struct wp_fractional_scale_v1* fractional_scale           = nullptr;
+        float fractional_scale_value                              = 0.0f; // 0 = not yet received from compositor
 
         ~wayland_display()
         {
@@ -85,26 +83,34 @@ namespace vkBasalt
         }
     };
 
-    static std::map<struct wl_display *, wayland_display> displays;
+    static std::map<struct wl_display*, wayland_display> displays;
 
-    static int   g_outputScale = 1; // Tracks the maximum scale across all displays
+    static int g_outputScale = 1; // Tracks the maximum scale across all displays
 
     // wl_output listener for integer scale fallback
-    static void wl_output_geometry(void*, struct wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*, int32_t) {}
+    static void wl_output_geometry(
+        void*, struct wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*, int32_t)
+    {
+    }
     static void wl_output_mode(void*, struct wl_output*, uint32_t, int32_t, int32_t, int32_t) {}
     static void wl_output_done(void*, struct wl_output*) {}
-    static void wl_output_scale(void*, struct wl_output*, int32_t factor) {
+    static void wl_output_scale(void*, struct wl_output*, int32_t factor)
+    {
         if (factor > g_outputScale) g_outputScale = factor;
         Logger::debug("wl_output scale: " + std::to_string(factor) + " (max: " + std::to_string(g_outputScale) + ")");
     }
     static void wl_output_name(void*, struct wl_output*, const char*) {}
     static void wl_output_description(void*, struct wl_output*, const char*) {}
     static const struct wl_output_listener output_listener = {
-        .geometry=wl_output_geometry, .mode=wl_output_mode, .done=wl_output_done,
-        .scale=wl_output_scale, .name=wl_output_name, .description=wl_output_description
-    };
+        .geometry    = wl_output_geometry,
+        .mode        = wl_output_mode,
+        .done        = wl_output_done,
+        .scale       = wl_output_scale,
+        .name        = wl_output_name,
+        .description = wl_output_description};
 
-    float getWaylandUIScale() {
+    float getWaylandUIScale()
+    {
         // Compositor reported fractional scale (dynamic, always check first)
         for (const auto& [display, wayland] : displays) {
             if (wayland.fractional_scale_value > 0.5f) {
@@ -134,121 +140,182 @@ namespace vkBasalt
         return 1.0f;
     }
 
-    bool  isWaylandInputActive() { return !displays.empty(); }
+    bool isWaylandInputActive()
+    {
+        return !displays.empty();
+    }
 
     // Relative pointer listener provides mouse deltas during pointer lock
-    static void relative_pointer_motion(void *data, struct zwp_relative_pointer_v1 * /*pointer*/,
-                                        uint32_t  /*time_hi*/, uint32_t  /*time_lo*/,
-                                        wl_fixed_t  /*dx*/, wl_fixed_t  /*dy*/,
-                                        wl_fixed_t dx_unaccel, wl_fixed_t dy_unaccel) {
-        auto *wayland = static_cast<wayland_display *>(data);
+    static void relative_pointer_motion(
+        void* data,
+        struct zwp_relative_pointer_v1* /*pointer*/,
+        uint32_t /*time_hi*/,
+        uint32_t /*time_lo*/,
+        wl_fixed_t /*dx*/,
+        wl_fixed_t /*dy*/,
+        wl_fixed_t dx_unaccel,
+        wl_fixed_t dy_unaccel)
+    {
+        auto* wayland = static_cast<wayland_display*>(data);
         // Apply deltas to internal position. Clamped in updateWaylandImGuiIO.
         wayland->mouse_x += wl_fixed_to_double(dx_unaccel);
         wayland->mouse_y += wl_fixed_to_double(dy_unaccel);
     }
 
-    static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {
-        relative_pointer_motion
-    };
+    static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {relative_pointer_motion};
 
     // Fractional scale listener: compositor tells us the preferred scale (x120)
-    static void fractional_scale_preferred(void* data, struct wp_fractional_scale_v1*, uint32_t scale) {
-        auto* wayland = static_cast<wayland_display*>(data);
+    static void fractional_scale_preferred(void* data, struct wp_fractional_scale_v1*, uint32_t scale)
+    {
+        auto* wayland                   = static_cast<wayland_display*>(data);
         wayland->fractional_scale_value = static_cast<float>(scale) / 120.0f;
         Logger::debug("wp_fractional_scale preferred_scale: " + std::to_string(wayland->fractional_scale_value));
     }
 
-    static const struct wp_fractional_scale_v1_listener fractional_scale_listener = {
-        fractional_scale_preferred
-    };
+    static const struct wp_fractional_scale_v1_listener fractional_scale_listener = {fractional_scale_preferred};
 
-    static void seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps);
-    static void seat_handle_name(void *data, struct wl_seat *seat, const char *name);
-    static void wl_keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard, uint32_t format, int32_t fd, uint32_t size);
-    static void wl_keyboard_enter(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial, struct wl_surface *surface, struct wl_array *keys);
-    static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial, struct wl_surface *surface);
-    static void wl_keyboard_key(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
-    static void wl_keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
-    static void wl_keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard, int32_t rate, int32_t delay);
-    static void registry_handle_global(void *data, struct wl_registry* registry, uint32_t name, const char *interface, uint32_t version);
-    static void registry_handle_global_remove(void *data, struct wl_registry *registry, uint32_t name);
+    static void seat_handle_capabilities(void* data, struct wl_seat* seat, uint32_t caps);
+    static void seat_handle_name(void* data, struct wl_seat* seat, const char* name);
+    static void
+    wl_keyboard_keymap(void* data, struct wl_keyboard* wl_keyboard, uint32_t format, int32_t fd, uint32_t size);
+    static void wl_keyboard_enter(
+        void* data,
+        struct wl_keyboard* wl_keyboard,
+        uint32_t serial,
+        struct wl_surface* surface,
+        struct wl_array* keys);
+    static void
+    wl_keyboard_leave(void* data, struct wl_keyboard* wl_keyboard, uint32_t serial, struct wl_surface* surface);
+    static void wl_keyboard_key(
+        void* data, struct wl_keyboard* wl_keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
+    static void wl_keyboard_modifiers(
+        void* data,
+        struct wl_keyboard* wl_keyboard,
+        uint32_t serial,
+        uint32_t depressed,
+        uint32_t latched,
+        uint32_t locked,
+        uint32_t group);
+    static void wl_keyboard_repeat_info(void* data, struct wl_keyboard* wl_keyboard, int32_t rate, int32_t delay);
+    static void registry_handle_global(
+        void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version);
+    static void registry_handle_global_remove(void* data, struct wl_registry* registry, uint32_t name);
     static ImGuiKey keysymToImGuiKey(xkb_keysym_t keysym);
 
-    static void wl_pointer_enter(void *data, struct wl_pointer *wl_pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t surface_x, wl_fixed_t surface_y);
-    static void wl_pointer_leave(void *data, struct wl_pointer *wl_pointer, uint32_t serial, struct wl_surface *surface);
-    static void wl_pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y);
-    static void wl_pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state);
-    static void wl_pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value);
+    static void wl_pointer_enter(
+        void* data,
+        struct wl_pointer* wl_pointer,
+        uint32_t serial,
+        struct wl_surface* surface,
+        wl_fixed_t surface_x,
+        wl_fixed_t surface_y);
+    static void
+    wl_pointer_leave(void* data, struct wl_pointer* wl_pointer, uint32_t serial, struct wl_surface* surface);
+    static void wl_pointer_motion(
+        void* data, struct wl_pointer* wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y);
+    static void wl_pointer_button(
+        void* data, struct wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state);
+    static void
+    wl_pointer_axis(void* data, struct wl_pointer* wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value);
 
     static const struct wl_keyboard_listener keyboard_listener = {
-        .keymap=wl_keyboard_keymap, .enter=wl_keyboard_enter, .leave=wl_keyboard_leave,
-        .key=wl_keyboard_key, .modifiers=wl_keyboard_modifiers, .repeat_info=wl_keyboard_repeat_info
-    };
+        .keymap      = wl_keyboard_keymap,
+        .enter       = wl_keyboard_enter,
+        .leave       = wl_keyboard_leave,
+        .key         = wl_keyboard_key,
+        .modifiers   = wl_keyboard_modifiers,
+        .repeat_info = wl_keyboard_repeat_info};
 
     // wl_pointer v5-v9 events we don't need
-    static void wl_pointer_frame(void *data, struct wl_pointer *wl_pointer) {}
-    static void wl_pointer_axis_source(void *data, struct wl_pointer *wl_pointer, uint32_t axis_source) {}
-    static void wl_pointer_axis_stop(void *data, struct wl_pointer *wl_pointer, uint32_t time, uint32_t axis) {}
-    static void wl_pointer_axis_discrete(void *data, struct wl_pointer * /*wl_pointer*/, uint32_t axis, int32_t discrete) {
-        auto *wayland = static_cast<wayland_display *>(data);
+    static void wl_pointer_frame(void* data, struct wl_pointer* wl_pointer) {}
+    static void wl_pointer_axis_source(void* data, struct wl_pointer* wl_pointer, uint32_t axis_source) {}
+    static void wl_pointer_axis_stop(void* data, struct wl_pointer* wl_pointer, uint32_t time, uint32_t axis) {}
+    static void wl_pointer_axis_discrete(void* data, struct wl_pointer* /*wl_pointer*/, uint32_t axis, int32_t discrete)
+    {
+        auto* wayland = static_cast<wayland_display*>(data);
         if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
             wayland->mouse_wheel += -static_cast<float>(discrete);
         }
     }
-    static void wl_pointer_axis_value120(void *data, struct wl_pointer * /*wl_pointer*/, uint32_t axis, int32_t value120) {
-        auto *wayland = static_cast<wayland_display *>(data);
+    static void wl_pointer_axis_value120(void* data, struct wl_pointer* /*wl_pointer*/, uint32_t axis, int32_t value120)
+    {
+        auto* wayland = static_cast<wayland_display*>(data);
         if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
             wayland->mouse_wheel += -static_cast<float>(value120) / 120.0f;
         }
     }
-    static void wl_pointer_axis_relative_direction(void *data, struct wl_pointer *wl_pointer, uint32_t axis, uint32_t direction) {}
+    static void
+    wl_pointer_axis_relative_direction(void* data, struct wl_pointer* wl_pointer, uint32_t axis, uint32_t direction)
+    {
+    }
 
     static const struct wl_pointer_listener pointer_listener = {
-        .enter=wl_pointer_enter, .leave=wl_pointer_leave, .motion=wl_pointer_motion,
-        .button=wl_pointer_button, .axis=wl_pointer_axis,
-        .frame=wl_pointer_frame, .axis_source=wl_pointer_axis_source, .axis_stop=wl_pointer_axis_stop,
-        .axis_discrete=wl_pointer_axis_discrete, .axis_value120=wl_pointer_axis_value120,
-        .axis_relative_direction=wl_pointer_axis_relative_direction
-    };
+        .enter                   = wl_pointer_enter,
+        .leave                   = wl_pointer_leave,
+        .motion                  = wl_pointer_motion,
+        .button                  = wl_pointer_button,
+        .axis                    = wl_pointer_axis,
+        .frame                   = wl_pointer_frame,
+        .axis_source             = wl_pointer_axis_source,
+        .axis_stop               = wl_pointer_axis_stop,
+        .axis_discrete           = wl_pointer_axis_discrete,
+        .axis_value120           = wl_pointer_axis_value120,
+        .axis_relative_direction = wl_pointer_axis_relative_direction};
 
     static const struct wl_seat_listener seat_listener = {
-        .capabilities=seat_handle_capabilities, .name=seat_handle_name
-    };
+        .capabilities = seat_handle_capabilities, .name = seat_handle_name};
 
     static const struct wl_registry_listener registry_listener = {
-        .global=registry_handle_global, .global_remove=registry_handle_global_remove
-    };
+        .global = registry_handle_global, .global_remove = registry_handle_global_remove};
 
-    static void wl_keyboard_keymap(void *data, struct wl_keyboard * /*wl_keyboard*/, uint32_t format, int32_t fd, uint32_t size) {
-        auto *wayland = static_cast<wayland_display *>(data);
-        if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) { close(fd); return; }
+    static void
+    wl_keyboard_keymap(void* data, struct wl_keyboard* /*wl_keyboard*/, uint32_t format, int32_t fd, uint32_t size)
+    {
+        auto* wayland = static_cast<wayland_display*>(data);
+        if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+            close(fd);
+            return;
+        }
         char* map_shm = static_cast<char*>(mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0));
-        if (map_shm == MAP_FAILED) { close(fd); return; }
+        if (map_shm == MAP_FAILED) {
+            close(fd);
+            return;
+        }
         if (!context_xkb) context_xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
         if (wayland->keymap_xkb && wayland->state_xkb) {
             xkb_keymap_unref(wayland->keymap_xkb);
             xkb_state_unref(wayland->state_xkb);
         }
-        wayland->keymap_xkb = xkb_keymap_new_from_string(context_xkb, map_shm, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+        wayland->keymap_xkb =
+            xkb_keymap_new_from_string(context_xkb, map_shm, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
         if (wayland->keymap_xkb) wayland->state_xkb = xkb_state_new(wayland->keymap_xkb);
         munmap(reinterpret_cast<void*>(map_shm), size);
         close(fd);
     }
 
-    static void wl_keyboard_enter(void *data, struct wl_keyboard * /*wl_keyboard*/, uint32_t  /*serial*/, struct wl_surface * /*surface*/, struct wl_array *keys) {
+    static void wl_keyboard_enter(
+        void* data,
+        struct wl_keyboard* /*wl_keyboard*/,
+        uint32_t /*serial*/,
+        struct wl_surface* /*surface*/,
+        struct wl_array* keys)
+    {
         if (!data) return;
-        auto *wayland = static_cast<wayland_display *>(data);
+        auto* wayland = static_cast<wayland_display*>(data);
         if (!wayland->state_xkb) return;
-        uint32_t *key = nullptr;
-        wl_array_for_each(key, keys) {
+        uint32_t* key = nullptr;
+        wl_array_for_each(key, keys)
+        {
             xkb_keycode_t keycode = *key + 8;
-            xkb_keysym_t keysym = xkb_state_key_get_one_sym(wayland->state_xkb, keycode);
+            xkb_keysym_t keysym   = xkb_state_key_get_one_sym(wayland->state_xkb, keycode);
             wayland->wl_pressed_keys.insert(keysym);
         }
     }
 
-    static void wl_keyboard_leave(void *data, struct wl_keyboard * /*wl_keyboard*/, uint32_t  /*serial*/, struct wl_surface * /*surface*/) {
-        auto *wayland = static_cast<wayland_display *>(data);
+    static void wl_keyboard_leave(
+        void* data, struct wl_keyboard* /*wl_keyboard*/, uint32_t /*serial*/, struct wl_surface* /*surface*/)
+    {
+        auto* wayland = static_cast<wayland_display*>(data);
         if (wayland) {
             // Queue release events for ordered processing via feedWaylandKeyEventsToImGui instead of calling ImGui directly. This prevents dropped key releases and ensures events are processed in the correct frame.
             for (auto keysym : wayland->wl_pressed_keys) {
@@ -258,17 +325,24 @@ namespace vkBasalt
         }
     }
 
-    static void wl_keyboard_key(void *data, struct wl_keyboard * /*wl_keyboard*/, uint32_t  /*serial*/, uint32_t  /*time*/, uint32_t key, uint32_t state) {
+    static void wl_keyboard_key(
+        void* data,
+        struct wl_keyboard* /*wl_keyboard*/,
+        uint32_t /*serial*/,
+        uint32_t /*time*/,
+        uint32_t key,
+        uint32_t state)
+    {
         if (!data) return;
-        auto *wayland = static_cast<wayland_display *>(data);
+        auto* wayland = static_cast<wayland_display*>(data);
         if (!wayland->state_xkb) return;
         xkb_keycode_t keycode = key + 8;
-        xkb_keysym_t keysym = xkb_state_key_get_one_sym(wayland->state_xkb, keycode);
-        
+        xkb_keysym_t keysym   = xkb_state_key_get_one_sym(wayland->state_xkb, keycode);
+
         if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
             wayland->wl_pressed_keys.insert(keysym);
             wayland->key_events.emplace_back(keysym, true);
-            
+
             uint32_t codepoint = xkb_state_key_get_utf32(wayland->state_xkb, keycode);
             if (codepoint >= 32 && codepoint != 0x7F) {
                 wayland->typed_chars.push_back(codepoint);
@@ -279,57 +353,90 @@ namespace vkBasalt
         }
     }
 
-    static void wl_keyboard_modifiers(void *data, struct wl_keyboard * /*wl_keyboard*/, uint32_t  /*serial*/, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group) {
-        auto *wayland = static_cast<wayland_display *>(data);
-        if (wayland && wayland->state_xkb) xkb_state_update_mask(wayland->state_xkb, depressed, latched, locked, 0, 0, group);
+    static void wl_keyboard_modifiers(
+        void* data,
+        struct wl_keyboard* /*wl_keyboard*/,
+        uint32_t /*serial*/,
+        uint32_t depressed,
+        uint32_t latched,
+        uint32_t locked,
+        uint32_t group)
+    {
+        auto* wayland = static_cast<wayland_display*>(data);
+        if (wayland && wayland->state_xkb)
+            xkb_state_update_mask(wayland->state_xkb, depressed, latched, locked, 0, 0, group);
     }
 
-    static void wl_keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard, int32_t rate, int32_t delay) {}
+    static void wl_keyboard_repeat_info(void* data, struct wl_keyboard* wl_keyboard, int32_t rate, int32_t delay) {}
 
-    static void wl_pointer_enter(void *data, struct wl_pointer * /*wl_pointer*/, uint32_t  /*serial*/, struct wl_surface * /*surface*/, wl_fixed_t surface_x, wl_fixed_t surface_y) {
-        auto *wayland = static_cast<wayland_display *>(data);
-        wayland->mouse_x = wl_fixed_to_double(surface_x);
-        wayland->mouse_y = wl_fixed_to_double(surface_y);
-        wayland->mouse_valid = true;
+    static void wl_pointer_enter(
+        void* data,
+        struct wl_pointer* /*wl_pointer*/,
+        uint32_t /*serial*/,
+        struct wl_surface* /*surface*/,
+        wl_fixed_t surface_x,
+        wl_fixed_t surface_y)
+    {
+        auto* wayland           = static_cast<wayland_display*>(data);
+        wayland->mouse_x        = wl_fixed_to_double(surface_x);
+        wayland->mouse_y        = wl_fixed_to_double(surface_y);
+        wayland->mouse_valid    = true;
         wayland->pointer_locked = false;
     }
-    
-    static void wl_pointer_leave(void *data, struct wl_pointer * /*wl_pointer*/, uint32_t  /*serial*/, struct wl_surface * /*surface*/) {
-        auto *wayland = static_cast<wayland_display *>(data);
+
+    static void
+    wl_pointer_leave(void* data, struct wl_pointer* /*wl_pointer*/, uint32_t /*serial*/, struct wl_surface* /*surface*/)
+    {
+        auto* wayland        = static_cast<wayland_display*>(data);
         wayland->mouse_valid = false;
         // If relative pointer is active, the game locked the cursor (FPS mode). Otherwise the pointer simply left the surface (user moved to another window).
         wayland->pointer_locked = (wayland->relative_pointer != nullptr);
     }
-    
-    static void wl_pointer_motion(void *data, struct wl_pointer * /*wl_pointer*/, uint32_t  /*time*/, wl_fixed_t surface_x, wl_fixed_t surface_y) {
-        auto *wayland = static_cast<wayland_display *>(data);
-        wayland->mouse_x = wl_fixed_to_double(surface_x);
-        wayland->mouse_y = wl_fixed_to_double(surface_y);
+
+    static void wl_pointer_motion(
+        void* data, struct wl_pointer* /*wl_pointer*/, uint32_t /*time*/, wl_fixed_t surface_x, wl_fixed_t surface_y)
+    {
+        auto* wayland        = static_cast<wayland_display*>(data);
+        wayland->mouse_x     = wl_fixed_to_double(surface_x);
+        wayland->mouse_y     = wl_fixed_to_double(surface_y);
         wayland->mouse_valid = true;
     }
-    
-    static void wl_pointer_button(void *data, struct wl_pointer * /*wl_pointer*/, uint32_t  /*serial*/, uint32_t  /*time*/, uint32_t button, uint32_t state) {
-        auto *wayland = static_cast<wayland_display *>(data);
+
+    static void wl_pointer_button(
+        void* data,
+        struct wl_pointer* /*wl_pointer*/,
+        uint32_t /*serial*/,
+        uint32_t /*time*/,
+        uint32_t button,
+        uint32_t state)
+    {
+        auto* wayland    = static_cast<wayland_display*>(data);
         int imgui_button = -1;
-        if (button == 272) imgui_button = 0;
-        else if (button == 273) imgui_button = 1;
-        else if (button == 274) imgui_button = 2;
-        
+        if (button == 272)
+            imgui_button = 0;
+        else if (button == 273)
+            imgui_button = 1;
+        else if (button == 274)
+            imgui_button = 2;
+
         if (imgui_button >= 0 && imgui_button < 5) {
             wayland->mouse_down[imgui_button] = (state == WL_POINTER_BUTTON_STATE_PRESSED);
         }
     }
-    
-    static void wl_pointer_axis(void *data, struct wl_pointer * /*wl_pointer*/, uint32_t  /*time*/, uint32_t axis, wl_fixed_t value) {
-        auto *wayland = static_cast<wayland_display *>(data);
+
+    static void
+    wl_pointer_axis(void* data, struct wl_pointer* /*wl_pointer*/, uint32_t /*time*/, uint32_t axis, wl_fixed_t value)
+    {
+        auto* wayland = static_cast<wayland_display*>(data);
         if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
             wayland->mouse_wheel += -wl_fixed_to_double(value) / 10.0;
         }
     }
 
-    static void seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
+    static void seat_handle_capabilities(void* data, struct wl_seat* seat, uint32_t caps)
+    {
         if (!data) return;
-        auto *wayland = static_cast<wayland_display *>(data);
+        auto* wayland = static_cast<wayland_display*>(data);
         Logger::debug("seat_handle_capabilities: caps=" + std::to_string(caps));
 
         if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !wayland->keyboard) {
@@ -348,8 +455,8 @@ namespace vkBasalt
 
             // Create relative pointer for FPS games that lock the cursor
             if (wayland->relative_manager && !wayland->relative_pointer) {
-                wayland->relative_pointer = zwp_relative_pointer_manager_v1_get_relative_pointer(
-                    wayland->relative_manager, wayland->pointer);
+                wayland->relative_pointer =
+                    zwp_relative_pointer_manager_v1_get_relative_pointer(wayland->relative_manager, wayland->pointer);
                 // Route relative pointer events to our custom queue
                 wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wayland->relative_pointer), wayland->queue);
                 zwp_relative_pointer_v1_add_listener(wayland->relative_pointer, &relative_pointer_listener, data);
@@ -358,88 +465,94 @@ namespace vkBasalt
         }
     }
 
-    static void seat_handle_name(void *data, struct wl_seat *seat, const char *name) {}
+    static void seat_handle_name(void* data, struct wl_seat* seat, const char* name) {}
 
-    static void registry_handle_global(void *data, struct wl_registry* registry, uint32_t name, const char *interface, uint32_t version) {
+    static void registry_handle_global(
+        void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
+    {
         if (!data) return;
-        auto *wayland = static_cast<wayland_display *>(data);
+        auto* wayland = static_cast<wayland_display*>(data);
 
         if (strcmp(interface, wl_seat_interface.name) == 0 && !wayland->seat) {
             uint32_t bind_version = (version < 9) ? version : 9;
-            auto* seat = static_cast<struct wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, bind_version));
+            auto* seat =
+                static_cast<struct wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, bind_version));
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(seat), wayland->queue);
             wayland->seat = seat;
             wl_seat_add_listener(wayland->seat, &seat_listener, data);
             Logger::debug("Bound wl_seat to custom queue");
         }
         if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0) {
-            wayland->relative_manager = static_cast<struct zwp_relative_pointer_manager_v1*>(wl_registry_bind(
-                registry, name, &zwp_relative_pointer_manager_v1_interface, 1));
+            wayland->relative_manager = static_cast<struct zwp_relative_pointer_manager_v1*>(
+                wl_registry_bind(registry, name, &zwp_relative_pointer_manager_v1_interface, 1));
             // Route manager events to our custom queue
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wayland->relative_manager), wayland->queue);
             Logger::debug("Bound relative_pointer_manager");
         }
         if (strcmp(interface, wl_output_interface.name) == 0) {
-            auto* output = static_cast<struct wl_output*>(wl_registry_bind(registry, name, &wl_output_interface, version < 4 ? version : 4));
+            auto* output = static_cast<struct wl_output*>(
+                wl_registry_bind(registry, name, &wl_output_interface, version < 4 ? version : 4));
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(output), wayland->queue);
             wl_output_add_listener(output, &output_listener, nullptr);
             wayland->outputs.push_back(output);
         }
         if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
-            wayland->fractional_manager = static_cast<struct wp_fractional_scale_manager_v1*>(wl_registry_bind(
-                registry, name, &wp_fractional_scale_manager_v1_interface, 1));
+            wayland->fractional_manager = static_cast<struct wp_fractional_scale_manager_v1*>(
+                wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface, 1));
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wayland->fractional_manager), wayland->queue);
             Logger::debug("Bound wp_fractional_scale_manager_v1");
         }
     }
 
-    static void registry_handle_global_remove(void *data, struct wl_registry *registry, uint32_t name) {}
+    static void registry_handle_global_remove(void* data, struct wl_registry* registry, uint32_t name) {}
 
-    static bool g_registryInitialized = false;
+    static bool g_registryInitialized          = false;
     static struct wl_display* g_pendingDisplay = nullptr;
     static struct wl_surface* g_pendingSurface = nullptr;
 
-    void initWaylandInput(void* display_ptr, void* surface_ptr) {
-        auto *display = static_cast<struct wl_display *>(display_ptr);
-        auto *surface = static_cast<struct wl_surface *>(surface_ptr);
+    void initWaylandInput(void* display_ptr, void* surface_ptr)
+    {
+        auto* display = static_cast<struct wl_display*>(display_ptr);
+        auto* surface = static_cast<struct wl_surface*>(surface_ptr);
         if (!display || displays.find(display) != displays.end()) return;
-        
+
         // Only store pointers. Don't create queue or do any Wayland operations here. The game's event loop may not be ready. Everything is deferred to ensureWaylandRegistryBound() which runs on the first QueuePresentKHR when the game is fully initialized.
-        displays[display].ref = 1;
+        displays[display].ref   = 1;
         displays[display].queue = nullptr;
-        g_pendingDisplay = display;
-        g_pendingSurface = surface;
-        g_registryInitialized = false;
-        
+        g_pendingDisplay        = display;
+        g_pendingSurface        = surface;
+        g_registryInitialized   = false;
+
         Logger::debug("Wayland input: display registered, deferring all Wayland setup.");
     }
 
     // Called lazily on the first QueuePresentKHR to safely bind registry globals
-    void ensureWaylandRegistryBound() {
+    void ensureWaylandRegistryBound()
+    {
         if (g_registryInitialized || !g_pendingDisplay) return;
         g_registryInitialized = true;
-        
+
         struct wl_display* display = g_pendingDisplay;
-        auto& wayland = displays[display];
-        
+        auto& wayland              = displays[display];
+
         // Create the queue here, not in initWaylandInput, to avoid touching the display during the game's early initialization phase.
         if (!wayland.queue) {
             wayland.queue = wl_display_create_queue(display);
         }
-        
-        auto *display_wrapped = static_cast<struct wl_display*>(wl_proxy_create_wrapper(display));
+
+        auto* display_wrapped = static_cast<struct wl_display*>(wl_proxy_create_wrapper(display));
         wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(display_wrapped), wayland.queue);
-        struct wl_registry *registry = wl_display_get_registry(display_wrapped);
+        struct wl_registry* registry = wl_display_get_registry(display_wrapped);
         wl_proxy_wrapper_destroy(display_wrapped);
         wl_registry_add_listener(registry, &registry_listener, &wayland);
         wl_display_roundtrip_queue(display, wayland.queue);
         wl_display_roundtrip_queue(display, wayland.queue);
         wl_registry_destroy(registry);
-        
+
         // Create fractional scale object for the game's surface. The compositor will respond with a preferred_scale event.
         if (wayland.fractional_manager && g_pendingSurface && !wayland.fractional_scale) {
-            wayland.fractional_scale = wp_fractional_scale_manager_v1_get_fractional_scale(
-                wayland.fractional_manager, g_pendingSurface);
+            wayland.fractional_scale =
+                wp_fractional_scale_manager_v1_get_fractional_scale(wayland.fractional_manager, g_pendingSurface);
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wayland.fractional_scale), wayland.queue);
             wp_fractional_scale_v1_add_listener(wayland.fractional_scale, &fractional_scale_listener, &wayland);
             // Roundtrip to receive the preferred_scale event immediately
@@ -447,11 +560,15 @@ namespace vkBasalt
             Logger::debug("Created wp_fractional_scale_v1 for surface");
         }
 
-        Logger::debug("Wayland registry bound. Output scale: " + std::to_string(g_outputScale)
-            + (wayland.fractional_scale_value > 0 ? " (fractional: " + std::to_string(wayland.fractional_scale_value) + ")" : ""));
+        Logger::debug(
+            "Wayland registry bound. Output scale: " + std::to_string(g_outputScale)
+            + (wayland.fractional_scale_value > 0
+                   ? " (fractional: " + std::to_string(wayland.fractional_scale_value) + ")"
+                   : ""));
     }
 
-    uint32_t convertToKeySymWayland(const std::string& key) {
+    uint32_t convertToKeySymWayland(const std::string& key)
+    {
         if (!context_xkb) context_xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
         if (!context_xkb) return 0;
         xkb_keysym_t keysym = xkb_keysym_from_name(key.c_str(), XKB_KEYSYM_NO_FLAGS);
@@ -461,7 +578,8 @@ namespace vkBasalt
         return 0;
     }
 
-    bool isKeyPressedWayland(uint32_t ks) {
+    bool isKeyPressedWayland(uint32_t ks)
+    {
         bool pressed = false;
         for (const auto& display : displays) {
             if (!display.second.queue) continue; // Queue not yet created — skip
@@ -474,7 +592,8 @@ namespace vkBasalt
         return pressed;
     }
 
-    static ImGuiKey keysymToImGuiKey(xkb_keysym_t keysym) {
+    static ImGuiKey keysymToImGuiKey(xkb_keysym_t keysym)
+    {
         switch (keysym) {
             // Navigation & editing for ImGui keyboard nav
             case 0xFF09: return ImGuiKey_Tab;
@@ -514,22 +633,27 @@ namespace vkBasalt
             case 0xFFAE: return ImGuiKey_KeypadDecimal;
             case 0x002E: return ImGuiKey_Period;
             default:
-                if (keysym >= 0x0030 && keysym <= 0x0039) return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_0) + (keysym - 0x0030));
-                if (keysym >= 0xFFB0 && keysym <= 0xFFB9) return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_0) + (keysym - 0xFFB0));
-                if (keysym >= 0x0061 && keysym <= 0x007A) return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_A) + (keysym - 0x0061));
-                if (keysym >= 0x0041 && keysym <= 0x005A) return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_A) + (keysym - 0x0041));
+                if (keysym >= 0x0030 && keysym <= 0x0039)
+                    return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_0) + (keysym - 0x0030));
+                if (keysym >= 0xFFB0 && keysym <= 0xFFB9)
+                    return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_0) + (keysym - 0xFFB0));
+                if (keysym >= 0x0061 && keysym <= 0x007A)
+                    return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_A) + (keysym - 0x0061));
+                if (keysym >= 0x0041 && keysym <= 0x005A)
+                    return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_A) + (keysym - 0x0041));
                 return ImGuiKey_None;
         }
     }
 
-    void feedWaylandKeyEventsToImGui() {
+    void feedWaylandKeyEventsToImGui()
+    {
         if (!ImGui::GetCurrentContext()) return;
         ImGuiIO& io = ImGui::GetIO();
         for (auto& display_pair : displays) {
             wayland_display& wayland = display_pair.second;
             if (!wayland.queue) continue;
             wl_display_dispatch_queue_pending(display_pair.first, wayland.queue);
-            
+
             for (auto& [keysym, pressed] : wayland.key_events) {
                 ImGuiKey imguiKey = keysymToImGuiKey(keysym);
                 if (imguiKey != ImGuiKey_None) {
@@ -537,7 +661,7 @@ namespace vkBasalt
                 }
             }
             wayland.key_events.clear();
-            
+
             for (uint32_t c : wayland.typed_chars) {
                 io.AddInputCharacter(c);
             }
@@ -545,7 +669,8 @@ namespace vkBasalt
         }
     }
 
-    bool wasSlashTypedWayland() {
+    bool wasSlashTypedWayland()
+    {
         for (auto& display_pair : displays) {
             wayland_display& wayland = display_pair.second;
             if (wayland.wl_pressed_keys.count(0x002F)) return true; // '/' and 'f'
@@ -554,7 +679,8 @@ namespace vkBasalt
         return false;
     }
 
-    void updateWaylandImGuiIO(float scale) {
+    void updateWaylandImGuiIO(float scale)
+    {
         if (!ImGui::GetCurrentContext()) return;
         ImGuiIO& io = ImGui::GetIO();
         for (auto& display_pair : displays) {
@@ -574,7 +700,8 @@ namespace vkBasalt
             io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
 
             // Feed buttons unconditionally they still fire during pointer lock
-            for (int i = 0; i < 5; i++) io.MouseDown[i] = wayland.mouse_down[i];
+            for (int i = 0; i < 5; i++)
+                io.MouseDown[i] = wayland.mouse_down[i];
             io.MouseWheel += wayland.mouse_wheel;
             wayland.mouse_wheel = 0.0f;
 
@@ -584,24 +711,28 @@ namespace vkBasalt
         }
     }
 
-    void clearWaylandInputQueues() {
+    void clearWaylandInputQueues()
+    {
         for (auto& display_pair : displays) {
             wayland_display& wayland = display_pair.second;
             wayland.key_events.clear();
             wayland.typed_chars.clear();
-            for (bool & i : wayland.mouse_down) i = false;
+            for (bool& i : wayland.mouse_down)
+                i = false;
             wayland.mouse_wheel = 0.0f;
         }
         if (ImGui::GetCurrentContext()) {
             ImGuiIO& io = ImGui::GetIO();
             io.ClearInputKeys();
             io.InputQueueCharacters.resize(0);
-            for (bool & i : io.MouseDown) i = false;
+            for (bool& i : io.MouseDown)
+                i = false;
             io.MouseWheel = 0.0f;
         }
     }
 
-    float consumeWaylandMouseWheel() {
+    float consumeWaylandMouseWheel()
+    {
         float total = 0.0f;
         for (auto& display_pair : displays) {
             wayland_display& wayland = display_pair.second;
@@ -613,15 +744,16 @@ namespace vkBasalt
         return total;
     }
 
-    void shutdownWaylandInput() {
+    void shutdownWaylandInput()
+    {
         displays.clear(); // wayland_display destructors clean up all Wayland resources
         if (context_xkb) {
             xkb_context_unref(context_xkb);
             context_xkb = nullptr;
         }
         g_registryInitialized = false;
-        g_pendingDisplay = nullptr;
-        g_pendingSurface = nullptr;
+        g_pendingDisplay      = nullptr;
+        g_pendingSurface      = nullptr;
         Logger::debug("Wayland input shut down.");
     }
 } // namespace vkBasalt

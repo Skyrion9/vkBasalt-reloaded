@@ -18,9 +18,11 @@
 #include "format.hpp"
 #include "keyboard_input.hpp"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    void ImGuiOverlay::drawStatsTab() {
+    void ImGuiOverlay::drawStatsTab()
+    {
         ImGui::Text("System & Display Statistics");
         ImGui::Separator();
         ImGui::Spacing();
@@ -34,11 +36,11 @@ namespace vkBasalt {
         if (ImGui::CollapsingHeader("Application", ImGuiTreeNodeFlags_DefaultOpen)) {
             statRow("Game", getGameDisplayName().c_str());
 
-            char exePath[4096] = {0};
-            ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+            char exePath[4096]  = {0};
+            ssize_t len         = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
             std::string exeName = "Unknown";
             if (len > 0) {
-                exeName = std::string(exePath, static_cast<size_t>(len));
+                exeName      = std::string(exePath, static_cast<size_t>(len));
                 size_t slash = exeName.find_last_of('/');
                 if (slash != std::string::npos) exeName = exeName.substr(slash + 1);
             }
@@ -49,7 +51,9 @@ namespace vkBasalt {
         if (ImGui::CollapsingHeader("Display & Swapchain", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (m_pSwapchain) {
                 char resBuf[32];
-                snprintf(resBuf, sizeof(resBuf), "%u x %u", m_pSwapchain->imageExtent.width, m_pSwapchain->imageExtent.height);
+                snprintf(
+                    resBuf, sizeof(resBuf), "%u x %u", m_pSwapchain->imageExtent.width,
+                    m_pSwapchain->imageExtent.height);
                 statRow("Resolution", resBuf);
 
                 statRow("Pixel Format", formatName(m_pSwapchain->format));
@@ -73,14 +77,16 @@ namespace vkBasalt {
 
                 uint32_t apiVer = m_pDevice->physicalDeviceProperties.apiVersion;
                 char apiBuf[32];
-                snprintf(apiBuf, sizeof(apiBuf), "%u.%u.%u",
-                    VK_VERSION_MAJOR(apiVer), VK_VERSION_MINOR(apiVer), VK_VERSION_PATCH(apiVer));
+                snprintf(
+                    apiBuf, sizeof(apiBuf), "%u.%u.%u", VK_VERSION_MAJOR(apiVer), VK_VERSION_MINOR(apiVer),
+                    VK_VERSION_PATCH(apiVer));
                 statRow("Vulkan API", apiBuf);
 
                 uint32_t drvVer = m_pDevice->physicalDeviceProperties.driverVersion;
                 char drvBuf[32];
-                snprintf(drvBuf, sizeof(drvBuf), "%u.%u.%u",
-                    VK_VERSION_MAJOR(drvVer), VK_VERSION_MINOR(drvVer), VK_VERSION_PATCH(drvVer));
+                snprintf(
+                    drvBuf, sizeof(drvBuf), "%u.%u.%u", VK_VERSION_MAJOR(drvVer), VK_VERSION_MINOR(drvVer),
+                    VK_VERSION_PATCH(drvVer));
                 statRow("Driver Version", drvBuf);
 
                 uint64_t totalVRAM = 0;
@@ -90,7 +96,8 @@ namespace vkBasalt {
                     }
                 }
                 char vramBuf[32];
-                snprintf(vramBuf, sizeof(vramBuf), "%.2f GB", static_cast<float>(totalVRAM) / (1024.0f * 1024.0f * 1024.0f));
+                snprintf(
+                    vramBuf, sizeof(vramBuf), "%.2f GB", static_cast<float>(totalVRAM) / (1024.0f * 1024.0f * 1024.0f));
                 statRow("Total VRAM", vramBuf);
             }
         }
@@ -113,8 +120,10 @@ namespace vkBasalt {
 
                 char fakeImgBuf[64];
                 size_t fakeCount = m_pSwapchain->fakeImages.size();
-                uint32_t bpp = getBytesPerPixel(m_pSwapchain->sourceFormat);
-                float poolMB = static_cast<float>(fakeCount * m_pSwapchain->imageExtent.width * m_pSwapchain->imageExtent.height * bpp) / (1024.0f * 1024.0f);
+                uint32_t bpp     = getBytesPerPixel(m_pSwapchain->sourceFormat);
+                float poolMB = static_cast<float>(
+                                   fakeCount * m_pSwapchain->imageExtent.width * m_pSwapchain->imageExtent.height * bpp)
+                               / (1024.0f * 1024.0f);
                 snprintf(fakeImgBuf, sizeof(fakeImgBuf), "%zu images (%.1f MB)", fakeCount, poolMB);
                 statRow("Fake Image Pool", fakeImgBuf);
 
@@ -140,8 +149,8 @@ namespace vkBasalt {
         ImGui::Spacing();
         if (ImGui::CollapsingHeader("Overlay & Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
             const char* waylandDisplay = getenv("WAYLAND_DISPLAY");
-            const char* x11Display = getenv("DISPLAY");
-            
+            const char* x11Display     = getenv("DISPLAY");
+
             std::string displayServer;
             // Use the actual confirmed input backend instead of guessing from env vars (Proton sets both WAYLAND_DISPLAY and DISPLAY even for native Wayland games)
             if (isWaylandBackend()) {

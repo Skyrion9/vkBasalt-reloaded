@@ -17,7 +17,8 @@
 #include "format.hpp"
 #include "logger.hpp"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
     extern pid_t g_layer_init_pid;
     // Define the global reload triggers
     std::atomic<bool> g_effectsEnabled{true};
@@ -26,11 +27,16 @@ namespace vkBasalt {
     std::atomic<bool> g_triggerPreviewReload{false};
     std::atomic<bool> g_triggerRevertReload{false};
 
-    OverlayManager::OverlayManager() = default;
+    OverlayManager::OverlayManager()  = default;
     OverlayManager::~OverlayManager() = default;
 
-    void OverlayManager::initOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
-                                     VkSwapchainKHR swapchain, VkFormat format, Config* pConfig) {
+    void OverlayManager::initOverlay(
+        LogicalDevice* pDevice,
+        LogicalSwapchain* pSwapchain,
+        VkSwapchainKHR swapchain,
+        VkFormat format,
+        Config* pConfig)
+    {
         // Skip in forked child processes (Vulkan Loader invalidates handles)
         if (getpid() != g_layer_init_pid) {
             Logger::debug("Fork detected! Skipping ImGui initialization in child process.");
@@ -46,13 +52,14 @@ namespace vkBasalt {
             m_lastOverlayOpenState = false;
         }
 
-        m_overlayMap[swapchain] = overlay;
+        m_overlayMap[swapchain]        = overlay;
         m_commandBuffersMap[swapchain] = allocateCommandBuffer(pDevice, pSwapchain->imageCount);
-        m_semaphoresMap[swapchain] = createSemaphores(pDevice, pSwapchain->imageCount);
+        m_semaphoresMap[swapchain]     = createSemaphores(pDevice, pSwapchain->imageCount);
     }
 
-    bool OverlayManager::renderOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain,
-                                       VkSwapchainKHR swapchain, uint32_t imageIndex) {
+    bool OverlayManager::renderOverlay(
+        LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, VkSwapchainKHR swapchain, uint32_t imageIndex)
+    {
         auto overlayIt = m_overlayMap.find(swapchain);
         if (overlayIt == m_overlayMap.end() || !overlayIt->second) {
             return false;
@@ -68,43 +75,43 @@ namespace vkBasalt {
         pDevice->vkd.ResetCommandBuffer(overlayCmdBuf, 0);
 
         VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        beginInfo.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         pDevice->vkd.BeginCommandBuffer(overlayCmdBuf, &beginInfo);
 
         // Only record ImGui draw commands if the overlay is actually open. When closed, we submit an empty command buffer to keep the semaphore sync chain consistent and prevent orphaned signaled semaphores.
         if (overlayIt->second->isOverlayOpen()) {
             VkFormat unormFormat = convertToUNORM(pSwapchain->format);
-            overlayIt->second->processFrame(overlayCmdBuf, imageIndex, unormFormat,
-                                            pSwapchain->imageExtent.width, pSwapchain->imageExtent.height);
+            overlayIt->second->processFrame(
+                overlayCmdBuf, imageIndex, unormFormat, pSwapchain->imageExtent.width, pSwapchain->imageExtent.height);
         }
 
         pDevice->vkd.EndCommandBuffer(overlayCmdBuf);
 
-        VkSemaphore effectSem = pSwapchain->semaphores[imageIndex];
-        VkSemaphore overlaySem = m_semaphoresMap[swapchain][imageIndex];
+        VkSemaphore effectSem                 = pSwapchain->semaphores[imageIndex];
+        VkSemaphore overlaySem                = m_semaphoresMap[swapchain][imageIndex];
         VkPipelineStageFlags overlayWaitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-        VkSubmitInfo overlaySubmitInfo = {};
-        overlaySubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        overlaySubmitInfo.waitSemaphoreCount = 1;
-        overlaySubmitInfo.pWaitSemaphores = &effectSem;
-        overlaySubmitInfo.pWaitDstStageMask = &overlayWaitStage;
-        overlaySubmitInfo.commandBufferCount = 1;
-        overlaySubmitInfo.pCommandBuffers = &overlayCmdBuf;
+        VkSubmitInfo overlaySubmitInfo         = {};
+        overlaySubmitInfo.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        overlaySubmitInfo.waitSemaphoreCount   = 1;
+        overlaySubmitInfo.pWaitSemaphores      = &effectSem;
+        overlaySubmitInfo.pWaitDstStageMask    = &overlayWaitStage;
+        overlaySubmitInfo.commandBufferCount   = 1;
+        overlaySubmitInfo.pCommandBuffers      = &overlayCmdBuf;
         overlaySubmitInfo.signalSemaphoreCount = 1;
-        overlaySubmitInfo.pSignalSemaphores = &overlaySem;
+        overlaySubmitInfo.pSignalSemaphores    = &overlaySem;
 
         pDevice->vkd.QueueSubmit(pDevice->queue, 1, &overlaySubmitInfo, VK_NULL_HANDLE);
         return true;
     }
 
-    void OverlayManager::destroyOverlay(LogicalDevice* pDevice, VkSwapchainKHR swapchain) {
-
+    void OverlayManager::destroyOverlay(LogicalDevice* pDevice, VkSwapchainKHR swapchain)
+    {
         auto it = m_overlayMap.find(swapchain);
         if (it != m_overlayMap.end() && it->second) {
             m_lastOverlayOpenState = it->second->isOverlayOpen();
-            m_lastActiveTab = it->second->getActiveTab();
+            m_lastActiveTab        = it->second->getActiveTab();
         }
         m_overlayMap.erase(swapchain);
 
@@ -124,7 +131,8 @@ namespace vkBasalt {
         }
     }
 
-    void OverlayManager::updateAllOverlays(Config* pConfig, bool reinit) {
+    void OverlayManager::updateAllOverlays(Config* pConfig, bool reinit)
+    {
         for (auto& pair : m_overlayMap) {
             if (pair.second) {
                 pair.second->updateConfig(pConfig);
@@ -133,7 +141,8 @@ namespace vkBasalt {
         }
     }
 
-    void OverlayManager::closeAllOverlays() {
+    void OverlayManager::closeAllOverlays()
+    {
         for (auto& pair : m_overlayMap) {
             if (pair.second && pair.second->isOverlayOpen()) {
                 pair.second->toggleOverlay();
@@ -141,17 +150,20 @@ namespace vkBasalt {
         }
     }
 
-    void OverlayManager::toggleAllOverlays() {
+    void OverlayManager::toggleAllOverlays()
+    {
         Logger::debug("INSERT KEY DETECTED! Toggling overlay. overlayMap size: " + std::to_string(m_overlayMap.size()));
         for (auto& pair : m_overlayMap) {
             if (pair.second) {
                 pair.second->toggleOverlay();
-                Logger::debug(std::string("Overlay state is now: ") + (pair.second->isOverlayOpen() ? "OPEN" : "CLOSED"));
+                Logger::debug(
+                    std::string("Overlay state is now: ") + (pair.second->isOverlayOpen() ? "OPEN" : "CLOSED"));
             }
         }
     }
 
-    bool OverlayManager::anyBinding() const {
+    bool OverlayManager::anyBinding() const
+    {
         for (auto& pair : m_overlayMap) {
             if (pair.second && pair.second->isOverlayOpen() && pair.second->isBindingKeys()) {
                 return true;
@@ -160,7 +172,8 @@ namespace vkBasalt {
         return false;
     }
 
-    VkSemaphore OverlayManager::getOverlaySemaphore(VkSwapchainKHR swapchain, uint32_t index) const {
+    VkSemaphore OverlayManager::getOverlaySemaphore(VkSwapchainKHR swapchain, uint32_t index) const
+    {
         auto it = m_semaphoresMap.find(swapchain);
         if (it != m_semaphoresMap.end() && index < it->second.size()) {
             return it->second[index];
@@ -168,7 +181,8 @@ namespace vkBasalt {
         return VK_NULL_HANDLE;
     }
 
-    std::shared_ptr<ImGuiOverlay> OverlayManager::getOverlay(VkSwapchainKHR swapchain) const {
+    std::shared_ptr<ImGuiOverlay> OverlayManager::getOverlay(VkSwapchainKHR swapchain) const
+    {
         auto it = m_overlayMap.find(swapchain);
         return (it != m_overlayMap.end()) ? it->second : nullptr;
     }

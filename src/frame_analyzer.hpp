@@ -14,27 +14,32 @@ namespace vkBasalt
     class FrameAnalyzer : public ComputePass
     {
     public:
-        FrameAnalyzer(LogicalDevice* pDevice, VkExtent2D extent,
-                      const std::vector<VkImage>& inputImages, VkFormat inputFormat,
-                      VkColorSpaceKHR colorSpace);
+        FrameAnalyzer(
+            LogicalDevice* pDevice,
+            VkExtent2D extent,
+            const std::vector<VkImage>& inputImages,
+            VkFormat inputFormat,
+            VkColorSpaceKHR colorSpace);
         ~FrameAnalyzer() override;
 
         void recordCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex) override;
         [[nodiscard]] std::string getName() const override { return "frame_analyzer"; }
 
         enum ScopeType { HISTOGRAM = 0, WAVEFORM = 1, VECTORSCOPE = 2, SCOPE_COUNT = 3 };
-        
+
         // Expose raw handles for ImGui backend registration
         [[nodiscard]] VkImageView getScopeImageView(ScopeType type) const { return m_scopeViews[type]; }
-        [[nodiscard]] VkSampler   getScopeSampler() const { return m_sampler; }
+        [[nodiscard]] VkSampler getScopeSampler() const { return m_sampler; }
 
-        void setEnabled(bool enabled) override { 
-            m_enabled = enabled; 
-            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0; 
+        void setEnabled(bool enabled) override
+        {
+            m_enabled = enabled;
+            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0;
         }
-        void setOverlayVisible(bool visible) override { 
-            m_overlayVisible = visible; 
-            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0; 
+        void setOverlayVisible(bool visible) override
+        {
+            m_overlayVisible = visible;
+            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0;
         }
 
         FrameAnalyzer* asFrameAnalyzer() override { return this; }
@@ -50,50 +55,52 @@ namespace vkBasalt
         static constexpr VkDeviceSize HIST_SIZE  = 1024 * sizeof(uint32_t);
         static constexpr VkDeviceSize SCOPE_SIZE = 65536 * sizeof(uint32_t);
 
-        VkBuffer m_histBuffer = VK_NULL_HANDLE;
-        VkBuffer m_waveBuffer = VK_NULL_HANDLE;
-        VkBuffer m_vecBuffer  = VK_NULL_HANDLE;
+        VkBuffer m_histBuffer       = VK_NULL_HANDLE;
+        VkBuffer m_waveBuffer       = VK_NULL_HANDLE;
+        VkBuffer m_vecBuffer        = VK_NULL_HANDLE;
         VkDeviceMemory m_histMemory = VK_NULL_HANDLE;
         VkDeviceMemory m_waveMemory = VK_NULL_HANDLE;
         VkDeviceMemory m_vecMemory  = VK_NULL_HANDLE;
 
         // Output images (256x256 R8G8B8A8_UNORM)
         static constexpr uint32_t SCOPE_DIM = 256;
-        std::array<VkImage, SCOPE_COUNT>        m_scopeImages{};
-        std::array<VkImageView, SCOPE_COUNT>    m_scopeViews{};
+        std::array<VkImage, SCOPE_COUNT> m_scopeImages{};
+        std::array<VkImageView, SCOPE_COUNT> m_scopeViews{};
         std::array<VkDeviceMemory, SCOPE_COUNT> m_scopeMemory{};
 
         // Accumulate pipeline
-        VkShaderModule        m_accumShader   = VK_NULL_HANDLE;
-        VkDescriptorSetLayout m_accumDSL      = VK_NULL_HANDLE;
-        VkPipelineLayout      m_accumLayout   = VK_NULL_HANDLE;
-        VkPipeline            m_accumPipeline = VK_NULL_HANDLE;
+        VkShaderModule m_accumShader     = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_accumDSL = VK_NULL_HANDLE;
+        VkPipelineLayout m_accumLayout   = VK_NULL_HANDLE;
+        VkPipeline m_accumPipeline       = VK_NULL_HANDLE;
         std::vector<VkDescriptorSet> m_accumSets; // one per image
 
         // Resolve pipeline
-        VkShaderModule        m_resolveShader   = VK_NULL_HANDLE;
-        VkDescriptorSetLayout m_resolveDSL      = VK_NULL_HANDLE;
-        VkPipelineLayout      m_resolveLayout   = VK_NULL_HANDLE;
-        VkPipeline            m_resolvePipeline = VK_NULL_HANDLE;
-        VkDescriptorSet       m_resolveSet      = VK_NULL_HANDLE;
+        VkShaderModule m_resolveShader     = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_resolveDSL = VK_NULL_HANDLE;
+        VkPipelineLayout m_resolveLayout   = VK_NULL_HANDLE;
+        VkPipeline m_resolvePipeline       = VK_NULL_HANDLE;
+        VkDescriptorSet m_resolveSet       = VK_NULL_HANDLE;
 
         // ImGui display (combined image samplers)
-        VkDescriptorPool      m_pool       = VK_NULL_HANDLE;
-        VkSampler             m_sampler    = VK_NULL_HANDLE;
+        VkDescriptorPool m_pool = VK_NULL_HANDLE;
+        VkSampler m_sampler     = VK_NULL_HANDLE;
 
         // Host visible active flag buffer. Allows CPU to toggle compute dispatch on/off without rrecording command buffers again or destroying Vulkan resources.
-        VkBuffer m_activeBuffer = VK_NULL_HANDLE;
+        VkBuffer m_activeBuffer       = VK_NULL_HANDLE;
         VkDeviceMemory m_activeMemory = VK_NULL_HANDLE;
-        uint32_t* m_mappedActive = nullptr;
+        uint32_t* m_mappedActive      = nullptr;
 
         bool m_layoutsInitialized = false;
-        bool m_overlayVisible = true;
+        bool m_overlayVisible     = true;
 
-        struct PushConstants {
+        struct PushConstants
+        {
             uint32_t enabled;
         };
 
-        struct SpecData {
+        struct SpecData
+        {
             uint32_t width;
             uint32_t height;
             int32_t colorSpaceMode;

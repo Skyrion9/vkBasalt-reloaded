@@ -8,27 +8,29 @@ namespace vkBasalt
     class ClarityRcasEffect : public SimpleEffect
     {
     public:
-        ClarityRcasEffect(LogicalDevice*       pLogicalDevice,
-                          VkFormat             format,
-                          VkExtent2D           imageExtent,
-                          std::vector<VkImage> inputImages,
-                          std::vector<VkImage> outputImages,
-                          Config*              pConfig,
-                          VkColorSpaceKHR      colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
-        
+        ClarityRcasEffect(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            std::vector<VkImage> inputImages,
+            std::vector<VkImage> outputImages,
+            Config* pConfig,
+            VkColorSpaceKHR colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
+
         ~ClarityRcasEffect() override;
 
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        
+
         // Override to update UBO every frame
         void updateEffect() override;
 
         // Declarative parameter interface
         std::string getName() const override { return "clarityrcas"; }
         const std::vector<EffectParamDesc>& getParamDescs() const override;
-        
+
     private:
-        struct ClarityRcasSpecData {
+        struct ClarityRcasSpecData
+        {
             float radius;
             float offset;
             float clarityStrength;
@@ -51,7 +53,7 @@ namespace vkBasalt
             float step2_y;
             int32_t colorSpaceMode;
         };
-    
+
         float radius;
         float offset;
         uint32_t m_frameCounter = 0;

@@ -19,27 +19,22 @@ namespace vkBasalt
 
     Logger::Logger() : m_minLevel(getMinLogLevel())
     {
-        if (m_minLevel != LogLevel::None)
-        {
+        if (m_minLevel != LogLevel::None) {
             std::string filename = getFileName();
-            if (filename == "stderr")
-            {
-                m_outStream = std::unique_ptr<std::ostream, std::function<void(std::ostream*)>>(&std::cerr, [](std::ostream*) {});
-            }
-            else if (filename == "stdout")
-            {
-                m_outStream = std::unique_ptr<std::ostream, std::function<void(std::ostream*)>>(&std::cout, [](std::ostream*) {});
-            }
-            else
-            {
-                m_outStream = std::unique_ptr<std::ostream, std::function<void(std::ostream*)>>(new std::ofstream(filename),
-                                                                                                [](std::ostream* os) { delete os; });
+            if (filename == "stderr") {
+                m_outStream =
+                    std::unique_ptr<std::ostream, std::function<void(std::ostream*)>>(&std::cerr, [](std::ostream*) {});
+            } else if (filename == "stdout") {
+                m_outStream =
+                    std::unique_ptr<std::ostream, std::function<void(std::ostream*)>>(&std::cout, [](std::ostream*) {});
+            } else {
+                m_outStream = std::unique_ptr<std::ostream, std::function<void(std::ostream*)>>(
+                    new std::ofstream(filename), [](std::ostream* os) { delete os; });
             }
         }
     }
 
-    Logger::~Logger()
-    = default;
+    Logger::~Logger() = default;
 
     void Logger::trace(const std::string& message)
     {
@@ -88,9 +83,8 @@ namespace vkBasalt
 
         // Slow path when multiline message
         std::stringstream stream(message);
-        std::string       line;
-        while (std::getline(stream, line, '\n'))
-        {
+        std::string line;
+        while (std::getline(stream, line, '\n')) {
             *m_outStream << prefix << line << '\n';
         }
     }
@@ -110,10 +104,8 @@ namespace vkBasalt
 
         const std::string logLevelStr = envVar ? envVar : "";
 
-        for (const auto& pair : logLevels)
-        {
-            if (logLevelStr == pair.first)
-                return pair.second;
+        for (const auto& pair : logLevels) {
+            if (logLevelStr == pair.first) return pair.second;
         }
 
         return LogLevel::Info;
@@ -125,8 +117,7 @@ namespace vkBasalt
 
         std::string filename = envVar ? envVar : "";
 
-        if (filename.empty())
-        {
+        if (filename.empty()) {
             filename = "stderr";
         }
 

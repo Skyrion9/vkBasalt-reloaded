@@ -30,7 +30,8 @@
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
     // Static cache for resolved scales. Survives overlay destruction/recreation during swapchain rebuilds. Once a valid scale is detected or explicitly set by the user.
     static float s_cachedCursorScale = -1.0f;
@@ -38,15 +39,17 @@ namespace vkBasalt {
     static float s_cachedFontScale   = -1.0f;
 
     VkDescriptorPool ImGuiOverlay::s_descriptorPool = VK_NULL_HANDLE;
-    int ImGuiOverlay::s_instanceCount = 0;
+    int ImGuiOverlay::s_instanceCount               = 0;
 
-    std::string ImGuiOverlay::doubleToConfigString(double val) {
+    std::string ImGuiOverlay::doubleToConfigString(double val)
+    {
         std::string s = std::to_string(val);
         std::ranges::replace(s, ',', '.');
         return s;
     }
 
-    void ImGuiOverlay::setConfigDebounced(const std::string& key, const std::string& value, bool perGame) {
+    void ImGuiOverlay::setConfigDebounced(const std::string& key, const std::string& value, bool perGame)
+    {
         if (perGame) {
             m_pConfig->setOption(key, value);
         } else {
@@ -54,11 +57,12 @@ namespace vkBasalt {
             m_pConfig->setGlobalOption(key, value);
         }
         m_hasUnsavedChanges = true;
-        m_previewDirty = true;
-        m_lastChangeTime = ImGui::GetTime();
+        m_previewDirty      = true;
+        m_lastChangeTime    = ImGui::GetTime();
     }
 
-    void ImGuiOverlay::setConfigImmediate(const std::string& key, const std::string& value, bool perGame) {
+    void ImGuiOverlay::setConfigImmediate(const std::string& key, const std::string& value, bool perGame)
+    {
         if (perGame) {
             m_pConfig->setOption(key, value);
             m_pConfig->savePerGame();
@@ -71,14 +75,15 @@ namespace vkBasalt {
         m_hasUnsavedChanges = true;
     }
 
-    void ImGuiOverlay::resetParamToConfig(const EffectParamDesc& p, bool perGame, Effect* effect) {
+    void ImGuiOverlay::resetParamToConfig(const EffectParamDesc& p, bool perGame, Effect* effect)
+    {
         std::string val;
         if (p.type == ParamType::Float) {
             val = doubleToConfigString(p.defaultVal);
         } else if (p.type == ParamType::Combo) {
             if (!p.comboOptions.empty()) {
                 int defIdx = std::clamp(static_cast<int>(p.defaultVal), 0, static_cast<int>(p.comboOptions.size()) - 1);
-                val = p.comboOptions[defIdx];
+                val        = p.comboOptions[defIdx];
             }
         } else if (p.type == ParamType::Bool) {
             val = (p.defaultVal > 0.5) ? "true" : "false";
@@ -93,7 +98,8 @@ namespace vkBasalt {
         if (effect) {
             if (p.type == ParamType::Combo) {
                 if (!p.comboOptions.empty()) {
-                    int defIdx = std::clamp(static_cast<int>(p.defaultVal), 0, static_cast<int>(p.comboOptions.size()) - 1);
+                    int defIdx =
+                        std::clamp(static_cast<int>(p.defaultVal), 0, static_cast<int>(p.comboOptions.size()) - 1);
                     effect->setParam(p.key, static_cast<double>(defIdx));
                     setUIParam(p.key, static_cast<double>(defIdx));
                 }
@@ -104,23 +110,37 @@ namespace vkBasalt {
         }
     }
 
-    void ImGuiOverlay::drawAdaptiveSlider(const char* id, const char* label, const char* key,
-                                        float defaultVal, float minVal, float maxVal,
-                                        const char* fmt, const char* tooltip, bool perGameCalib) {
+    void ImGuiOverlay::drawAdaptiveSlider(
+        const char* id,
+        const char* label,
+        const char* key,
+        float defaultVal,
+        float minVal,
+        float maxVal,
+        const char* fmt,
+        const char* tooltip,
+        bool perGameCalib)
+    {
         ImGui::PushID(id);
-        auto val = m_pConfig->getOption<float>(key, defaultVal);
-        float step = 0.01f;
-        float range = maxVal - minVal;
+        auto val        = m_pConfig->getOption<float>(key, defaultVal);
+        float step      = 0.01f;
+        float range     = maxVal - minVal;
         float dragSpeed = range / kDragSpeedDivisor;
-        bool changed = false;
+        bool changed    = false;
 
         ImGui::PushItemWidth(kSliderWidth);
         if (ImGui::DragFloat(label, &val, dragSpeed, minVal, maxVal, fmt)) {
             changed = true;
         }
         if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+                val -= step;
+                changed = true;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+                val += step;
+                changed = true;
+            }
         }
         ImGui::PopItemWidth();
 
@@ -131,8 +151,8 @@ namespace vkBasalt {
         if (ImGui::BeginPopupContextItem()) {
             if (ImGui::MenuItem("Reset to Default")) {
                 EffectParamDesc p;
-                p.key = key;
-                p.type = ParamType::Float;
+                p.key        = key;
+                p.type       = ParamType::Float;
                 p.defaultVal = defaultVal;
                 resetParamToConfig(p, perGameCalib);
                 g_triggerSoftReload = true;
@@ -145,34 +165,46 @@ namespace vkBasalt {
         ImGui::PopID();
     }
 
-    ImGuiOverlay::ImGuiOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, Config* pConfig)
-        : m_pDevice(pDevice), m_pSwapchain(pSwapchain), m_pConfig(pConfig) {
+    ImGuiOverlay::ImGuiOverlay(LogicalDevice* pDevice, LogicalSwapchain* pSwapchain, Config* pConfig) :
+        m_pDevice(pDevice), m_pSwapchain(pSwapchain), m_pConfig(pConfig)
+    {
         s_instanceCount++;
     }
 
-    double ImGuiOverlay::getUIParam(const std::string& key, Effect* effect) {
+    double ImGuiOverlay::getUIParam(const std::string& key, Effect* effect)
+    {
         auto it = m_uiParamCache.find(key);
         if (it != m_uiParamCache.end()) return it->second;
-        double val = effect ? effect->getParam(key) : 0.0;
+        double val          = effect ? effect->getParam(key) : 0.0;
         m_uiParamCache[key] = val;
         return val;
     }
 
-    void ImGuiOverlay::setUIParam(const std::string& key, double val) {
+    void ImGuiOverlay::setUIParam(const std::string& key, double val)
+    {
         m_uiParamCache[key] = val;
     }
 
-    void ImGuiOverlay::destroyRenderResources() {
-        for (auto fb : m_framebuffers) { if (fb) m_pDevice->vkd.DestroyFramebuffer(m_pDevice->device, fb, nullptr); }
-        for (auto iv : m_imageViews)   { if (iv) m_pDevice->vkd.DestroyImageView(m_pDevice->device, iv, nullptr); }
-        if (m_renderPass) { m_pDevice->vkd.DestroyRenderPass(m_pDevice->device, m_renderPass, nullptr); m_renderPass = VK_NULL_HANDLE; }
+    void ImGuiOverlay::destroyRenderResources()
+    {
+        for (auto fb : m_framebuffers) {
+            if (fb) m_pDevice->vkd.DestroyFramebuffer(m_pDevice->device, fb, nullptr);
+        }
+        for (auto iv : m_imageViews) {
+            if (iv) m_pDevice->vkd.DestroyImageView(m_pDevice->device, iv, nullptr);
+        }
+        if (m_renderPass) {
+            m_pDevice->vkd.DestroyRenderPass(m_pDevice->device, m_renderPass, nullptr);
+            m_renderPass = VK_NULL_HANDLE;
+        }
         m_framebuffers.clear();
         m_imageViews.clear();
         m_scopeTexturesRegistered = false;
-        m_scopeTextureIDs = {};
+        m_scopeTextureIDs         = {};
     }
 
-    ImGuiOverlay::~ImGuiOverlay() {
+    ImGuiOverlay::~ImGuiOverlay()
+    {
         destroyRenderResources();
         s_instanceCount--;
         if (s_instanceCount == 0) {
@@ -187,45 +219,46 @@ namespace vkBasalt {
         }
     }
 
-    void ImGuiOverlay::createRenderResources(VkFormat format) {
+    void ImGuiOverlay::createRenderResources(VkFormat format)
+    {
         Logger::debug("initImGui: Creating RenderPass...");
         VkAttachmentDescription attachment = {};
-        attachment.format = format;
-        attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-        attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        attachment.format                  = format;
+        attachment.samples                 = VK_SAMPLE_COUNT_1_BIT;
+        attachment.loadOp                  = VK_ATTACHMENT_LOAD_OP_LOAD;
+        attachment.storeOp                 = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.stencilLoadOp           = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.stencilStoreOp          = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         // Must match the layout after our barrier in processFrame
         attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        attachment.finalLayout   = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference color_attachment = {};
-        color_attachment.attachment = 0;
-        color_attachment.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color_attachment.attachment            = 0;
+        color_attachment.layout                = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkSubpassDescription subpass = {};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &color_attachment;
+        subpass.pColorAttachments    = &color_attachment;
 
         VkSubpassDependency dependency = {};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.srcAccessMask = 0;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.srcSubpass          = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass          = 0;
+        dependency.srcStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask       = 0;
+        dependency.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
         VkRenderPassCreateInfo info = {};
-        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        info.attachmentCount = 1;
-        info.pAttachments = &attachment;
-        info.subpassCount = 1;
-        info.pSubpasses = &subpass;
-        info.dependencyCount = 1;
-        info.pDependencies = &dependency;
-        
+        info.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        info.attachmentCount        = 1;
+        info.pAttachments           = &attachment;
+        info.subpassCount           = 1;
+        info.pSubpasses             = &subpass;
+        info.dependencyCount        = 1;
+        info.pDependencies          = &dependency;
+
         m_pDevice->vkd.CreateRenderPass(m_pDevice->device, &info, nullptr, &m_renderPass);
         Logger::debug("initImGui: RenderPass created.");
 
@@ -233,7 +266,8 @@ namespace vkBasalt {
         m_framebuffers.resize(m_pSwapchain->imageCount, VK_NULL_HANDLE);
     }
 
-    void ImGuiOverlay::resolveScales() {
+    void ImGuiOverlay::resolveScales()
+    {
         // Scale detection helper (always available, not tied to context creation)
         auto detectScale = [&]() -> float {
             float s = 1.0f;
@@ -253,10 +287,15 @@ namespace vkBasalt {
 
         // Resolve a scale value: explicit config > cached > auto-detect > fallback. Caches the result so it survives overlay destruction during swapchain rebuilds.
         auto resolveScale = [&](float configVal, float& cache, float fallback) -> float {
-            if (configVal > 0.0f) { cache = configVal; return configVal; }
-            if (cache > 0.0f)     { return cache; }
+            if (configVal > 0.0f) {
+                cache = configVal;
+                return configVal;
+            }
+            if (cache > 0.0f) {
+                return cache;
+            }
             float detected = detectScale();
-            cache = (detected > 0.0f) ? detected : fallback;
+            cache          = (detected > 0.0f) ? detected : fallback;
             return cache;
         };
 
@@ -267,30 +306,31 @@ namespace vkBasalt {
         Logger::debug("cursorScale: " + std::to_string(m_cursorScale));
 
         auto uiCfg = m_pConfig->getOption<float>("uiScale", 0.0f);
-        m_uiScale = resolveScale(uiCfg, s_cachedUiScale, 1.0f);
+        m_uiScale  = resolveScale(uiCfg, s_cachedUiScale, 1.0f);
         Logger::debug("uiScale: " + std::to_string(m_uiScale));
 
         // Font Scale is an additional multiplier on top of uiScale. 0 = default 1.1
         auto fontCfg = m_pConfig->getOption<float>("fontScale", 0.0f);
         if (fontCfg > 0.0f) {
-            m_fontScale = fontCfg;
+            m_fontScale       = fontCfg;
             s_cachedFontScale = fontCfg;
         } else if (s_cachedFontScale > 0.0f) {
             m_fontScale = s_cachedFontScale;
         } else {
-            m_fontScale = kDefaultFontScale;
+            m_fontScale       = kDefaultFontScale;
             s_cachedFontScale = kDefaultFontScale;
         }
         Logger::debug("fontScale: " + std::to_string(m_fontScale));
     }
 
-    void ImGuiOverlay::initImGuiBackend() {
+    void ImGuiOverlay::initImGuiBackend()
+    {
         if (ImGui::GetCurrentContext()) return; // Context already exists from a previous overlay instance
 
         Logger::debug("initImGui: Creating ImGui Context...");
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO& io    = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
@@ -312,17 +352,17 @@ namespace vkBasalt {
         if (!s_descriptorPool) {
             Logger::debug("initImGui: Creating Descriptor Pool...");
             VkDescriptorPoolSize pool_sizes[] = {
-                { .type=VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount=1000 },
-                { .type=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount=1000 },
-                { .type=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount=1000 },
-                { .type=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount=1000 },
+                {.type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = 1000},
+                {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = 1000},
+                {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1000},
+                {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1000},
             };
             VkDescriptorPoolCreateInfo pool_info = {};
-            pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-            pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-            pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
-            pool_info.poolSizeCount = static_cast<uint32_t>IM_ARRAYSIZE(pool_sizes);
-            pool_info.pPoolSizes = pool_sizes;
+            pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+            pool_info.maxSets                    = 1000 * IM_ARRAYSIZE(pool_sizes);
+            pool_info.poolSizeCount              = static_cast<uint32_t> IM_ARRAYSIZE(pool_sizes);
+            pool_info.pPoolSizes                 = pool_sizes;
             m_pDevice->vkd.CreateDescriptorPool(m_pDevice->device, &pool_info, nullptr, &s_descriptorPool);
         }
 
@@ -343,31 +383,34 @@ namespace vkBasalt {
             };
             ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1, loader_func, m_pDevice);
             Logger::debug("initImGui: Calling ImGui_ImplVulkan_Init...");
-            ImGui_ImplVulkan_InitInfo init_info = {};
-            init_info.Instance = m_pDevice->instance;
-            init_info.PhysicalDevice = m_pDevice->physicalDevice;
-            init_info.Device = m_pDevice->device;
-            init_info.QueueFamily = m_pDevice->queueFamilyIndex;
-            init_info.Queue = m_pDevice->queue;
-            init_info.DescriptorPool = s_descriptorPool;
-            init_info.PipelineInfoMain.RenderPass = m_renderPass;
-            init_info.PipelineInfoMain.Subpass = 0;
+            ImGui_ImplVulkan_InitInfo init_info    = {};
+            init_info.Instance                     = m_pDevice->instance;
+            init_info.PhysicalDevice               = m_pDevice->physicalDevice;
+            init_info.Device                       = m_pDevice->device;
+            init_info.QueueFamily                  = m_pDevice->queueFamilyIndex;
+            init_info.Queue                        = m_pDevice->queue;
+            init_info.DescriptorPool               = s_descriptorPool;
+            init_info.PipelineInfoMain.RenderPass  = m_renderPass;
+            init_info.PipelineInfoMain.Subpass     = 0;
             init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-            init_info.MinImageCount = 2;
-            init_info.ImageCount = std::max(2u, m_pSwapchain->imageCount);
+            init_info.MinImageCount                = 2;
+            init_info.ImageCount                   = std::max(2u, m_pSwapchain->imageCount);
             ImGui_ImplVulkan_SetMemoryProperties(&m_pDevice->memoryProperties);
             ImGui_ImplVulkan_Init(&init_info);
             Logger::debug("initImGui: ImGui_ImplVulkan_Init returned successfully!");
         }
     }
 
-    void ImGuiOverlay::initImGui(VkFormat format) {
+    void ImGuiOverlay::initImGui(VkFormat format)
+    {
         if (m_isInitialized && m_format == format) {
             return;
         }
         if (m_isInitialized) {
             destroyRenderResources();
-            if (ImGui::GetCurrentContext()) { ImGui_ImplVulkan_Shutdown(); }
+            if (ImGui::GetCurrentContext()) {
+                ImGui_ImplVulkan_Shutdown();
+            }
             m_isInitialized = false;
         }
         m_format = format;
@@ -380,7 +423,8 @@ namespace vkBasalt {
         Logger::debug("initImGui: Finished successfully.");
     }
 
-    void ImGuiOverlay::reinitImGui() {
+    void ImGuiOverlay::reinitImGui()
+    {
         // Destroy current ImGui state so initImGui() runs fresh with new scale
         destroyRenderResources();
 
@@ -394,10 +438,11 @@ namespace vkBasalt {
         Logger::debug("reinitImGui: Overlay reinitialized with new settings.");
     }
 
-    void ImGuiOverlay::updateInput(uint32_t width, uint32_t height) {
-        ImGuiIO& io = ImGui::GetIO();
+    void ImGuiOverlay::updateInput(uint32_t width, uint32_t height)
+    {
+        ImGuiIO& io    = ImGui::GetIO();
         io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-        io.DeltaTime = 1.0f / 60.0f;
+        io.DeltaTime   = 1.0f / 60.0f;
 
         bool isWayland = false;
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
@@ -411,45 +456,45 @@ namespace vkBasalt {
                 // Event-based: feed queued key events directly to ImGui
                 feedWaylandKeyEventsToImGui();
                 if (wasSlashTypedWayland()) m_focusSearch = true;
-                
-                if (isKeyPressedWayland(0xFF55) || (isKeyPressedWayland(0xFFE1) && isKeyPressedWayland(0xFF52))) io.MouseWheel += 1.0f; // PageUp or Shift+Up
-                if (isKeyPressedWayland(0xFF56) || (isKeyPressedWayland(0xFFE1) && isKeyPressedWayland(0xFF54))) io.MouseWheel -= 1.0f; // PageDown or Shift+Down
+
+                if (isKeyPressedWayland(0xFF55) || (isKeyPressedWayland(0xFFE1) && isKeyPressedWayland(0xFF52)))
+                    io.MouseWheel += 1.0f; // PageUp or Shift+Up
+                if (isKeyPressedWayland(0xFF56) || (isKeyPressedWayland(0xFFE1) && isKeyPressedWayland(0xFF54)))
+                    io.MouseWheel -= 1.0f; // PageDown or Shift+Down
             } else {
-                auto checkKey = [&](uint32_t keysym) -> bool {
-                    return isKeyPressedX11(keysym);
-                };
-                io.AddKeyEvent(ImGuiKey_Tab,        checkKey(0xFF09));
-                io.AddKeyEvent(ImGuiKey_LeftArrow,  checkKey(0xFF51));
-                io.AddKeyEvent(ImGuiKey_UpArrow,    checkKey(0xFF52));
+                auto checkKey = [&](uint32_t keysym) -> bool { return isKeyPressedX11(keysym); };
+                io.AddKeyEvent(ImGuiKey_Tab, checkKey(0xFF09));
+                io.AddKeyEvent(ImGuiKey_LeftArrow, checkKey(0xFF51));
+                io.AddKeyEvent(ImGuiKey_UpArrow, checkKey(0xFF52));
                 io.AddKeyEvent(ImGuiKey_RightArrow, checkKey(0xFF53));
-                io.AddKeyEvent(ImGuiKey_DownArrow,  checkKey(0xFF54));
-                io.AddKeyEvent(ImGuiKey_Space,      checkKey(0x0020));
-                io.AddKeyEvent(ImGuiKey_Enter,      checkKey(0xFF0D));
-                io.AddKeyEvent(ImGuiKey_Escape,     checkKey(0xFF1B));
-                io.AddKeyEvent(ImGuiKey_Backspace,  checkKey(0xFF08));
-                io.AddKeyEvent(ImGuiKey_Delete,     checkKey(0xFFFF));
-                io.AddKeyEvent(ImGuiKey_Home,       checkKey(0xFF50));
-                io.AddKeyEvent(ImGuiKey_End,        checkKey(0xFF57));
-                io.AddKeyEvent(ImGuiKey_PageUp,     checkKey(0xFF55));
-                io.AddKeyEvent(ImGuiKey_PageDown,   checkKey(0xFF56));
-                io.AddKeyEvent(ImGuiKey_LeftShift,  checkKey(0xFFE1));
+                io.AddKeyEvent(ImGuiKey_DownArrow, checkKey(0xFF54));
+                io.AddKeyEvent(ImGuiKey_Space, checkKey(0x0020));
+                io.AddKeyEvent(ImGuiKey_Enter, checkKey(0xFF0D));
+                io.AddKeyEvent(ImGuiKey_Escape, checkKey(0xFF1B));
+                io.AddKeyEvent(ImGuiKey_Backspace, checkKey(0xFF08));
+                io.AddKeyEvent(ImGuiKey_Delete, checkKey(0xFFFF));
+                io.AddKeyEvent(ImGuiKey_Home, checkKey(0xFF50));
+                io.AddKeyEvent(ImGuiKey_End, checkKey(0xFF57));
+                io.AddKeyEvent(ImGuiKey_PageUp, checkKey(0xFF55));
+                io.AddKeyEvent(ImGuiKey_PageDown, checkKey(0xFF56));
+                io.AddKeyEvent(ImGuiKey_LeftShift, checkKey(0xFFE1));
                 io.AddKeyEvent(ImGuiKey_RightShift, checkKey(0xFFE2));
-                io.AddKeyEvent(ImGuiKey_LeftCtrl,   checkKey(0xFFE3));
-                io.AddKeyEvent(ImGuiKey_RightCtrl,  checkKey(0xFFE4));
-                io.AddKeyEvent(ImGuiKey_LeftAlt,    checkKey(0xFFE9));
-                io.AddKeyEvent(ImGuiKey_RightAlt,   checkKey(0xFFEA));
+                io.AddKeyEvent(ImGuiKey_LeftCtrl, checkKey(0xFFE3));
+                io.AddKeyEvent(ImGuiKey_RightCtrl, checkKey(0xFFE4));
+                io.AddKeyEvent(ImGuiKey_LeftAlt, checkKey(0xFFE9));
+                io.AddKeyEvent(ImGuiKey_RightAlt, checkKey(0xFFEA));
                 for (int i = 0; i < 26; i++) {
                     bool down = checkKey(0x0061 + i);
                     io.AddKeyEvent(static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_A) + i), down);
                 }
                 static bool prevSearch = false;
-                bool searchDown = checkKey(0x002F) || checkKey(0x0066);
+                bool searchDown        = checkKey(0x002F) || checkKey(0x0066);
                 if (searchDown && !prevSearch) m_focusSearch = true;
-                prevSearch = searchDown;
+                prevSearch      = searchDown;
                 bool periodDown = checkKey(0x002E);
                 bool minusDown  = checkKey(0x002D);
                 io.AddKeyEvent(ImGuiKey_Period, periodDown);
-                io.AddKeyEvent(ImGuiKey_Minus,  minusDown);
+                io.AddKeyEvent(ImGuiKey_Minus, minusDown);
                 static bool prevKeys[12] = {};
                 for (int i = 0; i <= 9; i++) {
                     bool down = checkKey(0x0030 + i) || checkKey(0xFFB0 + i);
@@ -465,10 +510,10 @@ namespace vkBasalt {
                 // PageUp / Shift+Up scrolls up, PageDown / Shift+Down scrolls down
                 static bool prevPageUp = false, prevPageDown = false;
                 static bool prevShiftUp = false, prevShiftDown = false;
-                
-                bool pageUp = checkKey(0xFF55);
-                bool pageDown = checkKey(0xFF56);
-                bool shiftUp = checkKey(0xFFE1) && checkKey(0xFF52);   // Shift + Up
+
+                bool pageUp    = checkKey(0xFF55);
+                bool pageDown  = checkKey(0xFF56);
+                bool shiftUp   = checkKey(0xFFE1) && checkKey(0xFF52); // Shift + Up
                 bool shiftDown = checkKey(0xFFE1) && checkKey(0xFF54); // Shift + Down
 
                 if (pageUp && !prevPageUp) io.MouseWheel += 3.0f;
@@ -476,9 +521,9 @@ namespace vkBasalt {
                 if (shiftUp && !prevShiftUp) io.MouseWheel += 1.0f;
                 if (shiftDown && !prevShiftDown) io.MouseWheel -= 1.0f;
 
-                prevPageUp = pageUp;
-                prevPageDown = pageDown;
-                prevShiftUp = shiftUp;
+                prevPageUp    = pageUp;
+                prevPageDown  = pageDown;
+                prevShiftUp   = shiftUp;
                 prevShiftDown = shiftDown;
             }
         }
@@ -489,11 +534,13 @@ namespace vkBasalt {
         }
 #endif
 
-    // X11/XWayland coordinates are already in the swapchains pixel space. Don't multiply by UI scale here thats only needed for native Wayland.
-    updateX11ImGuiIO(m_isOpen, 1.0f);
+        // X11/XWayland coordinates are already in the swapchains pixel space. Don't multiply by UI scale here thats only needed for native Wayland.
+        updateX11ImGuiIO(m_isOpen, 1.0f);
     }
 
-    void ImGuiOverlay::processFrame(VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height) {
+    void ImGuiOverlay::processFrame(
+        VkCommandBuffer cmdBuf, uint32_t imageIndex, VkFormat format, uint32_t width, uint32_t height)
+    {
         if (m_screenshotReopenCounter > 0) {
             m_screenshotReopenCounter--;
             if (m_screenshotReopenCounter == 0) {
@@ -502,85 +549,97 @@ namespace vkBasalt {
         }
 
         if (!m_isOpen || !m_isInitialized) {
-            Logger::debug("processFrame SKIPPED: isOpen=" + std::to_string(m_isOpen) + ", isInitialized=" + std::to_string(m_isInitialized));
+            Logger::debug(
+                "processFrame SKIPPED: isOpen=" + std::to_string(m_isOpen)
+                + ", isInitialized=" + std::to_string(m_isInitialized));
             return;
         }
         if (imageIndex >= m_pSwapchain->imageCount) return;
         Logger::debug("processFrame EXECUTING. Building ImGui draw data...");
 
         if (m_imageViews[imageIndex] == VK_NULL_HANDLE) {
-            VkImageViewCreateInfo view_info = {};
-            view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            view_info.image = m_pSwapchain->images[imageIndex];
-            view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            view_info.format = format;
+            VkImageViewCreateInfo view_info       = {};
+            view_info.sType                       = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            view_info.image                       = m_pSwapchain->images[imageIndex];
+            view_info.viewType                    = VK_IMAGE_VIEW_TYPE_2D;
+            view_info.format                      = format;
             view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             view_info.subresourceRange.levelCount = 1;
             view_info.subresourceRange.layerCount = 1;
             m_pDevice->vkd.CreateImageView(m_pDevice->device, &view_info, nullptr, &m_imageViews[imageIndex]);
 
             VkFramebufferCreateInfo fb_info = {};
-            fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            fb_info.renderPass = m_renderPass;
-            fb_info.attachmentCount = 1;
-            fb_info.pAttachments = &m_imageViews[imageIndex];
-            fb_info.width = width;
-            fb_info.height = height;
-            fb_info.layers = 1;
+            fb_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            fb_info.renderPass              = m_renderPass;
+            fb_info.attachmentCount         = 1;
+            fb_info.pAttachments            = &m_imageViews[imageIndex];
+            fb_info.width                   = width;
+            fb_info.height                  = height;
+            fb_info.layers                  = 1;
             m_pDevice->vkd.CreateFramebuffer(m_pDevice->device, &fb_info, nullptr, &m_framebuffers[imageIndex]);
         }
 
         VkImage swapchainImage = m_pSwapchain->images[imageIndex];
 
         VkImageMemoryBarrier barrier = {};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        barrier.image = swapchainImage;
-        barrier.subresourceRange = {.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel=0, .levelCount=1, .baseArrayLayer=0, .layerCount=1};
-        
-        m_pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
+        barrier.dstAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrier.newLayout            = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        barrier.image                = swapchainImage;
+        barrier.subresourceRange     = {
+            .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1};
+
+        m_pDevice->vkd.CmdPipelineBarrier(
+            cmdBuf, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0,
+            nullptr, 1, &barrier);
 
         updateInput(width, height);
-    
+
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
-    
+
         // Games that hide the system cursor (FPS titles, pointer confinement) leave no visible cursor unless we render one ourselves.
         ImGui::GetIO().MouseDrawCursor = true;
-    
+
         drawUI();
 
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
-        Logger::debug("ImGui DrawData generated: TotalVtxCount=" + std::to_string(draw_data->TotalVtxCount) + ", TotalIdxCount=" + std::to_string(draw_data->TotalIdxCount));
+        Logger::debug(
+            "ImGui DrawData generated: TotalVtxCount=" + std::to_string(draw_data->TotalVtxCount)
+            + ", TotalIdxCount=" + std::to_string(draw_data->TotalIdxCount));
 
-        VkRenderPassBeginInfo info = {};
-        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        info.renderPass = m_renderPass;
-        info.framebuffer = m_framebuffers[imageIndex];
-        info.renderArea.extent.width = width;
+        VkRenderPassBeginInfo info    = {};
+        info.sType                    = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        info.renderPass               = m_renderPass;
+        info.framebuffer              = m_framebuffers[imageIndex];
+        info.renderArea.extent.width  = width;
         info.renderArea.extent.height = height;
-        
+
         m_pDevice->vkd.CmdBeginRenderPass(cmdBuf, &info, VK_SUBPASS_CONTENTS_INLINE);
-        
+
         // ImGui v1.92.x will automatically upload the font texture here on the first frame using our patched fence-based VkQueueSubmit.
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmdBuf);
-        
+
         m_pDevice->vkd.CmdEndRenderPass(cmdBuf);
 
         barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        m_pDevice->vkd.CmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        barrier.oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        barrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        m_pDevice->vkd.CmdPipelineBarrier(
+            cmdBuf, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr,
+            0, nullptr, 1, &barrier);
     }
 
-    void ImGuiOverlay::updateWindowLayout() {
+    void ImGuiOverlay::updateWindowLayout()
+    {
         ImGuiIO& io = ImGui::GetIO();
 
         // Persist width on resize
@@ -595,8 +654,8 @@ namespace vkBasalt {
         // Edge Snapping for ImGui window placement
         ImVec2 currentPos = ImGui::GetWindowPos();
         float windowWidth = ImGui::GetWindowWidth();
-        bool posChanged = (std::fabs(currentPos.x - m_lastWindowPos.x) > 0.5f ||
-                        std::fabs(currentPos.y - m_lastWindowPos.y) > 0.5f);
+        bool posChanged =
+            (std::fabs(currentPos.x - m_lastWindowPos.x) > 0.5f || std::fabs(currentPos.y - m_lastWindowPos.y) > 0.5f);
         bool mouseDown = ImGui::IsMouseDown(0);
 
         // State machine for dragging
@@ -605,8 +664,8 @@ namespace vkBasalt {
         } else {
             if (m_wasWindowMoving) {
                 float snapThreshold = kSnapThreshold;
-                bool inLeftZone = currentPos.x < snapThreshold;
-                bool inRightZone = (currentPos.x + windowWidth) > (io.DisplaySize.x - snapThreshold);
+                bool inLeftZone     = currentPos.x < snapThreshold;
+                bool inRightZone    = (currentPos.x + windowWidth) > (io.DisplaySize.x - snapThreshold);
                 if (inLeftZone) {
                     ImGui::SetWindowPos(ImVec2(0, 0));
                     m_windowSide = "left";
@@ -624,25 +683,33 @@ namespace vkBasalt {
 
         // Draw snap indicators
         float snapThreshold = kSnapThreshold;
-        bool inLeftZone = currentPos.x < snapThreshold;
-        bool inRightZone = (currentPos.x + windowWidth) > (io.DisplaySize.x - snapThreshold);
+        bool inLeftZone     = currentPos.x < snapThreshold;
+        bool inRightZone    = (currentPos.x + windowWidth) > (io.DisplaySize.x - snapThreshold);
         if (m_wasWindowMoving && (inLeftZone || inRightZone)) {
             ImDrawList* drawList = ImGui::GetForegroundDrawList();
             ImVec4 snapColor(0.3f, 0.6f, 1.0f, 0.15f);
             ImVec4 borderColor(0.3f, 0.6f, 1.0f, 0.6f);
             if (inLeftZone) {
-                drawList->AddRectFilled(ImVec2(0, 0), ImVec2(windowWidth, io.DisplaySize.y), ImGui::ColorConvertFloat4ToU32(snapColor));
-                drawList->AddRect(ImVec2(0, 0), ImVec2(windowWidth, io.DisplaySize.y), ImGui::ColorConvertFloat4ToU32(borderColor), 0.0f, 0, 2.0f);
+                drawList->AddRectFilled(
+                    ImVec2(0, 0), ImVec2(windowWidth, io.DisplaySize.y), ImGui::ColorConvertFloat4ToU32(snapColor));
+                drawList->AddRect(
+                    ImVec2(0, 0), ImVec2(windowWidth, io.DisplaySize.y), ImGui::ColorConvertFloat4ToU32(borderColor),
+                    0.0f, 0, 2.0f);
             } else {
                 float rightX = io.DisplaySize.x - windowWidth;
-                drawList->AddRectFilled(ImVec2(rightX, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y), ImGui::ColorConvertFloat4ToU32(snapColor));
-                drawList->AddRect(ImVec2(rightX, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y), ImGui::ColorConvertFloat4ToU32(borderColor), 0.0f, 0, 2.0f);
+                drawList->AddRectFilled(
+                    ImVec2(rightX, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y),
+                    ImGui::ColorConvertFloat4ToU32(snapColor));
+                drawList->AddRect(
+                    ImVec2(rightX, 0), ImVec2(io.DisplaySize.x, io.DisplaySize.y),
+                    ImGui::ColorConvertFloat4ToU32(borderColor), 0.0f, 0, 2.0f);
             }
         }
         m_lastWindowPos = currentPos;
     }
 
-    void ImGuiOverlay::drawFooterButtons() {
+    void ImGuiOverlay::drawFooterButtons()
+    {
         ImGuiStyle& style = ImGui::GetStyle();
 
         if (m_activeTab == 0) { // Shaders tab
@@ -664,17 +731,17 @@ namespace vkBasalt {
                 }
                 m_pConfig->savePerGame();
                 m_hasUnsavedChanges = false;
-                m_previewDirty = false;
-                m_showCloseWarning = false;
+                m_previewDirty      = false;
+                m_showCloseWarning  = false;
                 g_triggerSoftReload = true;
             }
             ImGui::SameLine();
             ImGui::BeginDisabled(!m_hasUnsavedChanges);
             if (ImGui::Button("Revert Changes")) {
                 m_uiParamCache.clear();
-                m_hasUnsavedChanges = false;
-                m_previewDirty = false;
-                m_showCloseWarning = false;
+                m_hasUnsavedChanges   = false;
+                m_previewDirty        = false;
+                m_showCloseWarning    = false;
                 g_triggerRevertReload = true;
             }
             ImGui::EndDisabled();
@@ -685,7 +752,7 @@ namespace vkBasalt {
         } else if (m_activeTab == 3) { // Settings tab
             if (ImGui::Button("Save Settings & Apply")) {
                 m_pConfig->savePerGame();
-                m_isOpen = false;
+                m_isOpen           = false;
                 g_triggerHotReload = true;
             }
         } else if (m_activeTab == 1) { // Auto HDR tab
@@ -730,102 +797,117 @@ namespace vkBasalt {
             }
         }
         if (m_showCloseWarning && m_hasUnsavedChanges) {
-            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.1f, 1.0f),
+            ImGui::TextColored(
+                ImVec4(1.0f, 0.6f, 0.1f, 1.0f),
                 "Remember to save your config if you want to keep these changes! Click Close again to dismiss.");
         }
     }
 
-    void ImGuiOverlay::drawLegend() {
-        auto kbToggle  = m_pConfig->getOption<std::string>("toggleKey", "Insert");
-        auto kbReload  = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
-        auto kbOverlay = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
+    void ImGuiOverlay::drawLegend()
+    {
+        auto kbToggle     = m_pConfig->getOption<std::string>("toggleKey", "Insert");
+        auto kbReload     = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
+        auto kbOverlay    = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
         auto kbScreenshot = m_pConfig->getOption<std::string>("screenshotKey", "Delete");
 
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         // Show global effects state in legend (always reserve the line height to prevent layout shift)
         if (!g_effectsEnabled) {
-            ImGui::TextColored(ImVec4(0.9f, 0.4f, 0.3f, 1.0f), "Effects are BYPASSED (press %s to re-enable)", kbToggle.c_str());
+            ImGui::TextColored(
+                ImVec4(0.9f, 0.4f, 0.3f, 1.0f), "Effects are BYPASSED (press %s to re-enable)", kbToggle.c_str());
         } else {
             ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
         }
-        ImGui::Text("[Tab/Arrows]-Navigate  [Enter]-Edit  [Left/Right]Adjust  [Shift+Left/Right]Switch tab  [Shift+Up/Down]Scroll");
-        ImGui::Text("[Space]Toggle checkbox  [Esc]Close  [%s]Toggle  [%s]Reload  [%s]Overlay  [%s]Screenshot  [/] Search",
-                    kbToggle.c_str(), kbReload.c_str(), kbOverlay.c_str(), kbScreenshot.c_str());
+        ImGui::Text(
+            "[Tab/Arrows]-Navigate  [Enter]-Edit  [Left/Right]Adjust  [Shift+Left/Right]Switch tab  "
+            "[Shift+Up/Down]Scroll");
+        ImGui::Text(
+            "[Space]Toggle checkbox  [Esc]Close  [%s]Toggle  [%s]Reload  [%s]Overlay  [%s]Screenshot  [/] Search",
+            kbToggle.c_str(), kbReload.c_str(), kbOverlay.c_str(), kbScreenshot.c_str());
         ImGui::PopStyleColor();
     }
 
-    void ImGuiOverlay::drawUI() {
-        ImGuiIO& io = ImGui::GetIO();
+    void ImGuiOverlay::drawUI()
+    {
+        ImGuiIO& io       = ImGui::GetIO();
         ImGuiStyle& style = ImGui::GetStyle();
 
         if (!m_windowStateInitialized) {
-            m_windowWidth = m_pConfig->getOption<float>("overlayWidth", 0.0f);
-            m_windowSide = m_pConfig->getOption<std::string>("overlaySide", "left");
+            m_windowWidth            = m_pConfig->getOption<float>("overlayWidth", 0.0f);
+            m_windowSide             = m_pConfig->getOption<std::string>("overlaySide", "left");
             m_windowStateInitialized = true;
         }
 
         // Full height, user resizable width, draggable with edge snapping
         float initWidth = (m_windowWidth > 300.0f) ? m_windowWidth : kDefaultWindowWidth;
         ImGui::SetNextWindowSize(ImVec2(initWidth, io.DisplaySize.y), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(kMinWindowWidth, io.DisplaySize.y), ImVec2(FLT_MAX, io.DisplaySize.y));
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(kMinWindowWidth, io.DisplaySize.y), ImVec2(FLT_MAX, io.DisplaySize.y));
 
         // Initial position based on saved side (only on first use)
         float initX = (m_windowSide == "right") ? (io.DisplaySize.x - initWidth) : 0.0f;
         ImGui::SetNextWindowPos(ImVec2(initX, 0), ImGuiCond_FirstUseEver);
 
-        ImGui::Begin("vkBasalt-reloaded Configuration", nullptr,
-                    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+        ImGui::Begin(
+            "vkBasalt-reloaded Configuration", nullptr,
+            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
         updateWindowLayout();
 
         // Shift + Left/Right to cycle tabs pendingTab is only set for 1 frame SetSelected shouldn't persist
         int pendingTab = -1;
         if (m_forceSelectTab) {
-            pendingTab = m_activeTab;
+            pendingTab       = m_activeTab;
             m_forceSelectTab = false;
         }
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) {
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  pendingTab = (m_activeTab <= 0) ? 5 : m_activeTab - 1;
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) pendingTab = (m_activeTab <= 0) ? 5 : m_activeTab - 1;
             if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 5) ? 0 : m_activeTab + 1;
         }
 
         // Footer height = separator + single button row + bypass status line + 2 legend lines.
-        float footerHeight = 1.0f                                     // separator line
-                        + style.ItemSpacing.y * 2                     // spacing around separator
-                        + ImGui::GetFrameHeightWithSpacing()          // button row
-                        + (ImGui::GetTextLineHeightWithSpacing() * 3) // bypass status + 2 legend lines
-                        + style.ItemSpacing.y;                        // bottom padding
+        float footerHeight = 1.0f                                          // separator line
+                             + style.ItemSpacing.y * 2                     // spacing around separator
+                             + ImGui::GetFrameHeightWithSpacing()          // button row
+                             + (ImGui::GetTextLineHeightWithSpacing() * 3) // bypass status + 2 legend lines
+                             + style.ItemSpacing.y;                        // bottom padding
 
         ImGui::BeginChild("##content_area", ImVec2(0, -footerHeight), false);
         if (ImGui::BeginTabBar("##main_tabs", ImGuiTabBarFlags_None)) {
             ImVec4 tabTextColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
             ImGui::PushStyleColor(ImGuiCol_Text, tabTextColor);
-            if (ImGui::BeginTabItem("Shaders", nullptr, (pendingTab == 0) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+            if (ImGui::BeginTabItem(
+                    "Shaders", nullptr, (pendingTab == 0) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 0;
                 drawShadersTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Auto HDR", nullptr, (pendingTab == 1) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+            if (ImGui::BeginTabItem(
+                    "Auto HDR", nullptr, (pendingTab == 1) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 1;
                 drawAutoHdrTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Stats", nullptr, (pendingTab == 2) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+            if (ImGui::BeginTabItem(
+                    "Stats", nullptr, (pendingTab == 2) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 2;
                 drawStatsTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Settings", nullptr, (pendingTab == 3) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+            if (ImGui::BeginTabItem(
+                    "Settings", nullptr, (pendingTab == 3) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 3;
                 drawSettingsTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Presets", nullptr, (pendingTab == 4) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+            if (ImGui::BeginTabItem(
+                    "Presets", nullptr, (pendingTab == 4) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 4;
                 drawPresetsTab();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Style", nullptr, (pendingTab == 5) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
+            if (ImGui::BeginTabItem(
+                    "Style", nullptr, (pendingTab == 5) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None)) {
                 m_activeTab = 5;
                 drawStyleTab();
                 ImGui::EndTabItem();
@@ -855,13 +937,14 @@ namespace vkBasalt {
             float elapsed = ImGui::GetTime() - m_lastChangeTime;
             if (elapsed > kDebounceDelay) {
                 g_triggerPreviewReload = true;
-                m_previewDirty = false;
+                m_previewDirty         = false;
             }
         }
         ImGui::End();
     }
 
-    void ImGuiOverlay::setScopesEnabled(bool enabled) {
+    void ImGuiOverlay::setScopesEnabled(bool enabled)
+    {
         if (!m_pSwapchain) return;
         for (auto& pass : m_pSwapchain->computePasses) {
             // asFrameAnalyzer() returns non null only for FrameAnalyzer instances, call isEnabled() on the base pass pointer to avoid needing full FrameAnalyzer definition here.
@@ -872,32 +955,35 @@ namespace vkBasalt {
         }
     }
 
-    void ImGuiOverlay::invalidateScopeTextures() {
+    void ImGuiOverlay::invalidateScopeTextures()
+    {
         if (m_scopeTexturesRegistered) {
             // Defer removal: the GPU may still be executing a command buffer that uses these descriptor sets. We'll safely remove them when the overlay is closed.
             for (int i = 0; i < 3; i++) {
                 m_pendingScopeTextureRemovals.push_back(m_scopeTextureIDs[i]);
             }
             m_scopeTexturesRegistered = false;
-            m_lastAnalyzerPtr = nullptr;
+            m_lastAnalyzerPtr         = nullptr;
         }
     }
 
-    void ImGuiOverlay::disableScopesOnClose() {
+    void ImGuiOverlay::disableScopesOnClose()
+    {
         setScopesEnabled(false);
         invalidateScopeTextures();
-        
+
         // Safe to remove deferred textures now: the overlay is closing, so it will submit an empty command buffer.
         // The GPU will finish the previous frames work, safe to free the descriptor sets and the associated VkImages (which are in the swapchain graveyard).
         for (uint64_t texId : m_pendingScopeTextureRemovals) {
-            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)static_cast<uintptr_t>(texId));
+            ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet) static_cast<uintptr_t>(texId));
         }
         m_pendingScopeTextureRemovals.clear();
-        
+
         m_lastScopeTab = -1;
     }
 
-    void ImGuiOverlay::toggleOverlay() {
+    void ImGuiOverlay::toggleOverlay()
+    {
         m_isOpen = !m_isOpen;
         if (!m_isOpen) {
             disableScopesOnClose();

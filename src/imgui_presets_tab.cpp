@@ -7,9 +7,11 @@
 #include <string>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    void ImGuiOverlay::drawPresetsTab() {
+    void ImGuiOverlay::drawPresetsTab()
+    {
         ImGui::Text("Preset Management");
         ImGui::Separator();
         ImGui::Spacing();

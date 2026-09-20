@@ -10,10 +10,8 @@ namespace vkBasalt
     {
         table->GetInstanceProcAddr = gipa;
 #define FORVKFUNC(func) \
-    do \
-    { \
-        if (!table->func) \
-            table->func = (PFN_vk##func) gipa(instance, "vk" #func); \
+    do { \
+        if (!table->func) table->func = (PFN_vk##func) gipa(instance, "vk" #func); \
     } while (false);
         VK_INSTANCE_FUNCS
 #undef FORVKFUNC
@@ -23,10 +21,8 @@ namespace vkBasalt
     {
         table->GetDeviceProcAddr = gdpa;
 #define FORVKFUNC(func) \
-    do \
-    { \
-        if (!table->func) \
-            table->func = (PFN_vk##func) gdpa(device, "vk" #func); \
+    do { \
+        if (!table->func) table->func = (PFN_vk##func) gdpa(device, "vk" #func); \
     } while (false);
         VK_DEVICE_FUNCS
 #undef FORVKFUNC

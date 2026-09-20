@@ -18,9 +18,11 @@
 #include <utility>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    static std::string serializeChain(const std::vector<std::string>& chain) {
+    static std::string serializeChain(const std::vector<std::string>& chain)
+    {
         std::string result;
         for (size_t j = 0; j < chain.size(); j++) {
             if (j) result += ":";
@@ -29,13 +31,12 @@ namespace vkBasalt {
         return result;
     }
 
-    static constexpr auto kBuiltInEffects = std::to_array<const char*>({
-        "fxaa", "cas", "deband", "smaa", "lut", "dls",
-        "clarity", "clarityrcas", "crystalclear"
-    });
+    static constexpr auto kBuiltInEffects = std::to_array<const char*>(
+        {"fxaa", "cas", "deband", "smaa", "lut", "dls", "clarity", "clarityrcas", "crystalclear"});
 
     // Effect category priority for auto sort
-    static int getEffectSortPriority(const std::string& name) {
+    static int getEffectSortPriority(const std::string& name)
+    {
         // 1. AA
         if (name == "smaa" || name == "fxaa") return 0;
         // 2. Debanding
@@ -54,7 +55,8 @@ namespace vkBasalt {
         return 7;
     }
 
-    void ImGuiOverlay::drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect) {
+    void ImGuiOverlay::drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect)
+    {
         auto paramContextMenu = [&]() {
             if (ImGui::BeginPopupContextItem()) {
                 if (ImGui::MenuItem("Reset to Default")) {
@@ -67,17 +69,25 @@ namespace vkBasalt {
 
         switch (p->type) {
             case ParamType::Float: {
-                auto val = static_cast<float>(getUIParam(p->key, selectedEffect));
-                float step = (p->step > 0) ? static_cast<float>(p->step) : 0.01f;
-                auto range = static_cast<float>(p->maxVal - p->minVal);
+                auto val        = static_cast<float>(getUIParam(p->key, selectedEffect));
+                float step      = (p->step > 0) ? static_cast<float>(p->step) : 0.01f;
+                auto range      = static_cast<float>(p->maxVal - p->minVal);
                 float dragSpeed = range / kDragSpeedDivisor;
-                bool changed = false;
+                bool changed    = false;
                 ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                if (ImGui::DragFloat(p->label.c_str(), &val, dragSpeed, static_cast<float>(p->minVal), static_cast<float>(p->maxVal), "%.3f"))
+                if (ImGui::DragFloat(
+                        p->label.c_str(), &val, dragSpeed, static_cast<float>(p->minVal), static_cast<float>(p->maxVal),
+                        "%.3f"))
                     changed = true;
                 if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
-                    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
-                    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
+                    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+                        val -= step;
+                        changed = true;
+                    }
+                    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+                        val += step;
+                        changed = true;
+                    }
                 }
                 ImGui::PopItemWidth();
                 if (changed) {
@@ -90,17 +100,24 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::Int: {
-                int val = static_cast<int>(getUIParam(p->key, selectedEffect));
-                int step = (p->step > 0) ? static_cast<int>(p->step) : 1;
-                auto range = static_cast<float>(p->maxVal - p->minVal);
+                int val         = static_cast<int>(getUIParam(p->key, selectedEffect));
+                int step        = (p->step > 0) ? static_cast<int>(p->step) : 1;
+                auto range      = static_cast<float>(p->maxVal - p->minVal);
                 float dragSpeed = std::max(0.05f, range / kDragSpeedDivisor);
-                bool changed = false;
+                bool changed    = false;
                 ImGui::PushItemWidth(ImGui::CalcItemWidth());
-                if (ImGui::DragInt(p->label.c_str(), &val, dragSpeed, static_cast<int>(p->minVal), static_cast<int>(p->maxVal)))
+                if (ImGui::DragInt(
+                        p->label.c_str(), &val, dragSpeed, static_cast<int>(p->minVal), static_cast<int>(p->maxVal)))
                     changed = true;
                 if (ImGui::IsItemFocused() && !ImGui::IsItemActive()) {
-                    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { val -= step; changed = true; }
-                    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { val += step; changed = true; }
+                    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+                        val -= step;
+                        changed = true;
+                    }
+                    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+                        val += step;
+                        changed = true;
+                    }
                 }
                 ImGui::PopItemWidth();
                 if (changed) {
@@ -124,13 +141,13 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::Combo: {
-                int currentIdx = static_cast<int>(getUIParam(p->key, selectedEffect));
-                currentIdx = std::clamp(currentIdx, 0, static_cast<int>(p->comboOptions.size()) - 1);
+                int currentIdx      = static_cast<int>(getUIParam(p->key, selectedEffect));
+                currentIdx          = std::clamp(currentIdx, 0, static_cast<int>(p->comboOptions.size()) - 1);
                 const char* preview = p->comboOptions.empty() ? "" : p->comboOptions[currentIdx].c_str();
                 if (ImGui::BeginCombo(p->label.c_str(), preview)) {
                     bool justOpened = ImGui::IsWindowAppearing();
                     for (size_t ci = 0; ci < p->comboOptions.size(); ci++) {
-                        bool is_sel = (std::cmp_equal(currentIdx ,ci));
+                        bool is_sel = (std::cmp_equal(currentIdx, ci));
                         if (ImGui::Selectable(p->comboOptions[ci].c_str(), is_sel)) {
                             setUIParam(p->key, static_cast<double>(ci));
                             selectedEffect->setParam(p->key, static_cast<double>(ci));
@@ -153,7 +170,7 @@ namespace vkBasalt {
                 break;
             }
             case ParamType::FilePath: {
-                auto currentPath = m_pConfig->getOption<std::string>(p->key, "");
+                auto currentPath   = m_pConfig->getOption<std::string>(p->key, "");
                 char pathBuf[1024] = {};
                 strncpy(pathBuf, currentPath.c_str(), sizeof(pathBuf) - 1);
                 ImGui::Text("%s", p->label.c_str());
@@ -165,7 +182,7 @@ namespace vkBasalt {
 
                 if (m_browserDir.empty()) {
                     const char* home = getenv("HOME");
-                    m_browserDir = home ? std::string(home) : ".";
+                    m_browserDir     = home ? std::string(home) : ".";
                 }
                 if (ImGui::Button("Browse...")) {
                     m_showBrowser = !m_showBrowser;
@@ -177,8 +194,8 @@ namespace vkBasalt {
                         if (std::filesystem::exists(m_browserDir, ec)) {
                             for (auto& entry : std::filesystem::directory_iterator(m_browserDir, ec)) {
                                 BrowserEntry be;
-                                be.path = entry.path().string();
-                                be.name = entry.path().filename().string();
+                                be.path  = entry.path().string();
+                                be.name  = entry.path().filename().string();
                                 be.isDir = entry.is_directory();
                                 m_browserEntries.push_back(std::move(be));
                             }
@@ -188,7 +205,7 @@ namespace vkBasalt {
 
                     ImGui::BeginChild("##file_browser", ImVec2(0, kFileBrowserHeight), true);
                     ImGui::Text("Directory: %s", m_browserDir.c_str());
-                    
+
                     for (const auto& entry : m_browserEntries) {
                         if (entry.isDir) {
                             if (ImGui::Selectable(("[DIR] " + entry.name).c_str())) {
@@ -198,7 +215,7 @@ namespace vkBasalt {
                             if (ImGui::Selectable(entry.name.c_str())) {
                                 setConfigImmediate(p->key, entry.path, true);
                                 g_triggerPreviewReload = true;
-                                m_showBrowser = false;
+                                m_showBrowser          = false;
                             }
                         }
                     }
@@ -213,14 +230,19 @@ namespace vkBasalt {
         }
     }
 
-    void ImGuiOverlay::drawShadersTab() {
-        if (!m_pSwapchain) { ImGui::Text("No swapchain."); return; }
+    void ImGuiOverlay::drawShadersTab()
+    {
+        if (!m_pSwapchain) {
+            ImGui::Text("No swapchain.");
+            return;
+        }
         drawChainPanel();
         ImGui::SameLine();
         drawEffectParamsPanel();
     }
 
-    void ImGuiOverlay::drawChainPanel() {
+    void ImGuiOverlay::drawChainPanel()
+    {
         ImGui::BeginChild("##shader_list", ImVec2(kChainPanelWidth, 0), true);
 
         // Rebuild cache only when a reload trigger fired
@@ -229,21 +251,25 @@ namespace vkBasalt {
             // Filter out empty strings that might result from parsing an empty "effects=" key
             std::erase_if(m_cachedChainList, [](const std::string& s) { return s.empty(); });
             m_cachedAllEffects.clear();
-            for (const char* b : kBuiltInEffects) m_cachedAllEffects.emplace_back(b);
+            for (const char* b : kBuiltInEffects)
+                m_cachedAllEffects.emplace_back(b);
             for (auto& name : m_cachedChainList) {
                 bool isBuiltin = false;
-                for (const char* b : kBuiltInEffects) { if (name == b) { isBuiltin = true; break; } }
+                for (const char* b : kBuiltInEffects) {
+                    if (name == b) {
+                        isBuiltin = true;
+                        break;
+                    }
+                }
                 if (!isBuiltin) m_cachedAllEffects.push_back(name);
             }
             m_chainCacheDirty = false;
         }
 
-        std::vector<std::string> chainList = m_cachedChainList;
+        std::vector<std::string> chainList   = m_cachedChainList;
         std::vector<std::string>& allEffects = m_cachedAllEffects;
 
-        auto isInChain = [&](const std::string& name) {
-            return std::ranges::find(chainList, name) != chainList.end();
-        };
+        auto isInChain = [&](const std::string& name) { return std::ranges::find(chainList, name) != chainList.end(); };
 
         if (m_selectedEffectIndex >= allEffects.size()) m_selectedEffectIndex = 0;
 
@@ -260,13 +286,13 @@ namespace vkBasalt {
         // Master effects toggle indicator/button
         bool effectsEnabled = g_effectsEnabled.load();
         if (effectsEnabled) {
-            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.15f, 0.50f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.50f, 0.15f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.60f, 0.20f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.10f, 0.40f, 0.10f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.10f, 0.40f, 0.10f, 1.0f));
         } else {
-            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.50f, 0.15f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.50f, 0.15f, 0.15f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.60f, 0.20f, 0.20f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.40f, 0.10f, 0.10f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.40f, 0.10f, 0.10f, 1.0f));
         }
         if (ImGui::Button(effectsEnabled ? "[ON] vkBasalt Effects" : "[OFF] vkBasalt Effects")) {
             g_effectsEnabled = !effectsEnabled;
@@ -286,7 +312,10 @@ namespace vkBasalt {
             // Map back to allEffects index for selection tracking
             size_t allIdx = 0;
             for (size_t i = 0; i < allEffects.size(); i++) {
-                if (allEffects[i] == chainList[ci]) { allIdx = i; break; }
+                if (allEffects[i] == chainList[ci]) {
+                    allIdx = i;
+                    break;
+                }
             }
             ImGui::PushID(static_cast<int>(allIdx));
 
@@ -295,19 +324,20 @@ namespace vkBasalt {
                 chainList.erase(chainList.begin() + ci);
                 setConfigImmediate("effects", serializeChain(chainList), true);
                 g_triggerPreviewReload = true;
-                m_chainCacheDirty = true;
+                m_chainCacheDirty      = true;
                 ImGui::PopID();
                 break; // List mutated, stop iterating
             }
             ImGui::SameLine();
 
-            float arrowBtnSize = ImGui::GetFrameHeight();
-            float spacing = ImGui::GetStyle().ItemSpacing.x;
+            float arrowBtnSize     = ImGui::GetFrameHeight();
+            float spacing          = ImGui::GetStyle().ItemSpacing.x;
             float arrowsTotalWidth = arrowBtnSize * 2 + spacing * 3;
-            float selectableWidth = ImGui::GetContentRegionAvail().x - arrowsTotalWidth;
+            float selectableWidth  = ImGui::GetContentRegionAvail().x - arrowsTotalWidth;
 
             bool is_selected = (m_selectedEffectIndex == allIdx);
-            if (ImGui::Selectable(chainList[ci].c_str(), is_selected, 0, ImVec2(selectableWidth, ImGui::GetFrameHeight())))
+            if (ImGui::Selectable(
+                    chainList[ci].c_str(), is_selected, 0, ImVec2(selectableWidth, ImGui::GetFrameHeight())))
                 m_selectedEffectIndex = allIdx;
 
             // Up arrow
@@ -317,7 +347,7 @@ namespace vkBasalt {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci - 1);
                 setConfigImmediate("effects", serializeChain(chainList), true);
                 g_triggerPreviewReload = true;
-                m_chainCacheDirty = true;
+                m_chainCacheDirty      = true;
             }
             ImGui::EndDisabled();
 
@@ -328,7 +358,7 @@ namespace vkBasalt {
                 std::iter_swap(chainList.begin() + ci, chainList.begin() + ci + 1);
                 setConfigImmediate("effects", serializeChain(chainList), true);
                 g_triggerPreviewReload = true;
-                m_chainCacheDirty = true;
+                m_chainCacheDirty      = true;
             }
             ImGui::EndDisabled();
 
@@ -349,7 +379,7 @@ namespace vkBasalt {
                 chainList.push_back(allEffects[i]);
                 setConfigImmediate("effects", serializeChain(chainList), true);
                 g_triggerPreviewReload = true;
-                m_chainCacheDirty = true;
+                m_chainCacheDirty      = true;
             }
             ImGui::SameLine();
 
@@ -367,19 +397,19 @@ namespace vkBasalt {
         ImGui::Separator();
 
         if (ImGui::Button("Auto-Sort (AA > Deband > Color > Contrast > Sharpen)")) {
-            std::ranges::stable_sort(chainList,
-                            [](const std::string& a, const std::string& b) {
-                                return getEffectSortPriority(a) < getEffectSortPriority(b);
-                            });
+            std::ranges::stable_sort(chainList, [](const std::string& a, const std::string& b) {
+                return getEffectSortPriority(a) < getEffectSortPriority(b);
+            });
             setConfigImmediate("effects", serializeChain(chainList), true);
             g_triggerPreviewReload = true;
-            m_chainCacheDirty = true;
+            m_chainCacheDirty      = true;
         }
 
         ImGui::EndChild();
     }
 
-    void ImGuiOverlay::drawEffectParamsPanel() {
+    void ImGuiOverlay::drawEffectParamsPanel()
+    {
         ImGui::BeginChild("##effect_params", ImVec2(0, 0), true);
         if (m_cachedAllEffects.empty()) {
             ImGui::TextWrapped("No effects available.");
@@ -387,7 +417,7 @@ namespace vkBasalt {
             return;
         }
         std::string selectedName = m_cachedAllEffects[m_selectedEffectIndex];
-        bool inChain = std::ranges::find(m_cachedChainList, selectedName) != m_cachedChainList.end();
+        bool inChain             = std::ranges::find(m_cachedChainList, selectedName) != m_cachedChainList.end();
 
         ImGui::Text("Effect: %s", selectedName.c_str());
         if (!g_effectsEnabled) {
@@ -404,7 +434,10 @@ namespace vkBasalt {
         // Find the live effect object
         Effect* selectedEffect = nullptr;
         for (auto& eff : m_pSwapchain->effects)
-            if (eff->getName() == selectedName) { selectedEffect = eff.get(); break; }
+            if (eff->getName() == selectedName) {
+                selectedEffect = eff.get();
+                break;
+            }
 
         // Clear stale UI cache after a preset-triggered reload has recreated the effect, put here as reload happens between frames.
         if (m_pendingCacheClear) {
@@ -418,7 +451,8 @@ namespace vkBasalt {
             ImGui::SameLine(ImGui::GetContentRegionAvail().x - resetWidth);
             if (ImGui::Button("Reset to Default")) {
                 const auto& resetParams = selectedEffect->getParamDescs();
-                for (const auto& p : resetParams) resetParamToConfig(p, true, selectedEffect);
+                for (const auto& p : resetParams)
+                    resetParamToConfig(p, true, selectedEffect);
                 g_triggerPreviewReload = true;
             }
         }
@@ -434,12 +468,12 @@ namespace vkBasalt {
         const auto& params = selectedEffect->getParamDescs();
 
         // Quality level gating (CrystalClear and future effects with quality tiers)
-        int currentQuality = 4;
+        int currentQuality    = 4;
         bool hasQualityGating = false;
         for (const auto& p : params) {
             if (p.key.find("QualityLevel") != std::string::npos || p.key.find("qualityLevel") != std::string::npos) {
                 hasQualityGating = true;
-                currentQuality = static_cast<int>(selectedEffect->getParam(p.key));
+                currentQuality   = static_cast<int>(selectedEffect->getParam(p.key));
                 break;
             }
         }
@@ -455,7 +489,12 @@ namespace vkBasalt {
         if (params.empty()) {
             ImGui::TextWrapped("This effect has no configurable parameters.");
         } else {
-            struct Category { const char* name; int sortOrder; std::vector<const EffectParamDesc*> items; };
+            struct Category
+            {
+                const char* name;
+                int sortOrder;
+                std::vector<const EffectParamDesc*> items;
+            };
             std::vector<Category> categories;
 
             auto getCategorySortOrder = [](const std::string& name) -> int {
@@ -476,17 +515,19 @@ namespace vkBasalt {
                 for (auto& c : categories) {
                     if (std::string(c.name) == name) return c;
                 }
-                categories.push_back({.name=name, .sortOrder=getCategorySortOrder(name), .items={}});
+                categories.push_back({.name = name, .sortOrder = getCategorySortOrder(name), .items = {}});
                 return categories.back();
             };
 
             std::string searchStr(m_searchFilter);
             bool hasSearch = !searchStr.empty();
-            
+
             auto containsIgnoreCase = [](const std::string& haystack, const std::string& needle) {
                 if (needle.empty()) return true;
-                auto result = std::ranges::search(haystack, needle,
-                    [](char ch1, char ch2) { return std::tolower(static_cast<unsigned char>(ch1)) == std::tolower(static_cast<unsigned char>(ch2)); });
+                auto result = std::ranges::search(haystack, needle, [](char ch1, char ch2) {
+                    return std::tolower(static_cast<unsigned char>(ch1))
+                           == std::tolower(static_cast<unsigned char>(ch2));
+                });
                 return !result.empty();
             };
 
@@ -498,23 +539,49 @@ namespace vkBasalt {
                 const char* cat = "General";
                 if (!p.category.empty()) {
                     cat = p.category.c_str();
-                } else if (p.key.find("Preset") != std::string::npos) cat = "Presets & Performance";
-                else if (p.key.find("Sharp") != std::string::npos || p.key.find("Cas") != std::string::npos || p.key.find("Bilateral") != std::string::npos || p.key.find("Contrast") != std::string::npos) cat = "Sharpening & Contrast";
-                else if (p.key.find("AA") != std::string::npos || p.key.find("Fxaa") != std::string::npos || p.key.find("Smaa") != std::string::npos) cat = "Anti-Aliasing";
-                else if (p.key.find("Edge") != std::string::npos || p.key.find("Guard") != std::string::npos || p.key.find("BandPass") != std::string::npos || p.key.find("Extreme") != std::string::npos || p.key.find("Shimmer") != std::string::npos || p.key.find("Clarity") != std::string::npos || p.key.find("Despeckle") != std::string::npos || p.key.find("Fringe") != std::string::npos || p.key.find("Checkerboard") != std::string::npos) cat = "Artifact Protection";
-                else if (p.key.find("Grain") != std::string::npos || p.key.find("grain") != std::string::npos || p.key.find("Dither") != std::string::npos) cat = "Film Grain & Dither";
-                else if (p.key.find("Vibrance") != std::string::npos || p.key.find("Deband") != std::string::npos || p.key.find("Tone") != std::string::npos || p.key.find("Specular") != std::string::npos || p.key.find("Saturation") != std::string::npos) cat = "Color & Tone";
-                else if (p.key.find("CDL") != std::string::npos || p.key.find("ST") != std::string::npos || p.key.find("Temperature") != std::string::npos || p.key.find("Tint") != std::string::npos || p.key.find("Gamma") != std::string::npos || p.key.find("Lift") != std::string::npos || p.key.find("Clip") != std::string::npos) cat = "Color Grading";
-                else if (p.key.find("Blend") != std::string::npos) cat = "Blending";
-                else if (p.key.find("Debug") != std::string::npos) cat = "Debug";
+                } else if (p.key.find("Preset") != std::string::npos)
+                    cat = "Presets & Performance";
+                else if (
+                    p.key.find("Sharp") != std::string::npos || p.key.find("Cas") != std::string::npos
+                    || p.key.find("Bilateral") != std::string::npos || p.key.find("Contrast") != std::string::npos)
+                    cat = "Sharpening & Contrast";
+                else if (
+                    p.key.find("AA") != std::string::npos || p.key.find("Fxaa") != std::string::npos
+                    || p.key.find("Smaa") != std::string::npos)
+                    cat = "Anti-Aliasing";
+                else if (
+                    p.key.find("Edge") != std::string::npos || p.key.find("Guard") != std::string::npos
+                    || p.key.find("BandPass") != std::string::npos || p.key.find("Extreme") != std::string::npos
+                    || p.key.find("Shimmer") != std::string::npos || p.key.find("Clarity") != std::string::npos
+                    || p.key.find("Despeckle") != std::string::npos || p.key.find("Fringe") != std::string::npos
+                    || p.key.find("Checkerboard") != std::string::npos)
+                    cat = "Artifact Protection";
+                else if (
+                    p.key.find("Grain") != std::string::npos || p.key.find("grain") != std::string::npos
+                    || p.key.find("Dither") != std::string::npos)
+                    cat = "Film Grain & Dither";
+                else if (
+                    p.key.find("Vibrance") != std::string::npos || p.key.find("Deband") != std::string::npos
+                    || p.key.find("Tone") != std::string::npos || p.key.find("Specular") != std::string::npos
+                    || p.key.find("Saturation") != std::string::npos)
+                    cat = "Color & Tone";
+                else if (
+                    p.key.find("CDL") != std::string::npos || p.key.find("ST") != std::string::npos
+                    || p.key.find("Temperature") != std::string::npos || p.key.find("Tint") != std::string::npos
+                    || p.key.find("Gamma") != std::string::npos || p.key.find("Lift") != std::string::npos
+                    || p.key.find("Clip") != std::string::npos)
+                    cat = "Color Grading";
+                else if (p.key.find("Blend") != std::string::npos)
+                    cat = "Blending";
+                else if (p.key.find("Debug") != std::string::npos)
+                    cat = "Debug";
 
                 findOrAddCategory(cat).items.push_back(&p);
             }
 
             // Sort categories logically from top to bottom
-            std::ranges::sort(categories, [](const Category& a, const Category& b) {
-                return a.sortOrder < b.sortOrder;
-            });
+            std::ranges::sort(
+                categories, [](const Category& a, const Category& b) { return a.sortOrder < b.sortOrder; });
 
             bool focusedFirst = false;
             for (auto& cat : categories) {
@@ -533,9 +600,13 @@ namespace vkBasalt {
                     }
 
                     ImGui::PushID(p->key.c_str());
-                    if (m_justOpened && !focusedFirst) { ImGui::SetKeyboardFocusHere(); focusedFirst = true; }
+                    if (m_justOpened && !focusedFirst) {
+                        ImGui::SetKeyboardFocusHere();
+                        focusedFirst = true;
+                    }
 
-                    bool paramDisabled = hasQualityGating && (currentQuality > selectedEffect->minQualityForParam(p->key));
+                    bool paramDisabled =
+                        hasQualityGating && (currentQuality > selectedEffect->minQualityForParam(p->key));
                     if (paramDisabled) ImGui::BeginDisabled();
                     drawParamWidget(p, selectedEffect);
                     if (paramDisabled) ImGui::EndDisabled();
@@ -551,20 +622,25 @@ namespace vkBasalt {
                                     tip = "Toggle\nDefault: " + std::string(p->defaultVal > 0.5 ? "On" : "Off");
                                     break;
                                 case ParamType::Combo: {
-                                    size_t defIdx = std::min(static_cast<size_t>(p->defaultVal), p->comboOptions.empty() ? 0 : p->comboOptions.size() - 1);
-                                    const char* def = p->comboOptions.empty() ? "None" : p->comboOptions[defIdx].c_str();
+                                    size_t defIdx = std::min(
+                                        static_cast<size_t>(p->defaultVal),
+                                        p->comboOptions.empty() ? 0 : p->comboOptions.size() - 1);
+                                    const char* def =
+                                        p->comboOptions.empty() ? "None" : p->comboOptions[defIdx].c_str();
                                     tip = "Options: " + std::to_string(p->comboOptions.size()) + "\nDefault: " + def;
                                     break;
                                 }
                                 case ParamType::Int:
-                                    tip = "Range: " + std::to_string(static_cast<int>(p->minVal)) + " to " + std::to_string(static_cast<int>(p->maxVal)) +
-                                        "\nDefault: " + std::to_string(static_cast<int>(p->defaultVal));
+                                    tip = "Range: " + std::to_string(static_cast<int>(p->minVal)) + " to "
+                                          + std::to_string(static_cast<int>(p->maxVal))
+                                          + "\nDefault: " + std::to_string(static_cast<int>(p->defaultVal));
                                     break;
                                 case ParamType::Float:
                                 case ParamType::FilePath:
                                 default:
-                                    tip = "Range: " + doubleToConfigString(p->minVal) + " to " + doubleToConfigString(p->maxVal) +
-                                        "\nDefault: " + doubleToConfigString(p->defaultVal);
+                                    tip = "Range: " + doubleToConfigString(p->minVal) + " to "
+                                          + doubleToConfigString(p->maxVal)
+                                          + "\nDefault: " + doubleToConfigString(p->defaultVal);
                                     break;
                             }
                             ImGui::SetTooltip("%s", tip.c_str());

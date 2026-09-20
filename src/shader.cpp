@@ -30,11 +30,13 @@ namespace vkBasalt
         shaderCreateInfo.flags    = 0;
         shaderCreateInfo.codeSize = code.size();
         shaderCreateInfo.pCode    = spirvData;
-        VkResult result = pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
+        VkResult result =
+            pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
         ASSERT_VULKAN(result);
     }
 
-    void createShaderModule(LogicalDevice* pLogicalDevice, const std::vector<uint32_t>& code, VkShaderModule* shaderModule)
+    void
+    createShaderModule(LogicalDevice* pLogicalDevice, const std::vector<uint32_t>& code, VkShaderModule* shaderModule)
     {
         VkShaderModuleCreateInfo shaderCreateInfo;
 
@@ -44,7 +46,8 @@ namespace vkBasalt
         shaderCreateInfo.codeSize = code.size() * sizeof(uint32_t);
         shaderCreateInfo.pCode    = code.data();
 
-        VkResult result = pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
+        VkResult result =
+            pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
         ASSERT_VULKAN(result);
     }
 
@@ -63,7 +66,8 @@ namespace vkBasalt
         shaderCreateInfo.codeSize = spirv.size() * sizeof(uint32_t);
         shaderCreateInfo.pCode    = spirv.data();
 
-        VkResult result = pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
+        VkResult result =
+            pLogicalDevice->vkd.CreateShaderModule(pLogicalDevice->device, &shaderCreateInfo, nullptr, shaderModule);
         ASSERT_VULKAN(result);
     }
 } // namespace vkBasalt

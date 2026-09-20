@@ -31,21 +31,17 @@ namespace vkBasalt
 
     static void init_input_backend()
     {
-        if (input_initialized)
-            return;
+        if (input_initialized) return;
         const char* wayland_var = getenv("WAYLAND_DISPLAY");
         const char* x11_var     = getenv("DISPLAY");
 
         // Fallback logic if no surface was created before the first key check
-        if (wayland_var && strcmp(wayland_var, "") != 0)
-        {
+        if (wayland_var && strcmp(wayland_var, "") != 0) {
 #if VKBASALT_WAYLAND
             Logger::debug("Wayland session detected via env. Waiting for surface hook.");
             is_wayland = true;
 #endif
-        }
-        else if (x11_var && strcmp(x11_var, "") != 0)
-        {
+        } else if (x11_var && strcmp(x11_var, "") != 0) {
 #if VKBASALT_X11
             Logger::debug("Pure X11 session detected via env. Using X11 input backend.");
             is_wayland = false;
@@ -59,15 +55,11 @@ namespace vkBasalt
     {
         // X11 surfaces strongly imply XWayland or native X11. XWayland games (like Naraka) often create both Wayland (for popups/launchers)
         // and X11 (for the main game window) surfaces. If an X11 surface is created, always prefer X11 to ensure main window input works.
-        if (!wayland)
-        {
+        if (!wayland) {
             is_wayland = false;
-        }
-        else
-        {
+        } else {
             // Only default to Wayland if X11 hasn't already claimed the backend
-            if (!input_initialized || is_wayland)
-            {
+            if (!input_initialized || is_wayland) {
                 is_wayland = true;
             }
         }
@@ -76,7 +68,8 @@ namespace vkBasalt
     }
 
     // Shared scale detection for Env vars and KDE config files. Used by both Wayland and X11 backends to avoid DRY violations across the static library boundary.
-    float getScaleFromEnvAndKDE() {
+    float getScaleFromEnvAndKDE()
+    {
         const char* qtScale = std::getenv("QT_SCALE_FACTOR");
         if (qtScale) {
             auto s = static_cast<float>(std::atof(qtScale));
@@ -84,7 +77,7 @@ namespace vkBasalt
         }
         const char* gdkScale = std::getenv("GDK_SCALE");
         if (gdkScale) {
-            auto s = static_cast<float>(std::atof(gdkScale));
+            auto s             = static_cast<float>(std::atof(gdkScale));
             const char* gdkDpi = std::getenv("GDK_DPI_SCALE");
             if (gdkDpi) s *= static_cast<float>(std::atof(gdkDpi));
             if (s >= 0.5f && s <= 5.0f) return s;
@@ -104,19 +97,19 @@ namespace vkBasalt
             while (std::getline(f, line)) {
                 if (line.starts_with("ScreenScaleFactors=")) {
                     std::string val = line.substr(19);
-                    size_t comma = val.find(',');
+                    size_t comma    = val.find(',');
                     if (comma != std::string::npos) val = val.substr(0, comma);
                     auto s = static_cast<float>(std::atof(val.c_str()));
                     if (s >= 0.5f && s <= 5.0f) return s;
                 }
                 if (line.starts_with("ScaleFactor=")) {
                     std::string val = line.substr(12);
-                    auto s = static_cast<float>(std::atof(val.c_str()));
+                    auto s          = static_cast<float>(std::atof(val.c_str()));
                     if (s >= 0.5f && s <= 5.0f) return s;
                 }
                 if (line.starts_with("Scale=")) {
                     std::string val = line.substr(6);
-                    auto s = static_cast<float>(std::atof(val.c_str()));
+                    auto s          = static_cast<float>(std::atof(val.c_str()));
                     if (s >= 0.5f && s <= 5.0f) return s;
                 }
             }
@@ -136,8 +129,7 @@ namespace vkBasalt
         init_input_backend();
 
 #if VKBASALT_WAYLAND
-        if (is_wayland)
-            return convertToKeySymWayland(key);
+        if (is_wayland) return convertToKeySymWayland(key);
 #endif
 
 #if VKBASALT_X11

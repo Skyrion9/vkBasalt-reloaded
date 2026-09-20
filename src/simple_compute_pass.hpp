@@ -4,7 +4,7 @@
 
 namespace vkBasalt
 {
-    // Base class for single dispatch compute passes. Handles all Vulkan boilerplate (pipeline, descriptors, push constants). 
+    // Base class for single dispatch compute passes. Handles all Vulkan boilerplate (pipeline, descriptors, push constants).
     // Subclasses provide the shader, descriptor layout, push constant data, and dispatch dimensions.
     class SimpleComputePass : public ComputePass
     {
@@ -14,17 +14,25 @@ namespace vkBasalt
 
         void recordCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex) override;
 
-        static uint32_t findMemoryType(const VkPhysicalDeviceMemoryProperties& props,
-                                       uint32_t typeBits, VkMemoryPropertyFlags required);
-        static VkBuffer createDeviceLocalBuffer(LogicalDevice* pDevice, VkDeviceSize size,
-                                                VkBufferUsageFlags usage, VkDeviceMemory& memory);
+        static uint32_t findMemoryType(
+            const VkPhysicalDeviceMemoryProperties& props, uint32_t typeBits, VkMemoryPropertyFlags required);
+        static VkBuffer createDeviceLocalBuffer(
+            LogicalDevice* pDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkDeviceMemory& memory);
 
-        static VkImage createImage(LogicalDevice* pDevice, uint32_t width, uint32_t height,
-                                   VkFormat format, VkImageUsageFlags usage, VkDeviceMemory& memory);
+        static VkImage createImage(
+            LogicalDevice* pDevice,
+            uint32_t width,
+            uint32_t height,
+            VkFormat format,
+            VkImageUsageFlags usage,
+            VkDeviceMemory& memory);
 
-        static VkImageView createImageView(LogicalDevice* pDevice, VkImage image, VkFormat format,
-                                           VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                           VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
+        static VkImageView createImageView(
+            LogicalDevice* pDevice,
+            VkImage image,
+            VkFormat format,
+            VkImageViewType viewType  = VK_IMAGE_VIEW_TYPE_2D,
+            VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
 
     protected:
         // Return compute shader SPIR-V.
@@ -48,35 +56,42 @@ namespace vkBasalt
         void init();
 
         VkBuffer createDeviceLocalBuffer(VkDeviceSize size, VkBufferUsageFlags usage);
-        VkBuffer createHostVisibleBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                                         VkDeviceMemory& memory, void** mapped);
+        VkBuffer
+        createHostVisibleBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkDeviceMemory& memory, void** mapped);
 
-        VkImage createImage(uint32_t width, uint32_t height, VkFormat format,
-                            VkImageUsageFlags usage, VkDeviceMemory& memory);
+        VkImage
+        createImage(uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage, VkDeviceMemory& memory);
 
-        VkImageView createImageView(VkImage image, VkFormat format,
-                                    VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
+        VkImageView createImageView(
+            VkImage image,
+            VkFormat format,
+            VkImageViewType viewType  = VK_IMAGE_VIEW_TYPE_2D,
+            VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
 
         // Transition image layouts during init (from UNDEFINED).
-        void transitionImageLayout(VkCommandBuffer cmdBuf, VkImage image,
-                                   VkImageLayout oldLayout, VkImageLayout newLayout,
-                                   VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage,
-                                   VkAccessFlags srcAccess, VkAccessFlags dstAccess);
+        void transitionImageLayout(
+            VkCommandBuffer cmdBuf,
+            VkImage image,
+            VkImageLayout oldLayout,
+            VkImageLayout newLayout,
+            VkPipelineStageFlags srcStage,
+            VkPipelineStageFlags dstStage,
+            VkAccessFlags srcAccess,
+            VkAccessFlags dstAccess);
 
         // State
         LogicalDevice* pLogicalDevice = nullptr;
 
-        VkShaderModule         shaderModule       = VK_NULL_HANDLE;
-        VkDescriptorSetLayout  descriptorSetLayout = VK_NULL_HANDLE;
-        VkDescriptorPool       descriptorPool     = VK_NULL_HANDLE;
-        VkPipelineLayout       pipelineLayout     = VK_NULL_HANDLE;
-        VkPipeline             pipeline           = VK_NULL_HANDLE;
+        VkShaderModule shaderModule               = VK_NULL_HANDLE;
+        VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+        VkDescriptorPool descriptorPool           = VK_NULL_HANDLE;
+        VkPipelineLayout pipelineLayout           = VK_NULL_HANDLE;
+        VkPipeline pipeline                       = VK_NULL_HANDLE;
 
         // One descriptor set per swapchain image (per image bindings differ).
         std::vector<VkDescriptorSet> descriptorSets;
 
-        uint32_t pushConstantSize = 0;
+        uint32_t pushConstantSize             = 0;
         VkPushConstantRange pushConstantRange = {};
     };
 } // namespace vkBasalt

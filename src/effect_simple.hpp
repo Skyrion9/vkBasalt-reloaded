@@ -17,18 +17,21 @@
 namespace vkBasalt
 {
     // Lightweight vec2 to mirror GLSL's vec2 without needing GLM
-    struct PushVec2 {
+    struct PushVec2
+    {
         float x;
         float y;
     };
 
     // UBO Struct for per-frame temporal data
-    struct FrameData {
+    struct FrameData
+    {
         uint32_t frameCounter;
     };
 
     // Push constants for basic spatial geometry (texel sizes). Pre-computed once in init() to avoid per frame divisions.
-    struct SimplePushConstants {
+    struct SimplePushConstants
+    {
         float texelSizeX;
         float texelSizeY;
         float reserved0;
@@ -45,39 +48,39 @@ namespace vkBasalt
         ~SimpleEffect() override;
 
     protected:
-        LogicalDevice*               pLogicalDevice{};
-        std::vector<VkImage>         inputImages;
-        std::vector<VkImage>         outputImages;
-        std::vector<VkImageView>     inputImageViews;
-        std::vector<VkImageView>     outputImageViews;
+        LogicalDevice* pLogicalDevice{};
+        std::vector<VkImage> inputImages;
+        std::vector<VkImage> outputImages;
+        std::vector<VkImageView> inputImageViews;
+        std::vector<VkImageView> outputImageViews;
         std::vector<VkDescriptorSet> imageDescriptorSets;
-        std::vector<VkFramebuffer>   framebuffers;
-        VkDescriptorSetLayout        imageSamplerDescriptorSetLayout;
-        VkDescriptorPool             descriptorPool;
-        VkShaderModule               vertexModule;
-        VkShaderModule               fragmentModule;
-        VkRenderPass                 renderPass;
-        VkPipelineLayout             pipelineLayout;
-        VkPipeline                   graphicsPipeline;
-        VkExtent2D                   imageExtent{};
-        VkFormat                     format;
-        VkSampler                    sampler;
-        Config*                      pConfig{};
-        std::vector<uint32_t>        vertexCode;
-        std::vector<uint32_t>        fragmentCode;
-        VkSpecializationInfo*        pVertexSpecInfo{};
-        VkSpecializationInfo*        pFragmentSpecInfo{};
-        uint32_t                     pushConstantSize = 0; // Defaults to 0 (no push constants). Override per effect as necessary.
+        std::vector<VkFramebuffer> framebuffers;
+        VkDescriptorSetLayout imageSamplerDescriptorSetLayout;
+        VkDescriptorPool descriptorPool;
+        VkShaderModule vertexModule;
+        VkShaderModule fragmentModule;
+        VkRenderPass renderPass;
+        VkPipelineLayout pipelineLayout;
+        VkPipeline graphicsPipeline;
+        VkExtent2D imageExtent{};
+        VkFormat format;
+        VkSampler sampler;
+        Config* pConfig{};
+        std::vector<uint32_t> vertexCode;
+        std::vector<uint32_t> fragmentCode;
+        VkSpecializationInfo* pVertexSpecInfo{};
+        VkSpecializationInfo* pFragmentSpecInfo{};
+        uint32_t pushConstantSize = 0; // Defaults to 0 (no push constants). Override per effect as necessary.
 
         // UBO support for per-frame data (e.g., temporal frame counters)
         // Subclasses can set needsUniformBuffer = true and uniformSize = sizeof(Struct) in their constructor.
-        VkBuffer uniformBuffer = VK_NULL_HANDLE;
+        VkBuffer uniformBuffer       = VK_NULL_HANDLE;
         VkDeviceMemory uniformMemory = VK_NULL_HANDLE;
-        void* mappedUniform = nullptr;
-        size_t uniformSize = 0;
-        bool needsUniformBuffer = false;
-        
-        bool needsClear = false;
+        void* mappedUniform          = nullptr;
+        size_t uniformSize           = 0;
+        bool needsUniformBuffer      = false;
+
+        bool needsClear           = false;
         VkImageLayout finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         // Pre-computed push constants for basic texel sizes
@@ -86,12 +89,13 @@ namespace vkBasalt
         // subclasses can put DescriptorSets in here, but the first one will be the input image descriptorSet
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
 
-        void init(LogicalDevice*       pLogicalDevice,
-                  VkFormat             format,
-                  VkExtent2D           imageExtent,
-                  const std::vector<VkImage>& inputImages,
-                  const std::vector<VkImage>& outputImages,
-                  Config*              pConfig);
+        void init(
+            LogicalDevice* pLogicalDevice,
+            VkFormat format,
+            VkExtent2D imageExtent,
+            const std::vector<VkImage>& inputImages,
+            const std::vector<VkImage>& outputImages,
+            Config* pConfig);
     };
 } // namespace vkBasalt
 

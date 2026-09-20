@@ -3,9 +3,11 @@
 #include <cstdint>
 #include <vector>
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
-    struct DisplayHdrCapabilities {
+    struct DisplayHdrCapabilities
+    {
         bool hdrSupported          = false;
         bool pqSupported           = false; // SMPTE ST 2084 (HDR10)
         bool hlgSupported          = false; // Hybrid Log Gamma
@@ -13,7 +15,7 @@ namespace vkBasalt {
         float maxFrameAvgLuminance = 0.0f;  // nits
         float minLuminance         = 0.0f;  // nits
         std::string monitorName;
-        std::string source;                // "kscreen", "edid", "fallback"
+        std::string source; // "kscreen", "edid", "fallback"
     };
 
     // Parses raw EDID binary data. Returns true if valid HDR metadata was found.

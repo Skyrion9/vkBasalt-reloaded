@@ -13,9 +13,10 @@
 
 #ifndef ASSERT_VULKAN
 #define ASSERT_VULKAN(val) \
-    if (val != VK_SUCCESS) \
-    { \
-        Logger::err("ASSERT_VULKAN failed in " + std::string(__FILE__) + " : " + std::to_string(__LINE__) + "; " + std::to_string(val)); \
+    if (val != VK_SUCCESS) { \
+        Logger::err( \
+            "ASSERT_VULKAN failed in " + std::string(__FILE__) + " : " + std::to_string(__LINE__) + "; " \
+            + std::to_string(val)); \
     }
 #endif
 namespace vkBasalt

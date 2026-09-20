@@ -14,25 +14,19 @@
 namespace vkBasalt
 {
     // Initialize all primitive members to prevent undefined behavior
-    LutCube::LutCube() 
-        : size(0) 
-    {
-    }
+    LutCube::LutCube() : size(0) {}
 
-    LutCube::LutCube(const std::string& file) 
-        : size(0) 
+    LutCube::LutCube(const std::string& file) : size(0)
     {
         std::ifstream cubeStream(file);
-        if (!cubeStream.good())
-        {
+        if (!cubeStream.good()) {
             Logger::err("lut cube file does not exist");
             return;
         }
 
         std::string line;
 
-        while (std::getline(cubeStream, line))
-        {
+        while (std::getline(cubeStream, line)) {
             parseLine(line);
         }
     }
@@ -44,8 +38,7 @@ namespace vkBasalt
         if (line.length() == 0) return;
         if (line[0] == '#') return;
 
-        if (line.find("LUT_3D_SIZE") != std::string::npos)
-        {
+        if (line.find("LUT_3D_SIZE") != std::string::npos) {
             line = line.substr(line.find("LUT_3D_SIZE") + 11);
             line = skipWhiteSpace(line);
             try {
@@ -63,39 +56,33 @@ namespace vkBasalt
             colorCube = std::vector<unsigned char>(size * size * size * 4, 255);
             return;
         }
-        if (line.find("DOMAIN_MIN") != std::string::npos)
-        {
+        if (line.find("DOMAIN_MIN") != std::string::npos) {
             line = line.substr(line.find("DOMAIN_MIN") + 10);
             splitTripel(line, minX, minY, minZ);
             return;
         }
-        if (line.find("DOMAIN_MAX") != std::string::npos)
-        {
+        if (line.find("DOMAIN_MAX") != std::string::npos) {
             line = line.substr(line.find("DOMAIN_MAX") + 10);
             splitTripel(line, maxX, maxY, maxZ);
             return;
         }
-        
+
         // Fixed: Recognize negative numbers, positive signs, and decimals
-        if (!line.empty() && (std::isdigit(static_cast<unsigned char>(line[0])) || line[0] == '-' || line[0] == '+' || line[0] == '.'))
-        {
-            float         x = NAN, y = NAN, z = NAN;
+        if (!line.empty()
+            && (std::isdigit(static_cast<unsigned char>(line[0])) || line[0] == '-' || line[0] == '+'
+                || line[0] == '.')) {
+            float x = NAN, y = NAN, z = NAN;
             unsigned char outX = 0, outY = 0, outZ = 0;
             splitTripel(line, x, y, z);
             clampTripel(x, y, z, outX, outY, outZ);
             writeColor(currentX, currentY, currentZ, outX, outY, outZ);
-            
-            if (currentX != size - 1)
-            {
+
+            if (currentX != size - 1) {
                 currentX++;
-            }
-            else if (currentY != size - 1)
-            {
+            } else if (currentY != size - 1) {
                 currentY++;
                 currentX = 0;
-            }
-            else if (currentZ != size - 1)
-            {
+            } else if (currentZ != size - 1) {
                 currentZ++;
                 currentX = 0;
                 currentY = 0;
@@ -107,8 +94,7 @@ namespace vkBasalt
     std::string LutCube::skipWhiteSpace(const std::string& text)
     {
         size_t start = 0;
-        while (start < text.size() && (text[start] == ' ' || text[start] == '\t'))
-        {
+        while (start < text.size() && (text[start] == ' ' || text[start] == '\t')) {
             start++;
         }
         return text.substr(start);
@@ -118,17 +104,17 @@ namespace vkBasalt
     void LutCube::splitTripel(std::string tripel, float& x, float& y, float& z)
     {
         size_t pos = 0;
-        
+
         tripel = skipWhiteSpace(tripel);
-        x = std::stof(tripel, &pos);
+        x      = std::stof(tripel, &pos);
         tripel = tripel.substr(pos);
 
         tripel = skipWhiteSpace(tripel);
-        y = std::stof(tripel, &pos);
+        y      = std::stof(tripel, &pos);
         tripel = tripel.substr(pos);
 
         tripel = skipWhiteSpace(tripel);
-        z = std::stof(tripel, &pos);
+        z      = std::stof(tripel, &pos);
     }
 
     // Fixed: Prevent divide-by-zero and use proper C++ casting and clamping
@@ -152,10 +138,9 @@ namespace vkBasalt
     void LutCube::writeColor(int x, int y, int z, unsigned char r, unsigned char g, unsigned char b)
     {
         static const int colorSize = 4; // 4 bytes per point in the cube, rgba
-        int locationR = (((z * size) + y) * size + x) * colorSize;
+        int locationR              = (((z * size) + y) * size + x) * colorSize;
 
-        if (locationR + 2 < static_cast<int>(colorCube.size()))
-        {
+        if (locationR + 2 < static_cast<int>(colorCube.size())) {
             colorCube[locationR + 0] = r;
             colorCube[locationR + 1] = g;
             colorCube[locationR + 2] = b;

@@ -12,15 +12,15 @@ namespace vkBasalt
     {
         // Use cached memory properties instead of querying the driver every time
         const auto& props = pLogicalDevice->memoryProperties;
-        for (uint32_t i = 0; i < props.memoryTypeCount; i++)
-        {
-            if ((typeFilter & (1 << i)) && (props.memoryTypes[i].propertyFlags & properties) == properties)
-            {
+        for (uint32_t i = 0; i < props.memoryTypeCount; i++) {
+            if ((typeFilter & (1 << i)) && (props.memoryTypes[i].propertyFlags & properties) == properties) {
                 return i;
             }
         }
 
-        Logger::err("Found no correct memory type (filter=0x" + std::to_string(typeFilter) + ", props=0x" + std::to_string(properties) + ")");
+        Logger::err(
+            "Found no correct memory type (filter=0x" + std::to_string(typeFilter) + ", props=0x"
+            + std::to_string(properties) + ")");
         ASSERT_VULKAN(VK_ERROR_FEATURE_NOT_PRESENT); // Hard fail instead of returning garbage index
         return 0;
     }

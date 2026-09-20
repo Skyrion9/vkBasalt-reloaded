@@ -14,57 +14,84 @@
 #include "config.hpp"
 #include "format.hpp"
 
-namespace vkBasalt {
+namespace vkBasalt
+{
 
     // Key name conversion for keybind UI
-    static std::string imguiKeyToConfigName(ImGuiKey key) {
+    static std::string imguiKeyToConfigName(ImGuiKey key)
+    {
         switch (key) {
-            case ImGuiKey_Tab:         return "Tab";
-            case ImGuiKey_LeftArrow:   return "Left";
-            case ImGuiKey_RightArrow:  return "Right";
-            case ImGuiKey_UpArrow:     return "Up";
-            case ImGuiKey_DownArrow:   return "Down";
-            case ImGuiKey_PageUp:      return "Prior";
-            case ImGuiKey_PageDown:    return "Next";
-            case ImGuiKey_End:         return "End";
-            case ImGuiKey_Home:        return "Home";
-            case ImGuiKey_Insert:      return "Insert";
-            case ImGuiKey_Delete:      return "Delete";
-            case ImGuiKey_Backspace:   return "BackSpace";
-            case ImGuiKey_Space:       return "space";
-            case ImGuiKey_Enter:       return "Return";
-            case ImGuiKey_Escape:      return "Escape";
-            case ImGuiKey_F1: return "F1";   case ImGuiKey_F2: return "F2";
-            case ImGuiKey_F3: return "F3";   case ImGuiKey_F4: return "F4";
-            case ImGuiKey_F5: return "F5";   case ImGuiKey_F6: return "F6";
-            case ImGuiKey_F7: return "F7";   case ImGuiKey_F8: return "F8";
-            case ImGuiKey_F9: return "F9";   case ImGuiKey_F10: return "F10";
-            case ImGuiKey_F11: return "F11"; case ImGuiKey_F12: return "F12";
-            case ImGuiKey_0: return "0"; case ImGuiKey_1: return "1";
-            case ImGuiKey_2: return "2"; case ImGuiKey_3: return "3";
-            case ImGuiKey_4: return "4"; case ImGuiKey_5: return "5";
-            case ImGuiKey_6: return "6"; case ImGuiKey_7: return "7";
-            case ImGuiKey_8: return "8"; case ImGuiKey_9: return "9";
-            case ImGuiKey_A: return "a"; case ImGuiKey_B: return "b";
-            case ImGuiKey_C: return "c"; case ImGuiKey_D: return "d";
-            case ImGuiKey_E: return "e"; case ImGuiKey_F: return "f";
-            case ImGuiKey_G: return "g"; case ImGuiKey_H: return "h";
-            case ImGuiKey_I: return "i"; case ImGuiKey_J: return "j";
-            case ImGuiKey_K: return "k"; case ImGuiKey_L: return "l";
-            case ImGuiKey_M: return "m"; case ImGuiKey_N: return "n";
-            case ImGuiKey_O: return "o"; case ImGuiKey_P: return "p";
-            case ImGuiKey_Q: return "q"; case ImGuiKey_R: return "r";
-            case ImGuiKey_S: return "s"; case ImGuiKey_T: return "t";
-            case ImGuiKey_U: return "u"; case ImGuiKey_V: return "v";
-            case ImGuiKey_W: return "w"; case ImGuiKey_X: return "x";
-            case ImGuiKey_Y: return "y"; case ImGuiKey_Z: return "z";
+            case ImGuiKey_Tab: return "Tab";
+            case ImGuiKey_LeftArrow: return "Left";
+            case ImGuiKey_RightArrow: return "Right";
+            case ImGuiKey_UpArrow: return "Up";
+            case ImGuiKey_DownArrow: return "Down";
+            case ImGuiKey_PageUp: return "Prior";
+            case ImGuiKey_PageDown: return "Next";
+            case ImGuiKey_End: return "End";
+            case ImGuiKey_Home: return "Home";
+            case ImGuiKey_Insert: return "Insert";
+            case ImGuiKey_Delete: return "Delete";
+            case ImGuiKey_Backspace: return "BackSpace";
+            case ImGuiKey_Space: return "space";
+            case ImGuiKey_Enter: return "Return";
+            case ImGuiKey_Escape: return "Escape";
+            case ImGuiKey_F1: return "F1";
+            case ImGuiKey_F2: return "F2";
+            case ImGuiKey_F3: return "F3";
+            case ImGuiKey_F4: return "F4";
+            case ImGuiKey_F5: return "F5";
+            case ImGuiKey_F6: return "F6";
+            case ImGuiKey_F7: return "F7";
+            case ImGuiKey_F8: return "F8";
+            case ImGuiKey_F9: return "F9";
+            case ImGuiKey_F10: return "F10";
+            case ImGuiKey_F11: return "F11";
+            case ImGuiKey_F12: return "F12";
+            case ImGuiKey_0: return "0";
+            case ImGuiKey_1: return "1";
+            case ImGuiKey_2: return "2";
+            case ImGuiKey_3: return "3";
+            case ImGuiKey_4: return "4";
+            case ImGuiKey_5: return "5";
+            case ImGuiKey_6: return "6";
+            case ImGuiKey_7: return "7";
+            case ImGuiKey_8: return "8";
+            case ImGuiKey_9: return "9";
+            case ImGuiKey_A: return "a";
+            case ImGuiKey_B: return "b";
+            case ImGuiKey_C: return "c";
+            case ImGuiKey_D: return "d";
+            case ImGuiKey_E: return "e";
+            case ImGuiKey_F: return "f";
+            case ImGuiKey_G: return "g";
+            case ImGuiKey_H: return "h";
+            case ImGuiKey_I: return "i";
+            case ImGuiKey_J: return "j";
+            case ImGuiKey_K: return "k";
+            case ImGuiKey_L: return "l";
+            case ImGuiKey_M: return "m";
+            case ImGuiKey_N: return "n";
+            case ImGuiKey_O: return "o";
+            case ImGuiKey_P: return "p";
+            case ImGuiKey_Q: return "q";
+            case ImGuiKey_R: return "r";
+            case ImGuiKey_S: return "s";
+            case ImGuiKey_T: return "t";
+            case ImGuiKey_U: return "u";
+            case ImGuiKey_V: return "v";
+            case ImGuiKey_W: return "w";
+            case ImGuiKey_X: return "x";
+            case ImGuiKey_Y: return "y";
+            case ImGuiKey_Z: return "z";
             default: return "";
         }
     }
 
-    void ImGuiOverlay::applyKeybind(int field, ImGuiKey key) {
+    void ImGuiOverlay::applyKeybind(int field, ImGuiKey key)
+    {
         const char* configKeys[] = {"toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey"};
-        std::string newName = imguiKeyToConfigName(key);
+        std::string newName      = imguiKeyToConfigName(key);
         if (newName.empty()) return;
 
         auto myOldKey = m_pConfig->getOption<std::string>(configKeys[field], "");
@@ -87,7 +114,8 @@ namespace vkBasalt {
         }
     }
 
-    void ImGuiOverlay::drawSettingsTab() {
+    void ImGuiOverlay::drawSettingsTab()
+    {
         ImGui::Text("vkBasalt Settings");
         ImGui::Separator();
         ImGui::Spacing();
@@ -188,15 +216,19 @@ namespace vkBasalt {
             m_pConfig->setOption("screenshotBeforeAfter", saveBeforeAfter ? "true" : "false");
             m_pConfig->savePerGame();
         }
-        ImGui::TextDisabled("When enabled, screenshots include both the raw game output and the post-processed result.");
+        ImGui::TextDisabled(
+            "When enabled, screenshots include both the raw game output and the post-processed result.");
         ImGui::Spacing();
 
         // Format selector
         const char* ssFormats[] = {"png", "jpg", "bmp", "tga", "hdr", "exr"};
-        auto ssFmt = m_pConfig->getOption<std::string>("screenshotFormat", "png");
-        int ssFormatIdx = 0;
+        auto ssFmt              = m_pConfig->getOption<std::string>("screenshotFormat", "png");
+        int ssFormatIdx         = 0;
         for (int i = 0; i < IM_ARRAYSIZE(ssFormats); i++) {
-            if (ssFmt == ssFormats[i]) { ssFormatIdx = i; break; }
+            if (ssFmt == ssFormats[i]) {
+                ssFormatIdx = i;
+                break;
+            }
         }
         ImGui::PushItemWidth(120);
         if (ImGui::Combo("Format", &ssFormatIdx, ssFormats, IM_ARRAYSIZE(ssFormats))) {
@@ -230,7 +262,7 @@ namespace vkBasalt {
                 m_dirBrowserDir = currentDir;
                 if (m_dirBrowserDir.empty()) {
                     const char* home = getenv("HOME");
-                    m_dirBrowserDir = home ? std::string(home) : ".";
+                    m_dirBrowserDir  = home ? std::string(home) : ".";
                 }
             }
         }
@@ -280,8 +312,8 @@ namespace vkBasalt {
         ImGui::Spacing();
 
         if (ImGui::Button("Take Screenshot")) {
-            m_isOpen = false;
-            g_triggerScreenshot = true;
+            m_isOpen                  = false;
+            g_triggerScreenshot       = true;
             m_screenshotReopenCounter = 3;
         }
         ImGui::SameLine();
