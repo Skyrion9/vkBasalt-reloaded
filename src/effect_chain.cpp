@@ -7,7 +7,6 @@
 #include <functional>
 #include <unordered_map>
 #include <vector>
-#include <algorithm>
 #include <vulkan/vulkan_core.h>
 
 #include "effect.hpp"
@@ -33,7 +32,6 @@
 #include "effect_transfer.hpp"
 #include "pipeline_cache.hpp"
 #include "compute_pass.hpp"
-#include "compute_test_pass.hpp"
 #include "frame_analyzer.hpp"
 #include "effect_nit_calibration.hpp"
 #include "effect_hdr_debug.hpp"

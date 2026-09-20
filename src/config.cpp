@@ -9,7 +9,6 @@
 #include <fstream>
 #include <mutex>
 #include <sstream>
-#include <locale>
 #include <filesystem>
 #include <cstring>
 #include <cstdio>
