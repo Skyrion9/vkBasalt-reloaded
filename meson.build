@@ -11,6 +11,21 @@ project('vkBasalt', ['c', 'cpp'],
     ]
 )
 
+pgo_mode = get_option('pgo')
+pgo_dir  = get_option('pgo_dir')
+
+pgo_args = []
+if pgo_mode == 'generate'
+    pgo_args = ['-fprofile-generate=' + pgo_dir]
+elif pgo_mode == 'use'
+    pgo_args = ['-fprofile-use=' + pgo_dir]
+endif
+
+if pgo_args.length() > 0
+    add_project_arguments(pgo_args, language: ['c', 'cpp'])
+    add_project_link_arguments(pgo_args, language: ['c', 'cpp'])
+endif
+
 cpp = meson.get_compiler('cpp')
 c = meson.get_compiler('c')
 imgui_dep = dependency('imgui')
