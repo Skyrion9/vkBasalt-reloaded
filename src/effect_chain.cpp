@@ -103,6 +103,7 @@ namespace vkBasalt
 
             pLogicalSwapchain->defaultHdrEffect->setChainPosition(true, true);
             noEffectChain.push_back(pLogicalSwapchain->defaultHdrEffect);
+            pLogicalSwapchain->nitCalibrationEffect = pLogicalSwapchain->defaultHdrEffect.get();
             Logger::debug("buildDefaultNoEffectChain: HDR output effect included in no-effect chain");
         } else {
             pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
