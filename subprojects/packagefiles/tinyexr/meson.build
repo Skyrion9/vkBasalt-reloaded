@@ -6,6 +6,7 @@ tinyexr_lib = static_library('tinyexr',
     'tinyexr_impl.cpp',
     dependencies: [miniz_dep],
     include_directories: include_directories('.'),
+    override_options: ['b_lto=false', 'optimization=2'],
 )
 
 tinyexr_dep = declare_dependency(

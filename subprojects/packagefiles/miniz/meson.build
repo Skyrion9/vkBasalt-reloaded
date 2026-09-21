@@ -7,6 +7,7 @@ miniz_lib = static_library('miniz',
     'miniz_zip.c',
     include_directories: include_directories('.'),
     c_args: ['-D_GNU_SOURCE'],
+    override_options: ['b_lto=false', 'optimization=2'],
 )
 
 miniz_dep = declare_dependency(
