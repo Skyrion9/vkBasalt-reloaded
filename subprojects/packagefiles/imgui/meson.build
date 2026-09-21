@@ -37,9 +37,7 @@ imgui_args = [
     '-Wno-conditional-uninitialized',
     
     '-DIMGUI_DISABLE_DEMO_WINDOWS',
-    '-DIMGUI_DISABLE_METRICS_WINDOW',
     '-DIMGUI_DISABLE_DEBUG_TOOLS',
-    '-DIMGUI_DISABLE_OBSOLETE_FUNCTIONS',
     '-DIMGUI_DISABLE_OBSOLETE_KEYIO',
 ]
 
