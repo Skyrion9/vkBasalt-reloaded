@@ -372,6 +372,58 @@ namespace vkBasalt
         pLogicalDevice->vkd.CreateComputePipelines(
             pLogicalDevice->device, pLogicalDevice->pipelineCache, 1, &redCpInfo, nullptr, &m_reducePipeline);
 
+        // One time setup: initialize temporal buffer defaults safely at the constructor
+        // regardless of which swapchain image's command buffer is recorded or submitted first.
+        {
+            VkCommandBufferAllocateInfo cmdAllocInfo = {};
+            cmdAllocInfo.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cmdAllocInfo.commandPool                 = pLogicalDevice->commandPool;
+            cmdAllocInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cmdAllocInfo.commandBufferCount          = 1;
+
+            VkCommandBuffer setupCmd = VK_NULL_HANDLE;
+            pLogicalDevice->vkd.AllocateCommandBuffers(pLogicalDevice->device, &cmdAllocInfo, &setupCmd);
+
+            VkCommandBufferBeginInfo beginInfo = {};
+            beginInfo.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            pLogicalDevice->vkd.BeginCommandBuffer(setupCmd, &beginInfo);
+
+            float temporalDefaults[4] = {0.5f, 0.18f, 0.0f, 0.0f};
+            pLogicalDevice->vkd.CmdUpdateBuffer(setupCmd, m_temporalBuffer, 0, 16, temporalDefaults);
+
+            VkBufferMemoryBarrier initBarrier = {};
+            initBarrier.sType                 = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            initBarrier.srcAccessMask         = VK_ACCESS_TRANSFER_WRITE_BIT;
+            initBarrier.dstAccessMask         = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            initBarrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+            initBarrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+            initBarrier.buffer                = m_temporalBuffer;
+            initBarrier.offset                = 0;
+            initBarrier.size                  = 16;
+            pLogicalDevice->vkd.CmdPipelineBarrier(
+                setupCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1,
+                &initBarrier, 0, nullptr);
+
+            pLogicalDevice->vkd.EndCommandBuffer(setupCmd);
+
+            VkFenceCreateInfo fenceInfo = {};
+            fenceInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            VkFence setupFence          = VK_NULL_HANDLE;
+            pLogicalDevice->vkd.CreateFence(pLogicalDevice->device, &fenceInfo, nullptr, &setupFence);
+
+            VkSubmitInfo submitInfo       = {};
+            submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers    = &setupCmd;
+            pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, setupFence);
+
+            pLogicalDevice->vkd.WaitForFences(pLogicalDevice->device, 1, &setupFence, VK_TRUE, UINT64_MAX);
+
+            pLogicalDevice->vkd.DestroyFence(pLogicalDevice->device, setupFence, nullptr);
+            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 1, &setupCmd);
+        }
+
         Logger::debug("AutoHdrAnalyzer initialized");
     }
 
@@ -457,27 +509,6 @@ namespace vkBasalt
 
     void AutoHdrAnalyzer::recordCommands(VkCommandBuffer cmdBuf, VkImageView /*inputImageView*/, uint32_t imageIndex)
     {
-        // Initialize temporal buffer on first run using CmdUpdateBuffer (avoids PCIe staging buffer overhead)
-        if (!m_temporalInitialized) {
-            float temporalDefaults[4] = {0.5f, 0.18f, 0.0f, 0.0f}; // smoothedP99, smoothedAvg, padding
-            pLogicalDevice->vkd.CmdUpdateBuffer(cmdBuf, m_temporalBuffer, 0, 16, temporalDefaults);
-
-            VkBufferMemoryBarrier initBarrier = {};
-            initBarrier.sType                 = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            initBarrier.srcAccessMask         = VK_ACCESS_TRANSFER_WRITE_BIT;
-            initBarrier.dstAccessMask         = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            initBarrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-            initBarrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-            initBarrier.buffer                = m_temporalBuffer;
-            initBarrier.offset                = 0;
-            initBarrier.size                  = 16;
-            pLogicalDevice->vkd.CmdPipelineBarrier(
-                cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1,
-                &initBarrier, 0, nullptr);
-
-            m_temporalInitialized = true;
-        }
-
         pLogicalDevice->vkd.CmdFillBuffer(cmdBuf, m_histogramBuffer, 0, VK_WHOLE_SIZE, 0);
 
         VkBufferMemoryBarrier histBarrier = {};

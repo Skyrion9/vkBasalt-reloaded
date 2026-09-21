@@ -91,8 +91,7 @@ namespace vkBasalt
         VkDeviceMemory m_activeMemory = VK_NULL_HANDLE;
         uint32_t* m_mappedActive      = nullptr;
 
-        bool m_layoutsInitialized = false;
-        bool m_overlayVisible     = true;
+        bool m_overlayVisible = true;
 
         struct PushConstants
         {

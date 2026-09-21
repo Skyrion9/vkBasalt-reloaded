@@ -416,17 +416,23 @@ namespace vkBasalt
             vkd.UpdateDescriptorSets(dev, std::size(writes), writes, 0, nullptr);
         }
 
-        Logger::debug("FrameAnalyzer resources created");
-    }
+        // One time GPU setup: transition scope images from UNDEFINED to GENERAL to guarantee it runs once,
+        // regardless of which swapchain image's command buffer is recorded or submitted first.
+        {
+            VkCommandBufferAllocateInfo cmdAllocInfo = {};
+            cmdAllocInfo.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cmdAllocInfo.commandPool                 = m_pDevice->commandPool;
+            cmdAllocInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cmdAllocInfo.commandBufferCount          = 1;
 
-    void FrameAnalyzer::recordCommands(VkCommandBuffer cmdBuf, uint32_t imageIndex)
-    {
-        if (imageIndex >= m_accumSets.size()) return;
+            VkCommandBuffer setupCmd = VK_NULL_HANDLE;
+            vkd.AllocateCommandBuffers(dev, &cmdAllocInfo, &setupCmd);
 
-        auto& vkd = m_pDevice->vkd;
+            VkCommandBufferBeginInfo beginInfo = {};
+            beginInfo.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkd.BeginCommandBuffer(setupCmd, &beginInfo);
 
-        // First frame: transition output images UNDEFINED -> GENERAL
-        if (!m_layoutsInitialized) {
             for (int i = 0; i < SCOPE_COUNT; i++) {
                 VkImageMemoryBarrier barrier = {};
                 barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -444,11 +450,36 @@ namespace vkBasalt
                     .baseArrayLayer = 0,
                     .layerCount     = 1};
                 vkd.CmdPipelineBarrier(
-                    cmdBuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
+                    setupCmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
                     nullptr, 1, &barrier);
             }
-            m_layoutsInitialized = true;
+
+            vkd.EndCommandBuffer(setupCmd);
+
+            VkFenceCreateInfo fenceInfo = {};
+            fenceInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            VkFence setupFence          = VK_NULL_HANDLE;
+            vkd.CreateFence(dev, &fenceInfo, nullptr, &setupFence);
+
+            VkSubmitInfo submitInfo       = {};
+            submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers    = &setupCmd;
+            vkd.QueueSubmit(m_pDevice->queue, 1, &submitInfo, setupFence);
+
+            vkd.WaitForFences(dev, 1, &setupFence, VK_TRUE, UINT64_MAX);
+
+            vkd.DestroyFence(dev, setupFence, nullptr);
+            vkd.FreeCommandBuffers(dev, m_pDevice->commandPool, 1, &setupCmd);
         }
+
+        Logger::debug("FrameAnalyzer resources created");
+    }
+
+    void FrameAnalyzer::recordCommands(VkCommandBuffer cmdBuf, uint32_t imageIndex)
+    {
+        if (imageIndex >= m_accumSets.size()) return;
+        auto& vkd = m_pDevice->vkd;
 
         m_pushConstants.enabled = 1;
 
