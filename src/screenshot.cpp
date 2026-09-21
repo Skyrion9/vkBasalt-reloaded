@@ -410,12 +410,13 @@ namespace vkBasalt
         {
             VkImageMemoryBarrier toTransfer = {};
             toTransfer.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toTransfer.srcAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
-            toTransfer.dstAccessMask        = VK_ACCESS_TRANSFER_READ_BIT;
-            toTransfer.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toTransfer.newLayout            = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toTransfer.image                = pSwapchain->images[imageIndex];
-            toTransfer.subresourceRange     = {
+            toTransfer.srcAccessMask =
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+            toTransfer.dstAccessMask    = VK_ACCESS_TRANSFER_READ_BIT;
+            toTransfer.oldLayout        = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            toTransfer.newLayout        = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            toTransfer.image            = pSwapchain->images[imageIndex];
+            toTransfer.subresourceRange = {
                 .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel   = 0,
                 .levelCount     = 1,
@@ -449,12 +450,13 @@ namespace vkBasalt
         if (needBefore) {
             VkImageMemoryBarrier toTransfer = {};
             toTransfer.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toTransfer.srcAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
-            toTransfer.dstAccessMask        = VK_ACCESS_TRANSFER_READ_BIT;
-            toTransfer.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toTransfer.newLayout            = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toTransfer.image                = beforeImage;
-            toTransfer.subresourceRange     = {
+            toTransfer.srcAccessMask =
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+            toTransfer.dstAccessMask    = VK_ACCESS_TRANSFER_READ_BIT;
+            toTransfer.oldLayout        = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            toTransfer.newLayout        = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            toTransfer.image            = beforeImage;
+            toTransfer.subresourceRange = {
                 .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel   = 0,
                 .levelCount     = 1,

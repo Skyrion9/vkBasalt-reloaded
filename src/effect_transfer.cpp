@@ -42,14 +42,17 @@ namespace vkBasalt
 
         // Barrier 1: Input -> TRANSFER_SRC
         barrier.image         = inputImages[imageIndex];
-        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.srcAccessMask = isFirstInChain ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                                               : (VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         barrier.oldLayout = isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
-            0, nullptr, 1, &barrier);
+            commandBuffer,
+            isFirstInChain ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                           : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
         // Barrier 2: Output UNDEFINED -> TRANSFER_DST
         barrier.image         = outputImages[imageIndex];
@@ -75,7 +78,8 @@ namespace vkBasalt
 
         VkPipelineStageFlags dstStage3 =
             isLastInChain ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
-                          : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+                          : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                             | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
         barrier.dstAccessMask = isLastInChain ? VK_ACCESS_MEMORY_READ_BIT
                                               : (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 

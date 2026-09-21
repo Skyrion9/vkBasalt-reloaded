@@ -102,7 +102,7 @@ namespace vkBasalt
                 if (pLogicalDevice->supportsMutableFormat) {
                     VkImageMemoryBarrier barrier = {};
                     barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    barrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                    barrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
                     barrier.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
                     barrier.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
                     barrier.newLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -117,7 +117,8 @@ namespace vkBasalt
                         .layerCount     = 1};
 
                     pLogicalDevice->vkd.CmdPipelineBarrier(
-                        commandBuffers[i], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        commandBuffers[i],
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
                 }
 

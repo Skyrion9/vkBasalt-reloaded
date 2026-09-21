@@ -371,7 +371,9 @@ namespace vkBasalt
         // Barrier 1: Acquire inputImages for reading (Compute + Fragment)
         VkImageMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        memoryBarrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        memoryBarrier.srcAccessMask        = isFirstInChain
+                                                 ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                                                 : (VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
         memoryBarrier.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
         memoryBarrier.oldLayout =
             isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -386,7 +388,9 @@ namespace vkBasalt
             .baseArrayLayer = 0,
             .layerCount     = 1};
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            commandBuffer,
+            isFirstInChain ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                           : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
             &memoryBarrier);
 
@@ -502,8 +506,9 @@ namespace vkBasalt
                 .layerCount     = 1};
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0,
-                nullptr, 1, &thirdBarrier);
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                    | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &thirdBarrier);
         }
     }
 

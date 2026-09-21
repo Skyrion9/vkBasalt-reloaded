@@ -315,8 +315,9 @@ namespace vkBasalt
         // Barrier 1: inputImages -> SHADER_READ_ONLY
         VkImageMemoryBarrier barrier1 = {};
         barrier1.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier1.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        barrier1.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
+        barrier1.srcAccessMask = isFirstInChain ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                                                : (VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+        barrier1.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         barrier1.oldLayout =
             isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier1.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -331,8 +332,10 @@ namespace vkBasalt
             .layerCount     = 1};
 
         pLogicalDevice->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
-            nullptr, 0, nullptr, 1, &barrier1);
+            commandBuffer,
+            isFirstInChain ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                           : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier1);
 
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType                 = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -455,8 +458,9 @@ namespace vkBasalt
 
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0,
-                nullptr, 1, &barrier5);
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                    | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &barrier5);
         }
     }
 

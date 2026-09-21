@@ -130,7 +130,7 @@ namespace vkBasalt
         // Barrier 1: Transition output image to GENERAL for compute write. Use UNDEFINED oldLayout to discard previous contents since we are overwriting the entire image.
         VkImageMemoryBarrier barrier = {};
         barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask        = 0;
+        barrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
         barrier.dstAccessMask        = VK_ACCESS_SHADER_WRITE_BIT;
         barrier.oldLayout            = VK_IMAGE_LAYOUT_UNDEFINED;
         barrier.newLayout            = VK_IMAGE_LAYOUT_GENERAL;
@@ -145,8 +145,10 @@ namespace vkBasalt
             .layerCount     = 1};
 
         m_dev->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
-            nullptr, 1, &barrier);
+            commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
         // Bind pipeline and descriptor set
         m_dev->vkd.CmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_computePipeline);
@@ -182,8 +184,9 @@ namespace vkBasalt
             .layerCount     = 1};
 
         m_dev->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
-            0, nullptr, 1, &barrier2);
+            commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
+            &barrier2);
     }
 
 } // namespace vkBasalt
