@@ -1,7 +1,7 @@
 #include "keyboard_input_wayland.hpp"
 
 #include "relative-pointer-unstable-v1-client-protocol.h"
-#include "fractional-scale-v1-client-protocol.h"
+#include "fractional-scale-client-header.h"
 #include <wayland-client-core.h>
 #include <wayland-client-protocol.h>
 #include <wayland-util.h>

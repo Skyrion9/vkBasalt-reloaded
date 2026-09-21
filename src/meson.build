@@ -94,7 +94,7 @@ relative_pointer_header = custom_target('relative-pointer-client-header',
 
 relative_pointer_code = custom_target('relative-pointer-private-code',
   input: relative_pointer_xml,
-  output: 'relative-pointer-unstable-v1-protocol.c',
+  output: 'relative-pointer-private-code.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
 
 # Add generated files to sources
@@ -110,12 +110,12 @@ endif
 
 fractional_scale_header = custom_target('fractional-scale-client-header',
   input: fractional_scale_xml,
-  output: 'fractional-scale-v1-client-protocol.h',
+  output: 'fractional-scale-client-header.h',
   command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
 
 fractional_scale_code = custom_target('fractional-scale-private-code',
   input: fractional_scale_xml,
-  output: 'fractional-scale-v1-protocol.c',
+  output: 'fractional-scale-private-code.c',
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
 
 vkBasalt_src += [fractional_scale_header, fractional_scale_code]
