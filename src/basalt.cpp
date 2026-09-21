@@ -957,16 +957,16 @@ namespace vkBasalt
                 continue;
             }
 
-            if (g_effectsEnabled.load()) {
+            {
                 std::scoped_lock lock(pLogicalSwapchain->effectMutex);
-                for (auto& effect : pLogicalSwapchain->effects) {
-                    effect->updateEffect();
+                if (g_effectsEnabled.load()) {
+                    for (auto& effect : pLogicalSwapchain->effects) {
+                        effect->updateEffect();
+                    }
+                    for (auto& pass : pLogicalSwapchain->computePasses) {
+                        pass->updatePass();
+                    }
                 }
-                for (auto& pass : pLogicalSwapchain->computePasses) {
-                    pass->updatePass();
-                }
-
-                // Update dynamic HDR metadata based on scene analysis.
                 if (pLogicalSwapchain->nitCalibrationEffect) {
                     pLogicalSwapchain->nitCalibrationEffect->updateHdrMetadata(swapchain);
                 }
