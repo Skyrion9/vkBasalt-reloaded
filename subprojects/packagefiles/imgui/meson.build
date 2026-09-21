@@ -5,11 +5,10 @@ project('imgui', 'cpp', version: '1.92.9b',
         'b_ndebug=if-release',
         'b_lto=true',
         'b_lto_mode=thin',
-        'optimization=3',
+        'optimization=2',
     ]
 )
 
-# Find the system Vulkan loader library
 vulkan_dep = dependency('vulkan')
 
 # Core + Vulkan backend

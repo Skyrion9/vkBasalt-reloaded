@@ -7,7 +7,7 @@ project('vkBasalt', ['c', 'cpp'],
         'b_ndebug=if-release',
         'b_lto=true',
         'b_lto_mode=thin',
-        'optimization=3'
+        'optimization=2'
     ]
 )
 
@@ -42,17 +42,24 @@ cpp_args_common = cpp.get_supported_arguments([
     '-ffunction-sections',          # Allow linker to GC unused functions
     '-fmerge-all-constants',        # Merge identical constants
     '-fno-ident',                   # Remove compiler ident string
+    '-fno-unwind-tables',
+    '-fno-asynchronous-unwind-tables',
+    '-fno-math-errno',
+    '-fno-trapping-math',
     '-Wno-unknown-pragmas',
     '-Wno-unused-parameter',
     '-Wno-sign-compare'
 ])
 
-# C files (stb_image) get matching treatment minus C++-only flags
 c_args_common = c.get_supported_arguments([
     '-fdata-sections',
     '-ffunction-sections',
     '-fmerge-all-constants',
     '-fno-ident',
+    '-fno-unwind-tables',
+    '-fno-asynchronous-unwind-tables',
+    '-fno-math-errno',
+    '-fno-trapping-math',
 ])
 
 # Linker flags: strip, GC dead code, optimize, bind symbols internally
@@ -61,7 +68,15 @@ ld_args_common = [
     '-Wl,-Bsymbolic',          # Bind internal symbols at link time
     '-Wl,-O2',                 # Linker optimization pass
     '-Wl,--as-needed',         # Only link libraries actually used
+    '-Wl,--exclude-libs,ALL',  # Prevent symbol leakage from static libs
 ]
+
+# ICF (Identical Code Folding) merges identical C++ template instantiations to shrink .text.
+# Supported by lld, gold, mold etc. GNU bfd does not support --icf.
+linker_id = cpp.get_linker_id()
+if linker_id in ['ld.lld', 'ld.gold', 'ld.mold']
+    ld_args_common += ['-Wl,--icf=all']
+endif
 
 add_project_arguments(cpp_args_common, language : 'cpp')
 add_project_arguments(c_args_common, language : 'c')
