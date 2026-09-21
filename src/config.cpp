@@ -99,8 +99,7 @@ namespace vkBasalt
         Logger::debug("Config pergame: " + m_gamePath);
     }
 
-    Config::Config(const Config& other) :
-        m_global(other.m_global), m_game(other.m_game), m_globalPath(other.m_globalPath), m_gamePath(other.m_gamePath)
+    Config::Config(const Config& other)
     {
         std::scoped_lock lock(other.m_mutex);
         m_global     = other.m_global;
