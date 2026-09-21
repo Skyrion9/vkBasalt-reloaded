@@ -1,4 +1,5 @@
-project('vkBasalt', ['c', 'cpp'], 
+project('vkBasalt', ['c', 'cpp'],
+    meson_version: '>=1.1.0',
     default_options: [
         'c_std=c17', 
         'cpp_std=c++20',

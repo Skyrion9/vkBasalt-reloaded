@@ -1,0 +1,13 @@
+option('spirv_target', type: 'combo', choices: ['auto', 'vulkan1.0', 'vulkan1.1', 'vulkan1.2', 'vulkan1.3', 'vulkan1.4'], value: 'auto',
+       description: 'Target SPIR-V environment for shaders')
+option('append_libdir_vkbasalt', type: 'boolean', value: false,
+       description: 'Append vkbasalt to libdir')
+option('with_so', type: 'boolean', value: true,
+       description: 'Build the shared library')
+option('with_json', type: 'boolean', value: true,
+       description: 'Install the JSON manifest')
+
+option('pgo', type: 'combo', choices: ['off', 'generate', 'use'], value: 'off',
+       description: 'Profile-Guided Optimization mode')
+option('pgo_dir', type: 'string', value: '/tmp/vkbasalt-pgo',
+       description: 'Absolute directory for PGO profile data')
