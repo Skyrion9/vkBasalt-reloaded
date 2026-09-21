@@ -57,8 +57,7 @@ endif
 
 message('Shader SPIR-V target environment: ' + spirv_target)
 
-# 3. Common includes that shaders depend on. 
-# Ensures rebuilds trigger when these shared headers change.
+# 3. Common includes that shaders depend on. Ensure rebuilds on changes.
 shader_includes = files(
     'color_space.h',
     'smaa_settings.h',

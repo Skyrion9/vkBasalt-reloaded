@@ -131,7 +131,7 @@ configure_file(output: 'config_paths.hpp',
 # Isolating it in a static_library prevents the collision.
 keyboard_input_x11_lib = static_library('keyboard_input_x11',
     'keyboard_input_x11.cpp',
-    # Override: this file needs X11 macros visible, no RTTI stripping
+    # This file needs X11 macros visible, no RTTI stripping
     cpp_args: ['-Wno-unknown-pragmas'],
     dependencies: [imgui_dep],
 )
