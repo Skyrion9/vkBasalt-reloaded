@@ -32,27 +32,31 @@ namespace vkBasalt
     }
 
     static constexpr auto kBuiltInEffects = std::to_array<const char*>(
-        {"fxaa", "cas", "deband", "smaa", "lut", "dls", "clarity", "clarityrcas", "crystalclear"});
+        {"fxaa", "cas", "deband", "smaa", "cmaa2", "lut", "dls", "clarity", "clarityrcas", "crystalclear"});
 
     // Effect category priority for auto sort
     static int getEffectSortPriority(const std::string& name)
     {
-        // 1. AA
-        if (name == "smaa" || name == "fxaa") return 0;
-        // 2. Debanding
-        if (name == "deband") return 1;
-        // 3. Color grading / LUT
-        if (name == "lut") return 2;
-        // 4. Standalone sharpening (dumb, only noise aware)
-        if (name == "dls") return 3;
+        // 0. Conservative AA (safe to combine with SMAA or FXAA e.g. SMAA tuned for diagonals only)
+        if (name == "cmaa2") return 0;
+        // 1. Semi-conservative AA
+        if (name == "smaa") return 1;
+        // 2. Non-conservative AA
+        if (name == "fxaa") return 2;
+        // 3. Debanding
+        if (name == "deband") return 3;
+        // 4. Color grading / LUT
+        if (name == "lut") return 4;
         // 5. Standalone sharpening (contrast aware)
-        if (name == "cas") return 4;
-        // 6. Smart sharpening (heuristic, multi aware)
-        if (name == "clarity" || name == "clarityrcas") return 5;
-        // 7. CrystalClear (well gated sharp., colorgraded, avoid use with other sharp.)
-        if (name == "crystalclear") return 6;
+        if (name == "cas") return 5;
+        // 5. Standalone sharpening (contrast aware, more heuristics)
+        if (name == "clarity" || name == "clarityrcas") return 6;
+        // 6. CrystalClear (well gated sharp., colorgraded, avoid use with other sharp.)
+        if (name == "crystalclear") return 7;
+        // 7. Aggressive sharpening (Limited only by noise)
+        if (name == "dls") return 8;
         // 8. Unknown / ReShade effects
-        return 7;
+        return 9;
     }
 
     void ImGuiOverlay::drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect)
@@ -157,6 +161,10 @@ namespace vkBasalt
                             }
                             if (p->key == "smaaPreset") {
                                 m_pConfig->setOption("smaaPresetApplied", "");
+                                m_pendingCacheClear = true;
+                            }
+                            if (p->key == "cmaa2QualityPreset") {
+                                m_pConfig->setOption("cmaa2PresetApplied", "");
                                 m_pendingCacheClear = true;
                             }
                             setConfigImmediate(p->key, p->comboOptions[ci], true);
