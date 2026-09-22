@@ -21,6 +21,7 @@ vkBasalt_src = [
     'effect_reshade.cpp',
     'effect_simple.cpp',
     'effect_smaa.cpp',
+    'effect_cmaa2.cpp',
     'effect_hdr_debug.cpp',
     'effect_transfer.cpp',
     'effect_chain.cpp',
