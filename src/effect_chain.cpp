@@ -29,6 +29,7 @@
 #include "effect_lut.hpp"
 #include "effect_reshade.hpp"
 #include "effect_smaa.hpp"
+#include "effect_cmaa2.hpp"
 #include "effect_transfer.hpp"
 #include "pipeline_cache.hpp"
 #include "compute_pass.hpp"
@@ -251,6 +252,15 @@ namespace vkBasalt
             Config* cfg,
             VkColorSpaceKHR cs,
             const std::string&) { return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs); }},
+        {"cmaa2", [](LogicalDevice* dev,
+                     VkFormat uf,
+                     VkFormat sf,
+                     VkExtent2D ext,
+                     const std::vector<VkImage>& in,
+                     const std::vector<VkImage>& out,
+                     Config* cfg,
+                     VkColorSpaceKHR cs,
+                     const std::string&) { return std::make_shared<Cmaa2Effect>(dev, uf, ext, in, out, cfg, cs); }},
     };
 
     // Tracks the final active slice accounting for in-place effects that don't flip the ping-pong buffer.
