@@ -140,7 +140,7 @@ float getEdgeLuma(vec3 spatialColor) {
     }
 }
 
-// Perceptual color space for color based edge detection (SMAA Color).
+// Perceptual color space for color based edge detection (SMAA, CMAA2).
 // Compresses HDR nits into a [0, ~1] perceptual range using the same log curve as getEdgeLuma.
 // For SDR, assumes input is already in gamma/spatial space and passes through.
 vec3 getEdgeColor(vec3 spatialColor) {
