@@ -19,6 +19,11 @@ namespace vkBasalt
     extern const CompressedShader smaa_edge_vert;
     extern const CompressedShader smaa_neighbor_frag;
     extern const CompressedShader smaa_neighbor_vert;
+    extern const CompressedShader cmaa2_edges_comp;
+    extern const CompressedShader cmaa2_dispatch_args_comp;
+    extern const CompressedShader cmaa2_process_candidates_comp;
+    extern const CompressedShader cmaa2_deferred_apply_comp;
+    extern const CompressedShader cmaa2_debug_edges_comp;
     extern const CompressedShader compute_test_comp;
     extern const CompressedShader frame_accumulate_comp;
     extern const CompressedShader frame_resolve_comp;

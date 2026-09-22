@@ -15,6 +15,11 @@ shader_src = [
     'smaa_edge.vert.glsl',
     'smaa_neighbor.frag.glsl',
     'smaa_neighbor.vert.glsl',
+    'cmaa2_edges.comp.glsl',
+    'cmaa2_dispatch_args.comp.glsl',
+    'cmaa2_process_candidates.comp.glsl',
+    'cmaa2_deferred_apply.comp.glsl',
+    'cmaa2_debug_edges.comp.glsl',
     'compute_test.comp.glsl',
     'frame_accumulate.comp.glsl',
     'frame_resolve.comp.glsl',
@@ -59,6 +64,7 @@ message('Shader SPIR-V target environment: ' + spirv_target)
 
 # 3. Common includes that shaders depend on. Ensure rebuilds on changes.
 shader_includes = files(
+    'cmaa2_common.glsl',
     'color_space.h',
     'smaa_settings.h',
     'smaa.h',

@@ -16,6 +16,11 @@
 #include "smaa_edge.vert.h"
 #include "smaa_neighbor.frag.h"
 #include "smaa_neighbor.vert.h"
+#include "cmaa2_edges.comp.h"
+#include "cmaa2_dispatch_args.comp.h"
+#include "cmaa2_process_candidates.comp.h"
+#include "cmaa2_deferred_apply.comp.h"
+#include "cmaa2_debug_edges.comp.h"
 #include "compute_test.comp.h"
 #include "frame_accumulate.comp.h"
 #include "frame_resolve.comp.h"
@@ -78,6 +83,26 @@ namespace vkBasalt
         .data           = smaa_neighbor_vert_zst,
         .compressedSize = sizeof(smaa_neighbor_vert_zst),
         .originalSize   = smaa_neighbor_vert_spirv_size};
+    const CompressedShader cmaa2_edges_comp = {
+        .data           = cmaa2_edges_comp_zst,
+        .compressedSize = sizeof(cmaa2_edges_comp_zst),
+        .originalSize   = cmaa2_edges_comp_spirv_size};
+    const CompressedShader cmaa2_dispatch_args_comp = {
+        .data           = cmaa2_dispatch_args_comp_zst,
+        .compressedSize = sizeof(cmaa2_dispatch_args_comp_zst),
+        .originalSize   = cmaa2_dispatch_args_comp_spirv_size};
+    const CompressedShader cmaa2_process_candidates_comp = {
+        .data           = cmaa2_process_candidates_comp_zst,
+        .compressedSize = sizeof(cmaa2_process_candidates_comp_zst),
+        .originalSize   = cmaa2_process_candidates_comp_spirv_size};
+    const CompressedShader cmaa2_deferred_apply_comp = {
+        .data           = cmaa2_deferred_apply_comp_zst,
+        .compressedSize = sizeof(cmaa2_deferred_apply_comp_zst),
+        .originalSize   = cmaa2_deferred_apply_comp_spirv_size};
+    const CompressedShader cmaa2_debug_edges_comp = {
+        .data           = cmaa2_debug_edges_comp_zst,
+        .compressedSize = sizeof(cmaa2_debug_edges_comp_zst),
+        .originalSize   = cmaa2_debug_edges_comp_spirv_size};
     const CompressedShader compute_test_comp = {
         .data           = compute_test_comp_zst,
         .compressedSize = sizeof(compute_test_comp_zst),
