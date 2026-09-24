@@ -76,12 +76,20 @@ float applyBlendMode(float luma, float sharp, float norm)
     if (blendMode == 5) return luma + (sharp - 0.5) * norm;
     float nl = isHDR ? luma / norm : luma;
     float r;
-    if (blendMode == 0) r = mix(2.0 * nl * sharp + nl * nl * (1.0 - 2.0 * sharp), 2.0 * nl * (1.0 - sharp) + sqrt(max(nl, 0.0)) * (2.0 * sharp - 1.0), step(0.49, sharp));
-    else if (blendMode == 1) r = mix(2.0 * nl * sharp, 1.0 - 2.0 * (1.0 - nl) * (1.0 - sharp), step(0.50, nl));
-    else if (blendMode == 2) r = mix(2.0 * nl * sharp, 1.0 - 2.0 * (1.0 - nl) * (1.0 - sharp), step(0.50, sharp));
-    else if (blendMode == 3) r = clamp(2.0 * nl * sharp, 0.0, 1.0);
-    else if (blendMode == 4) r = mix(2.0 * nl * sharp, nl / max(2.0 * (1.0 - sharp), 0.0001), step(0.50, sharp));
-    else r = clamp(nl + (sharp - 0.5), 0.0, 1.0);
+    if (blendMode == 0)
+        r =
+            mix(2.0 * nl * sharp + nl * nl * (1.0 - 2.0 * sharp),
+                2.0 * nl * (1.0 - sharp) + sqrt(max(nl, 0.0)) * (2.0 * sharp - 1.0), step(0.49, sharp));
+    else if (blendMode == 1)
+        r = mix(2.0 * nl * sharp, 1.0 - 2.0 * (1.0 - nl) * (1.0 - sharp), step(0.50, nl));
+    else if (blendMode == 2)
+        r = mix(2.0 * nl * sharp, 1.0 - 2.0 * (1.0 - nl) * (1.0 - sharp), step(0.50, sharp));
+    else if (blendMode == 3)
+        r = clamp(2.0 * nl * sharp, 0.0, 1.0);
+    else if (blendMode == 4)
+        r = mix(2.0 * nl * sharp, nl / max(2.0 * (1.0 - sharp), 0.0001), step(0.50, sharp));
+    else
+        r = clamp(nl + (sharp - 0.5), 0.0, 1.0);
     return isHDR ? r * norm : r;
 }
 

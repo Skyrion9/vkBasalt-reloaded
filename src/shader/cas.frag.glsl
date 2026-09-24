@@ -21,9 +21,9 @@
 
 // AMD FidelityFX CAS - Algebraically Reduced & Optimized
 
-layout(set=0, binding=0) uniform sampler2D img;
+layout(set = 0, binding = 0) uniform sampler2D img;
 
-layout(constant_id = 0) const float sharpness = 0.4;
+layout(constant_id = 0) const float sharpness     = 0.4;
 layout(constant_id = 1) const float contrastLimit = 0.0; // Suppresses sharpening in low contrast/noisy areas
 
 layout(location = 0) in vec2 textureCoord;
@@ -36,30 +36,30 @@ void main()
     //  d(e)f
     //  g h i
     vec4 inputColor = textureLod(img, textureCoord, 0.0);
-    vec3 e = decodeToSpatial(inputColor.rgb);
+    vec3 e          = decodeToSpatial(inputColor.rgb);
 
     // Hardware-accelerated offset fetches
-    vec3 a = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1,-1)).rgb);
-    vec3 b = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 0,-1)).rgb);
-    vec3 c = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1,-1)).rgb);
+    vec3 a = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, -1)).rgb);
+    vec3 b = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(0, -1)).rgb);
+    vec3 c = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(1, -1)).rgb);
     vec3 d = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 0)).rgb);
-    vec3 f = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 0)).rgb);
+    vec3 f = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(1, 0)).rgb);
     vec3 g = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(-1, 1)).rgb);
-    vec3 h = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 0, 1)).rgb);
-    vec3 i = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2( 1, 1)).rgb);
+    vec3 h = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(0, 1)).rgb);
+    vec3 i = decodeToSpatial(textureLodOffset(img, textureCoord, 0.0, ivec2(1, 1)).rgb);
 
     // AMD's intentional "soft min/max" bias.
     // Soft min and max.
     //  a b c             b
     //  d e f * 0.5  +  d e f * 0.5
     //  g h i             h
-    vec3 mnRGB  = min(min(min(d,e),min(f,b)),h);
-    vec3 mnRGB2 = min(min(min(mnRGB,a),min(g,c)),i);
+    vec3 mnRGB     = min(min(min(d, e), min(f, b)), h);
+    vec3 mnRGB2    = min(min(min(mnRGB, a), min(g, c)), i);
     vec3 trueMnRGB = mnRGB2;
     mnRGB += mnRGB2;
 
-    vec3 mxRGB  = max(max(max(d,e),max(f,b)),h);
-    vec3 mxRGB2 = max(max(max(mxRGB,a),max(g,c)),i);
+    vec3 mxRGB     = max(max(max(d, e), max(f, b)), h);
+    vec3 mxRGB2    = max(max(max(mxRGB, a), max(g, c)), i);
     vec3 trueMxRGB = mxRGB2;
     mxRGB += mxRGB2;
 
@@ -83,7 +83,7 @@ void main()
 
     // ALGEBRAIC REDUCTION:
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. Perfectly stable.
-    vec3 P = invAmp * peak;
+    vec3 P      = invAmp * peak;
     vec3 window = (b + d) + (f + h);
 
     // P is always >= 5.0, so (P - 4.0) is always >= 1.0. No divide-by-zero possible.
@@ -92,16 +92,16 @@ void main()
     float limitMask = 1.0;
     if (contrastLimit > 0.0) {
         vec3 localContrast = trueMxRGB - trueMnRGB;
-        float maxContrast = max(max(localContrast.r, localContrast.g), localContrast.b);
-        float refLuma = (isHDR) ? max(max(trueMxRGB.r, trueMxRGB.g), trueMxRGB.b) : 1.0;
-        float thresh = contrastLimit * refLuma;
-        limitMask = smoothstep(thresh * 0.25, thresh, maxContrast);
+        float maxContrast  = max(max(localContrast.r, localContrast.g), localContrast.b);
+        float refLuma      = (isHDR) ? max(max(trueMxRGB.r, trueMxRGB.g), trueMxRGB.b) : 1.0;
+        float thresh       = contrastLimit * refLuma;
+        limitMask          = smoothstep(thresh * 0.25, thresh, maxContrast);
     }
 
     vec3 outColor = mix(e, sharpened, limitMask);
 
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
     vec3 encodedColor = encodeFromSpatial(outColor);
-    vec3 finalColor = max(encodedColor, 0.0);
-    fragColor = vec4(finalColor, inputColor.a);
+    vec3 finalColor   = max(encodedColor, 0.0);
+    fragColor         = vec4(finalColor, inputColor.a);
 }

@@ -1,5 +1,5 @@
 #version 450
-#extension  GL_GOOGLE_include_directive : require
+#extension GL_GOOGLE_include_directive : require
 
 layout(set = 0, binding = 1) uniform sampler2D edgesTex;
 layout(set = 0, binding = 2) uniform sampler2D areaTex;
@@ -18,6 +18,6 @@ layout(location = 2) in vec4[3] offsets;
 
 void main()
 {
-    fragColor = SMAABlendingWeightCalculationPS(textureCoord, pixelCoord, offsets, edgesTex, areaTex, searchTex, vec4(0.0));
+    fragColor =
+        SMAABlendingWeightCalculationPS(textureCoord, pixelCoord, offsets, edgesTex, areaTex, searchTex, vec4(0.0));
 }
-

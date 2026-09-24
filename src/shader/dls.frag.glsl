@@ -24,16 +24,16 @@
   ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-layout(set=0, binding=0) uniform sampler2D img;
+layout(set = 0, binding = 0) uniform sampler2D img;
 
-layout (constant_id = 0) const float sharpen = 0.5;
-layout (constant_id = 1) const float denoise = 0.17;
+layout(constant_id = 0) const float sharpen = 0.5;
+layout(constant_id = 1) const float denoise = 0.17;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
 
 #define textureLod0Offset(img, coord, offset) textureLodOffset(img, coord, 0.0f, offset)
-#define textureLod0(img, coord) textureLod(img, coord, 0.0f)
+#define textureLod0(img, coord)               textureLod(img, coord, 0.0f)
 
 float GetLumaComponents(float r, float g, float b)
 {
@@ -59,11 +59,11 @@ float Square(float v)
 // highlight fall-off start (prevents halos and noise in bright areas)
 #define kHighBlock 0.65
 // offset reducing sharpening in the shadows
-#define kLowBlock (1.0 / 256.0)
+#define kLowBlock     (1.0 / 256.0)
 #define kSharpnessMin (-1.0 / 14.0)
 #define kSharpnessMax (-1.0 / 6.5)
-#define kDenoiseMin (0.001)
-#define kDenoiseMax (-0.1)
+#define kDenoiseMin   (0.001)
+#define kDenoiseMax   (-0.1)
 
 void main()
 {
@@ -72,17 +72,17 @@ void main()
     //  g  c  f
 
     vec4 x_raw = textureLod0(img, textureCoord);
-    vec3 x = decodeToSpatial(x_raw.rgb);
+    vec3 x     = decodeToSpatial(x_raw.rgb);
 
-    vec3 a = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1,  0)).rgb);
-    vec3 b = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 1,  0)).rgb);
-    vec3 c = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 0,  1)).rgb);
-    vec3 d = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 0, -1)).rgb);
+    vec3 a = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1, 0)).rgb);
+    vec3 b = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(1, 0)).rgb);
+    vec3 c = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(0, 1)).rgb);
+    vec3 d = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(0, -1)).rgb);
 
     vec3 e = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1, -1)).rgb);
-    vec3 f = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 1,  1)).rgb);
-    vec3 g = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1,  1)).rgb);
-    vec3 h = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2( 1, -1)).rgb);
+    vec3 f = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(1, 1)).rgb);
+    vec3 g = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(-1, 1)).rgb);
+    vec3 h = decodeToSpatial(textureLod0Offset(img, textureCoord, ivec2(1, -1)).rgb);
 
     float lx = GetLuma(x);
 
@@ -125,7 +125,7 @@ void main()
     // where kernelDenoise is the value to be passed in to this shader (the amount of noise suppression is inversely proportional to this value),
     //       denoise is the value chosen by the user, in the range (0, 1)
     const float kernelDenoise = 1.0 / (kDenoiseMin + (kDenoiseMax - kDenoiseMin) * denoise);
-    const float nw = Square((lmax - lmin) * kernelDenoise);
+    const float nw            = Square((lmax - lmin) * kernelDenoise);
 
     // pick conservative boost
     const float boost = min(min(lw, hw), nw);
@@ -139,7 +139,7 @@ void main()
     // where kernelSharpness is the value to be passed in to this shader,
     //       sharpen is the value chosen by the user, in the range (0, 1)
     const float kernelSharpness = kSharpnessMin + (kSharpnessMax - kSharpnessMin) * sharpen;
-    const float k = boost * kernelSharpness;
+    const float k               = boost * kernelSharpness;
 
     float accum = lx;
     accum += la * k;
@@ -162,6 +162,6 @@ void main()
 
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
     vec3 encodedColor = encodeFromSpatial(x);
-    vec3 finalColor = max(encodedColor, 0.0);
-    fragColor = vec4(finalColor, x_raw.a);
+    vec3 finalColor   = max(encodedColor, 0.0);
+    fragColor         = vec4(finalColor, x_raw.a);
 }

@@ -7,37 +7,49 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform sampler2D inputImage;
-layout(set = 0, binding = 1) buffer HistBuffer  { uint histData[1024]; };
-layout(set = 0, binding = 2) buffer WaveBuffer  { uint waveData[65536]; };
-layout(set = 0, binding = 3) buffer VecBuffer   { uint vecData[65536]; };
-layout(set = 0, binding = 4) buffer ActiveFlag  { uint scopeActive; };
+layout(set = 0, binding = 1) buffer HistBuffer
+{
+    uint histData[1024];
+};
+layout(set = 0, binding = 2) buffer WaveBuffer
+{
+    uint waveData[65536];
+};
+layout(set = 0, binding = 3) buffer VecBuffer
+{
+    uint vecData[65536];
+};
+layout(set = 0, binding = 4) buffer ActiveFlag
+{
+    uint scopeActive;
+};
 
-layout(constant_id = 0) const uint width = 1920;
+layout(constant_id = 0) const uint width  = 1920;
 layout(constant_id = 1) const uint height = 1080;
 
-layout(push_constant) uniform PushConstants {
+layout(push_constant) uniform PushConstants
+{
     uint enabled;
-} pc;
+}
+pc;
 
-void main() {
+void main()
+{
     if (scopeActive == 0u) return;
-    
+
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     if (pixel.x >= int(width) || pixel.y >= int(height)) return;
-    vec2 uv = (vec2(pixel) + 0.5) / vec2(width, height);
+    vec2 uv  = (vec2(pixel) + 0.5) / vec2(width, height);
     vec4 raw = textureLod(inputImage, uv, 0.0);
-    
+
     vec3 linear = decodeToLinear(raw.rgb);
 
     // Luma coefficients depend on the color space primaries. scRGB uses Rec.709 primaries, so it correctly falls through to the default.
     vec3 lumaCoeffs = LUMA_REC709;
-    
-    if (colorSpaceMode == CSP_HDR10_PQ || 
-        colorSpaceMode == CSP_HDR_HLG || 
-        colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
+
+    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
         lumaCoeffs = LUMA_REC2020;
-    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || 
-               colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
+    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
         lumaCoeffs = LUMA_P3;
     }
     float luma = dot(linear, lumaCoeffs);
@@ -45,16 +57,15 @@ void main() {
     // In HDR, 1.0 = SDR white (100 nits). Highlights exceed 1.0. We map a reference HDR peak (1000 nits = 10.0 in linear space) to the 255 bin.
     // This prevents HDR highlights from crushing into a single bin while preserving SDR distribution.
     float hdrScale = 1.0;
-    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_SCRGB || 
-        colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR ||
-        colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR) {
+    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_SCRGB || colorSpaceMode == CSP_HDR_HLG
+        || colorSpaceMode == CSP_HDR_BT2020_LINEAR || colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR) {
         hdrScale = 10.0; // Maps 0-1000 nits to 0.0-1.0 binning range
     }
-    
-    vec3 scaledLinear = linear / hdrScale;
-    float scaledLuma = luma / hdrScale;
 
-    vec3 clamped = clamp(scaledLinear, 0.0, 1.0);
+    vec3 scaledLinear = linear / hdrScale;
+    float scaledLuma  = luma / hdrScale;
+
+    vec3 clamped      = clamp(scaledLinear, 0.0, 1.0);
     float lumaClamped = clamp(scaledLuma, 0.0, 1.0);
 
     uint binR = uint(clamped.r * 255.0);
@@ -82,11 +93,11 @@ void main() {
         cbScale = 1.8414; // Display P3: 2 * (1 - 0.0793)
         crScale = 1.5422; // Display P3: 2 * (1 - 0.2289)
     }
-    
-    float cb = 0.5 + (linear.b - luma) / cbScale;
-    float cr = 0.5 + (linear.r - luma) / crScale;
-    cb = clamp(cb, 0.0, 1.0);
-    cr = clamp(cr, 0.0, 1.0);
+
+    float cb  = 0.5 + (linear.b - luma) / cbScale;
+    float cr  = 0.5 + (linear.r - luma) / crScale;
+    cb        = clamp(cb, 0.0, 1.0);
+    cr        = clamp(cr, 0.0, 1.0);
     uint vecX = uint(cb * 255.0);
     uint vecY = uint((1.0 - cr) * 255.0);
     atomicAdd(vecData[vecY * 256u + vecX], 1u);

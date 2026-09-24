@@ -10,11 +10,12 @@ layout(location = 0) out vec4 fragColor;
 layout(location = 0) in vec2 textureCoord;
 layout(location = 1) in vec4 offset;
 
-vec4 SMAADecodeFetch(vec4 raw) {
+vec4 SMAADecodeFetch(vec4 raw)
+{
     return vec4(decodeToSpatial(raw.rgb), raw.a);
 }
 
-#define SMAASamplePointColor(tex, coord) SMAADecodeFetch(textureLod(tex, coord, 0.0))
+#define SMAASamplePointColor(tex, coord)     SMAADecodeFetch(textureLod(tex, coord, 0.0))
 #define SMAASampleLevelZeroColor(tex, coord) SMAADecodeFetch(textureLod(tex, coord, 0.0))
 
 #define SMAA_INCLUDE_VS 0
@@ -24,10 +25,10 @@ vec4 SMAADecodeFetch(vec4 raw) {
 void main()
 {
     vec4 smaaColor = SMAANeighborhoodBlendingPS(textureCoord, offset, colorImg, blendTex);
-    
+
     // Encode back to target color space. Lower bound clamped, upper bound left to hardware/AutoHDR.
     vec3 encodedColor = encodeFromSpatial(smaaColor.rgb);
-    vec3 outColor = max(encodedColor, 0.0);
-    
+    vec3 outColor     = max(encodedColor, 0.0);
+
     fragColor = vec4(outColor, smaaColor.a);
 }
