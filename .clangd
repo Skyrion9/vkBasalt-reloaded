@@ -1,0 +1,6 @@
+If:
+  PathMatch: src/shader/.*\.(h|glsl|comp|frag|vert)
+Diagnostics:
+  Suppress: '*'
+Index:
+  Background: Skip
