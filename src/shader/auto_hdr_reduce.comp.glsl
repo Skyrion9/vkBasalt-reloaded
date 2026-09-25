@@ -123,9 +123,16 @@ void main()
             temporal.smoothedP99 = p99Luma;
             temporal.smoothedAvg = avgLuma;
         } else {
-            float alpha          = 1.0 - exp(-pc.deltaTime * adaptationSpeed);
-            temporal.smoothedP99 = temporal.smoothedP99 + alpha * (p99Luma - temporal.smoothedP99);
-            temporal.smoothedAvg = temporal.smoothedAvg + alpha * (avgLuma - temporal.smoothedAvg);
+            // Asymmetric adaptation: adapt 3x faster to bright scenes (prevents blinding)
+            // and slower to dark scenes (allows eyes to adjust).
+            float speedP99 = (p99Luma > temporal.smoothedP99) ? adaptationSpeed * 3.0 : adaptationSpeed;
+            float speedAvg = (avgLuma > temporal.smoothedAvg) ? adaptationSpeed * 3.0 : adaptationSpeed;
+
+            float alphaP99 = 1.0 - exp(-pc.deltaTime * speedP99);
+            float alphaAvg = 1.0 - exp(-pc.deltaTime * speedAvg);
+
+            temporal.smoothedP99 = temporal.smoothedP99 + alphaP99 * (p99Luma - temporal.smoothedP99);
+            temporal.smoothedAvg = temporal.smoothedAvg + alphaAvg * (avgLuma - temporal.smoothedAvg);
         }
 
         if (calibrationMode == 1) {
