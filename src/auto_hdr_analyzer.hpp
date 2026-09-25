@@ -22,8 +22,9 @@ namespace vkBasalt
 
         void recordCommands(VkCommandBuffer cmdBuf, VkImageView inputImageView, uint32_t imageIndex);
         void updateInputViews(const std::vector<VkImageView>& inputImageViews);
-        bool getUpdatedMetadata(float& outPeak, float& outWhite);
         void getCurrentMetrics(float& outWhite, float& outPeak, float& outIntensity) const;
+        void getTargetMetrics(float& outWhite, float& outPeak) const;
+        bool getUpdatedMetadata(float& outPeak, float& outWhite);
 
         [[nodiscard]] VkDescriptorSetLayout getMetricsSetLayout() const { return m_metricsSetLayout; }
         [[nodiscard]] VkDescriptorSet getMetricsDescriptorSet(uint32_t imageIndex) const

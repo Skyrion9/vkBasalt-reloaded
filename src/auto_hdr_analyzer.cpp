@@ -439,6 +439,17 @@ namespace vkBasalt
         outIntensity     = data[2];
     }
 
+    void AutoHdrAnalyzer::getTargetMetrics(float& outWhite, float& outPeak) const
+    {
+        if (!m_mappedMetrics) {
+            outWhite = outPeak = 0.0f;
+            return;
+        }
+        const auto* data = static_cast<const float*>(m_mappedMetrics);
+        outWhite         = data[0] * 100.0f; // targetWhite (what is actually sent to display)
+        outPeak          = data[1] * 100.0f; // targetPeak
+    }
+
     bool AutoHdrAnalyzer::getUpdatedMetadata(float& outPeak, float& outWhite)
     {
         if (!m_mappedMetrics) return false;
