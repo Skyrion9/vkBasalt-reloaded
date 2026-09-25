@@ -487,6 +487,8 @@ namespace vkBasalt
     void AutoHdrAnalyzer::updateInputViews(const std::vector<VkImageView>& inputImageViews)
     {
         for (uint32_t i = 0; i < m_imageCount; i++) {
+            if (i >= inputImageViews.size() || inputImageViews[i] == VK_NULL_HANDLE) continue;
+
             VkDescriptorImageInfo imgInfo = {
                 .sampler     = m_sampler,
                 .imageView   = inputImageViews[i],
