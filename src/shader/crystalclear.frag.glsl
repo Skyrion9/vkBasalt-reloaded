@@ -369,6 +369,15 @@ void main()
         }
     }
 
+    // Shared BC1/DXT1 4x4 block boundary proximity (reused by chroma smooth boost and local contrast suppression).
+    float blockEdge = 0.0;
+    if (enableBC1Fix == 1 && qualityLevel <= 2) {
+        // BC1 blocks are always 4x4 aligned to gl_FragCoord, artifact corrections are strongest at block edges.
+        vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
+        blockEdge =
+            1.0 - smoothstep(0.0, 1.5, min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
+    }
+
     // phase 1.6: BC1/DXT1 green/magenta bias correction on the source. BC1 encodes green with 6 bits vs 5 bits for R/B.
     // creating green/magenta bias in low-saturation regions. Gated by saturation + neighbor agreement to avoid touching intentional green content.
     // Detects artifacts by measuring green bias disagreement between center and neighbors as BC1 artifacts cause inconsistent bias within 4x4 block
@@ -398,12 +407,8 @@ void main()
         float center_luma  = getNeutralLuma(e);
         float flatMask     = 1.0 - smoothstep(0.05 * hdrNorm, 0.25 * hdrNorm, localContrast);
         float smoothAmount = flatMask * edgeMask * chromaSmoothStrength;
-        // BC1/DXT1 blocks are always 4x4 aligned to gl_FragCoord. Chroma discontinuities
-        // are sharpest at block boundaries, so boost chroma smoothing there.
+        // Chroma discontinuities are sharpest at BC1 block boundaries, so boost chroma smoothing there.
         if (enableBC1Fix == 1 && qualityLevel <= 2) {
-            vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
-            float blockEdge =
-                1.0 - smoothstep(0.0, 1.5, min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
             smoothAmount *= mix(1.0, 1.2, blockEdge * bc1FixStrength);
         }
         e  = mix(e, crossAvgRGB + vec3(center_luma - cross_luma), smoothAmount);
@@ -651,9 +656,6 @@ void main()
         // BC1 fix: local contrast is the biggest amplifier of BC1 block-boundary luma steps.
         // Suppress it at 4px block edges in low-detail regions where the artifacts are visible.
         if (enableBC1Fix == 1 && qualityLevel <= 2) {
-            vec2 blockPos = mod(gl_FragCoord.xy, 4.0);
-            float blockEdge =
-                1.0 - smoothstep(0.0, 1.5, min(min(blockPos.x, 3.0 - blockPos.x), min(blockPos.y, 3.0 - blockPos.y)));
             float lowDetail = 1.0 - smoothstep(0.06 * hdrNorm, 0.2 * hdrNorm, localContrast);
             lcBoost *= mix(1.0, 1.0 - blockEdge * lowDetail, bc1FixStrength * guardStrength);
         }
