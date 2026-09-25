@@ -298,10 +298,8 @@ void main()
     bool earlyExit        = crossRange < rangeMaxClamped;
     float lumaEdgeD1      = abs(lA + lI - 2.0 * lE);
     float lumaEdgeD2      = abs(lC + lG - 2.0 * lE);
-    float edgeHorz1       = (lB + lH) - 2.0 * lE;
-    float edgeVert1       = (lD + lF) - 2.0 * lE;
-    float pureLumaEdgeH   = abs(edgeHorz1);
-    float pureLumaEdgeV   = abs(edgeVert1);
+    float pureLumaEdgeH   = abs((lB + lH) - 2.0 * lE);
+    float pureLumaEdgeV   = abs((lD + lF) - 2.0 * lE);
     float lumaDiagRatio   = min(pureLumaEdgeH, pureLumaEdgeV) / max(max(pureLumaEdgeH, pureLumaEdgeV), 0.0001);
     float edgeHorz2       = (-2.0 * lF) + (lC + lI);
     float edgeVert2       = (-2.0 * lB) + (lA + lC);
