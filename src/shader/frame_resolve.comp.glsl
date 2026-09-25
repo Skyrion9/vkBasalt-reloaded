@@ -28,12 +28,6 @@ layout(set = 0, binding = 6) buffer ActiveFlag
 layout(constant_id = 0) const uint width  = 1920;
 layout(constant_id = 1) const uint height = 1080;
 
-layout(push_constant) uniform PushConstants
-{
-    uint enabled;
-}
-pc;
-
 vec3 heatMap(float v)
 {
     v = clamp(v, 0.0, 1.0);
@@ -49,13 +43,6 @@ void main()
 
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
     if (coord.x >= 256 || coord.y >= 256) return;
-
-    if (pc.enabled == 0u) {
-        imageStore(histImage, coord, vec4(0.0));
-        imageStore(waveImage, coord, vec4(0.0));
-        imageStore(vecImage, coord, vec4(0.0));
-        return;
-    }
 
     // Histogram: vertical bars, X = bin, Y = count (0 at bottom)
     uint bin       = uint(coord.x);

@@ -80,7 +80,7 @@ namespace vkBasalt
             vkd.AllocateMemory(dev, &allocInfo, nullptr, &m_activeMemory);
             vkd.BindBufferMemory(dev, m_activeBuffer, m_activeMemory, 0);
             vkd.MapMemory(dev, m_activeMemory, 0, 16, 0, reinterpret_cast<void**>(&m_mappedActive));
-            *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0;
+            *m_mappedActive = m_enabled ? 1 : 0;
         }
 
         // Output images
@@ -188,15 +188,12 @@ namespace vkBasalt
         vkd.CreateDescriptorSetLayout(dev, &resolveDSLInfo, nullptr, &m_resolveDSL);
 
         // Pipeline layouts
-        VkPushConstantRange pcRange = {
-            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .offset = 0, .size = sizeof(uint32_t)};
-
         VkPipelineLayoutCreateInfo plInfo = {};
         plInfo.sType                      = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         plInfo.setLayoutCount             = 1;
         plInfo.pSetLayouts                = &m_accumDSL;
-        plInfo.pushConstantRangeCount     = 1;
-        plInfo.pPushConstantRanges        = &pcRange;
+        plInfo.pushConstantRangeCount     = 0;
+        plInfo.pPushConstantRanges        = nullptr;
         vkd.CreatePipelineLayout(dev, &plInfo, nullptr, &m_accumLayout);
 
         plInfo.pSetLayouts = &m_resolveDSL;
@@ -481,8 +478,6 @@ namespace vkBasalt
         if (imageIndex >= m_accumSets.size()) return;
         auto& vkd = m_pDevice->vkd;
 
-        m_pushConstants.enabled = 1;
-
         // 1. Clear SSBOs
         vkd.CmdFillBuffer(cmdBuf, m_histBuffer, 0, VK_WHOLE_SIZE, 0);
         vkd.CmdFillBuffer(cmdBuf, m_waveBuffer, 0, VK_WHOLE_SIZE, 0);
@@ -503,7 +498,6 @@ namespace vkBasalt
         vkd.CmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_accumPipeline);
         vkd.CmdBindDescriptorSets(
             cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_accumLayout, 0, 1, &m_accumSets[imageIndex], 0, nullptr);
-        vkd.CmdPushConstants(cmdBuf, m_accumLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &m_pushConstants);
         vkd.CmdDispatch(cmdBuf, (m_extent.width + 15) / 16, (m_extent.height + 15) / 16, 1);
 
         // Barrier: SHADER_WRITE -> SHADER_RW (SSBO accumulate -> SSBO resolve read + image write)
@@ -521,8 +515,6 @@ namespace vkBasalt
         vkd.CmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_resolvePipeline);
         vkd.CmdBindDescriptorSets(
             cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_resolveLayout, 0, 1, &m_resolveSet, 0, nullptr);
-        vkd.CmdPushConstants(
-            cmdBuf, m_resolveLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &m_pushConstants);
         vkd.CmdDispatch(cmdBuf, (SCOPE_DIM + 15) / 16, (SCOPE_DIM + 15) / 16, 1);
 
         // 4. Synchronization Barrier: Compute Write -> Fragment Read (ImGui) Without this scopes turns into sliding puzzles due to race conditions.

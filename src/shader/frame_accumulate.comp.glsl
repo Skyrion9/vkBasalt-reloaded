@@ -27,12 +27,6 @@ layout(set = 0, binding = 4) buffer ActiveFlag
 layout(constant_id = 0) const uint width  = 1920;
 layout(constant_id = 1) const uint height = 1080;
 
-layout(push_constant) uniform PushConstants
-{
-    uint enabled;
-}
-pc;
-
 void main()
 {
     if (scopeActive == 0u) return;

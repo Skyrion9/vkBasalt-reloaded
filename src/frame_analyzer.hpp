@@ -34,12 +34,13 @@ namespace vkBasalt
         void setEnabled(bool enabled) override
         {
             m_enabled = enabled;
-            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0;
+            // Gate GPU execution only on m_enabled. The UI tab state dictates this.
+            if (m_mappedActive) *m_mappedActive = m_enabled ? 1 : 0;
         }
         void setOverlayVisible(bool visible) override
         {
             m_overlayVisible = visible;
-            if (m_mappedActive) *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0;
+            if (m_mappedActive) *m_mappedActive = m_enabled ? 1 : 0;
         }
 
         FrameAnalyzer* asFrameAnalyzer() override { return this; }
