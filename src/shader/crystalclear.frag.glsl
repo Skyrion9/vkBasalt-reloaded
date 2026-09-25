@@ -396,7 +396,10 @@ void main()
             float greenBias  = e.g - rbAvg;
             float correction = clamp(greenBias, -bc1FixStrength * 0.03 * hdrNorm, bc1FixStrength * 0.03 * hdrNorm);
             e.g -= correction * bc1SatGate * bc1ArtifactMask * guardStrength;
-            lE = getLuma(e);
+            // Only recompute lE here if Chroma Smooth won't do it downstream.
+            if (enableChromaSmooth == 0) {
+                lE = getLuma(e);
+            }
         }
     }
 
