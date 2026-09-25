@@ -392,9 +392,7 @@ void main()
             float biasDiff        = abs(centerBias - neighborBias);
             float bc1ArtifactMask = smoothstep(0.003 * hdrNorm, 0.015 * hdrNorm, biasDiff);
 
-            float rbAvg      = (e.r + e.b) * 0.5;
-            float greenBias  = e.g - rbAvg;
-            float correction = clamp(greenBias, -bc1FixStrength * 0.03 * hdrNorm, bc1FixStrength * 0.03 * hdrNorm);
+            float correction = clamp(centerBias, -bc1FixStrength * 0.03 * hdrNorm, bc1FixStrength * 0.03 * hdrNorm);
             e.g -= correction * bc1SatGate * bc1ArtifactMask * guardStrength;
             // Only recompute lE here if Chroma Smooth won't do it downstream.
             if (enableChromaSmooth == 0) {
