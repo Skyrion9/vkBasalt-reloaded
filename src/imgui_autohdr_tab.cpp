@@ -113,12 +113,17 @@ namespace vkBasalt
                 displayCaps.source = "loading";
             }
 
-            bool hdrActive = m_pSwapchain && m_pSwapchain->autoHdrActive;
+            bool hdrActive        = m_pSwapchain && m_pSwapchain->autoHdrActive;
+            auto calibModeCheck   = m_pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough");
+            bool isPipelineActive = hdrActive || (gameIsHDR && calibModeCheck != "off");
 
             // Adaptive analysis status
-            if (analyzer && hdrActive) {
+            if (analyzer && isPipelineActive) {
                 float liveWhite = NAN, livePeak = NAN, liveIntensity = NAN;
                 analyzer->getCurrentMetrics(liveWhite, livePeak, liveIntensity);
+
+                float sentWhite = NAN, sentPeak = NAN;
+                analyzer->getTargetMetrics(sentWhite, sentPeak);
 
                 ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "Adaptive Analysis: ACTIVE");
                 ImGui::Text(
@@ -127,19 +132,19 @@ namespace vkBasalt
                 ImGui::Spacing();
                 ImGui::TextDisabled("Metadata Sent -> Display Reported:");
 
-                // MaxCLL comparison
-                bool peakOk = displayCaps.maxLuminance <= 0 || livePeak <= displayCaps.maxLuminance * 1.1f;
+                // MaxCLL comparison (Use sentPeak, which is the expanded target value)
+                bool peakOk = displayCaps.maxLuminance <= 0 || sentPeak <= displayCaps.maxLuminance * 1.1f;
                 ImGui::Text(
-                    "  MaxCLL:  %.0f nits  ->  Display max: %.0f nits %s", livePeak, displayCaps.maxLuminance,
+                    "  MaxCLL:  %.0f nits  ->  Display max: %.0f nits %s", sentPeak, displayCaps.maxLuminance,
                     peakOk ? "" : "(EXCEEDS)");
                 if (!peakOk) ImGui::SameLine();
                 if (!peakOk) ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "!");
 
-                // MaxFALL comparison
+                // MaxFALL comparison (Use sentWhite, which is the expanded target value)
                 bool whiteOk =
-                    displayCaps.maxFrameAvgLuminance <= 0 || liveWhite <= displayCaps.maxFrameAvgLuminance * 1.1f;
+                    displayCaps.maxFrameAvgLuminance <= 0 || sentWhite <= displayCaps.maxFrameAvgLuminance * 1.1f;
                 ImGui::Text(
-                    "  MaxFALL: %.0f nits  ->  Display FALL: %.0f nits %s", liveWhite, displayCaps.maxFrameAvgLuminance,
+                    "  MaxFALL: %.0f nits  ->  Display FALL: %.0f nits %s", sentWhite, displayCaps.maxFrameAvgLuminance,
                     whiteOk ? "" : "(EXCEEDS)");
                 if (!whiteOk) ImGui::SameLine();
                 if (!whiteOk) ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "!");
@@ -181,10 +186,10 @@ namespace vkBasalt
                         "of content, the display firmware is ignoring the metadata and using its\n"
                         "own internal scene analysis.");
                 }
-            } else if (hdrActive) {
+            } else if (isPipelineActive) {
                 ImGui::TextDisabled("Analyzer not active (adaptive analysis may be disabled).");
             } else if (m_pSwapchain) {
-                ImGui::TextDisabled("Auto HDR is not active. No metadata is being sent.");
+                ImGui::TextDisabled("HDR Pipeline inactive. No metadata is being sent.");
 
                 if (displayCaps.source != "fallback" && displayCaps.source != "loading") {
                     ImGui::TextDisabled(
