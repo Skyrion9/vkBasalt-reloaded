@@ -264,9 +264,8 @@ void main()
     vec3 mxRGB2    = max(max(max(mxRGB, a), max(g, c)), i);
     vec3 trueMxRGB = mxRGB2;
     mxRGB += mxRGB2;
-    float localMaxLuma  = getLuma(trueMxRGB);
-    float localMinLuma  = getLuma(trueMnRGB);
-    float localContrast = localMaxLuma - localMinLuma;
+    vec3 rgbRange       = trueMxRGB - trueMnRGB;
+    float localContrast = getLuma(rgbRange);
     float bpLow         = 0.013 * hdrNorm;
     float bpFadeIn      = 0.052 * hdrNorm;
     float bpHigh        = bandPassWidth * hdrNorm;
@@ -654,9 +653,11 @@ void main()
             wideAvg = (h1_raw + h2_raw + v1_raw + v2_raw) * 0.25;
         }
         // Halo prevention by clamping wide blur to the 3x3 bounds already computed by CAS.
-        wideAvg       = clamp(wideAvg, localMinLuma, localMaxLuma);
-        float lcRatio = lumaAA / max(wideAvg, 0.0001 * hdrNorm);
-        float lcBoost = pow(clamp(lcRatio, 0.25, 4.0), localContrastStrength) - 1.0;
+        float localMinLuma = getLuma(trueMnRGB);
+        float localMaxLuma = localMinLuma + localContrast;
+        wideAvg            = clamp(wideAvg, localMinLuma, localMaxLuma);
+        float lcRatio      = lumaAA / max(wideAvg, 0.0001 * hdrNorm);
+        float lcBoost      = pow(clamp(lcRatio, 0.25, 4.0), localContrastStrength) - 1.0;
 
         // Scale down the final injection for High to prevent 'blindly' boosting that could artifact more easily.
         float lcMultiplier = (qualityLevel <= 1) ? 0.08 : 0.05;
@@ -745,7 +746,6 @@ void main()
             (neutralLumaAA > 0.0001) ? mix(neutralLumaAA, sharpLuma, clarityStrength) / neutralLumaAA : 1.0;
         vec3 clarityColor = aaColor * lumaScale;
 
-        vec3 rgbRange        = trueMxRGB - trueMnRGB;
         float maxChromaRange = max(max(rgbRange.r, rgbRange.g), rgbRange.b);
 
         float chromaNoise   = (localContrast < 0.3 * hdrNorm) ? max(0.0, maxChromaRange - localContrast) : 0.0;
