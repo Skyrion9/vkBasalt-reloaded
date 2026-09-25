@@ -373,9 +373,8 @@ void main()
     // creating green/magenta bias in low-saturation regions. Gated by saturation + neighbor agreement to avoid touching intentional green content.
     // Detects artifacts by measuring green bias disagreement between center and neighbors as BC1 artifacts cause inconsistent bias within 4x4 block
     if (enableBC1Fix == 1 && qualityLevel <= 2) {
-        float bc1Sat = max(max(e.r, e.g), e.b) - min(min(e.r, e.g), e.b);
-        if (bc1Sat < 0.08 * hdrNorm) {
-            float bc1SatGate = 1.0 - smoothstep(0.02 * hdrNorm, 0.08 * hdrNorm, bc1Sat);
+        if (localSaturation < 0.08 * hdrNorm) {
+            float bc1SatGate = 1.0 - smoothstep(0.02 * hdrNorm, 0.08 * hdrNorm, localSaturation);
 
             // Bias disagreement: BC1 artifacts cause the center pixel's green bias to
             // differ from its neighbors. Intentional color has uniform bias across the area.
