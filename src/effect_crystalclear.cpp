@@ -145,6 +145,18 @@ namespace vkBasalt
                  .size       = p.specSize});
         }
 
+        {
+            float shadowNeutral = (specData.stShadowR + specData.stShadowG + specData.stShadowB) * 0.33333333f;
+            specData.stShadowR -= shadowNeutral;
+            specData.stShadowG -= shadowNeutral;
+            specData.stShadowB -= shadowNeutral;
+
+            float highNeutral = (specData.stHighR + specData.stHighG + specData.stHighB) * 0.33333333f;
+            specData.stHighR -= highNeutral;
+            specData.stHighG -= highNeutral;
+            specData.stHighB -= highNeutral;
+        }
+
         mapEntries.push_back(
             {.constantID = 78, .offset = offsetof(CrystalClearSpecData, step1_x), .size = sizeof(float)});
         mapEntries.push_back(

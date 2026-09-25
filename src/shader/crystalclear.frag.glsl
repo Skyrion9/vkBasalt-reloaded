@@ -864,10 +864,8 @@ void main()
             float shadowWeight    = 1.0 - smoothstep(0.0, 0.5, stLuma);
             float highlightWeight = smoothstep(0.5, 1.0, stLuma);
             vec3 shadowTint       = vec3(stShadowR, stShadowG, stShadowB);
-            shadowTint -= getNeutralLuma(shadowTint);
-            vec3 highlightTint = vec3(stHighR, stHighG, stHighB);
-            highlightTint -= getNeutralLuma(highlightTint);
-            vec3 tint = shadowTint * shadowWeight + highlightTint * highlightWeight;
+            vec3 highlightTint    = vec3(stHighR, stHighG, stHighB);
+            vec3 tint             = shadowTint * shadowWeight + highlightTint * highlightWeight;
             finalColor += tint * splitToneStrength * hdrNorm;
         }
 
