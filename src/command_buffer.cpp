@@ -54,8 +54,12 @@ namespace vkBasalt
         beginInfo.flags            = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
         beginInfo.pInheritanceInfo = nullptr;
 
-        for (auto& effect : effects) {
-            effect->useDepthImage(depthImageView);
+        // Dynamically set chain position based on the effects vector being recorded.
+        // This allows the same effect instances to be safely reused in different chains
+        // (e.g., the main effect chain vs the bypassed effect chain, which can maintain HDR).
+        for (size_t ei = 0; ei < effects.size(); ei++) {
+            effects[ei]->useDepthImage(depthImageView);
+            effects[ei]->setChainPosition(ei == 0, ei == effects.size() - 1);
         }
 
         for (uint32_t i = 0; i < commandBuffers.size(); i++) {

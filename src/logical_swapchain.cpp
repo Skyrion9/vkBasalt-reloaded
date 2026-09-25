@@ -9,6 +9,7 @@ namespace vkBasalt
         effects.clear();
         defaultTransfer.reset();
         defaultHdrEffect.reset();
+        defaultHdrDebugEffect.reset();
         nitCalibrationEffect = nullptr;
 
         if (!commandBuffersEffect.empty()) {

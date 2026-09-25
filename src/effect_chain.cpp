@@ -92,19 +92,27 @@ namespace vkBasalt
         }
 
         if (isHdrOutputNeeded(pConfig, pLogicalSwapchain)) {
+            // Create dedicated HDR effects for the bypassed chain that read from slice 0. The main chain's NitCalibrationEffect reads from
+            // the last processed slice, but in bypass mode the game renders directly to slice 0 with no intermediate effects.
             std::vector<VkImage> slice0Images(
                 pLogicalSwapchain->fakeImages.begin(),
                 pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
+
+            // Inject HDR Debug Pattern if active. Store persistently so the UBO survives
+            // beyond this function scope (command buffers reference its descriptor sets).
+            if (g_hdrDebugToolActive.load()) {
+                pLogicalSwapchain->defaultHdrDebugEffect = std::make_shared<HdrDebugEffect>(
+                    pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->imageExtent, slice0Images,
+                    pConfig);
+                noEffectChain.push_back(pLogicalSwapchain->defaultHdrDebugEffect);
+            }
 
             pLogicalSwapchain->defaultHdrEffect = std::make_shared<NitCalibrationEffect>(
                 pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
                 pLogicalSwapchain->imageExtent, slice0Images, pLogicalSwapchain->images, pConfig,
                 pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
                 pLogicalSwapchain->autoHdrActive, pLogicalSwapchain->monitorName);
-
-            pLogicalSwapchain->defaultHdrEffect->setChainPosition(true, true);
             noEffectChain.push_back(pLogicalSwapchain->defaultHdrEffect);
-            pLogicalSwapchain->nitCalibrationEffect = pLogicalSwapchain->defaultHdrEffect.get();
             Logger::debug("buildDefaultNoEffectChain: HDR output effect included in no-effect chain");
         } else {
             pLogicalSwapchain->defaultTransfer = std::shared_ptr<Effect>(new TransferEffect(
@@ -153,6 +161,7 @@ namespace vkBasalt
         pLogicalSwapchain->effects.clear();
         pLogicalSwapchain->defaultTransfer.reset();
         pLogicalSwapchain->defaultHdrEffect.reset();
+        pLogicalSwapchain->defaultHdrDebugEffect.reset();
         buildDefaultNoEffectChain(pLogicalDevice, pLogicalSwapchain, pConfig);
     }
 

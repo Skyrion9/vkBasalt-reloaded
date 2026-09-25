@@ -46,6 +46,7 @@ namespace vkBasalt
         std::vector<std::shared_ptr<Effect>> effects;
         std::shared_ptr<Effect> defaultTransfer;
         std::shared_ptr<Effect> defaultHdrEffect; // HDR conversion for empty/disabled chain when Auto HDR is active
+        std::shared_ptr<Effect> defaultHdrDebugEffect; // HDR debug pattern for bypassed chain
         VkDeviceMemory fakeImageMemory{};
 
         // flag to force the game to recreate the swapchain if the effect chain grows dynamically.

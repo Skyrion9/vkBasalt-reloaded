@@ -959,16 +959,27 @@ namespace vkBasalt
 
             {
                 std::scoped_lock lock(pLogicalSwapchain->effectMutex);
-                if (g_effectsEnabled.load()) {
-                    for (auto& effect : pLogicalSwapchain->effects) {
-                        effect->updateEffect();
-                    }
-                    for (auto& pass : pLogicalSwapchain->computePasses) {
-                        pass->updatePass();
-                    }
+                // Update effects and compute passes even when main effects are bypassed,
+                // HDR related effects (NitCalibration, HdrDebug) and FrameAnalyzer still need their
+                // UBOs and state updated per frame if they are part of the active "effects bypassed" chain.
+                for (auto& effect : pLogicalSwapchain->effects) {
+                    effect->updateEffect();
                 }
-                if (pLogicalSwapchain->nitCalibrationEffect) {
+                for (auto& pass : pLogicalSwapchain->computePasses) {
+                    pass->updatePass();
+                }
+                // Use the correct NitCalibrationEffect based on bypass state.
+                // Main chain's effect reads from the last processed slice (correct when effects are enabled).
+                // Bypassed effect chain's effect reads from slice 0.
+                if (g_effectsEnabled.load() && pLogicalSwapchain->nitCalibrationEffect) {
                     pLogicalSwapchain->nitCalibrationEffect->updateHdrMetadata(swapchain);
+                } else if (!g_effectsEnabled.load()) {
+                    if (pLogicalSwapchain->defaultHdrDebugEffect) {
+                        pLogicalSwapchain->defaultHdrDebugEffect->updateEffect();
+                    }
+                    if (pLogicalSwapchain->defaultHdrEffect) {
+                        pLogicalSwapchain->defaultHdrEffect->updateHdrMetadata(swapchain);
+                    }
                 }
             }
 
