@@ -207,6 +207,15 @@ float applyBlendMode(float luma, float sharp, float norm)
     return (isHDR) ? r * norm : r;
 }
 
+// Hue preserving chroma rescale: shifts all channels so the min channel lands at (maxC - newChroma),
+// preserving relative chroma ratios. Shared by vibrance/saturation and specular desat.
+vec3 rescaleChroma(vec3 color, float minC, float maxC, float newChroma, float oldChroma)
+{
+    vec3 chroma = color - minC;
+    chroma *= newChroma / max(oldChroma, 0.0001);
+    return chroma + (maxC - newChroma);
+}
+
 void main()
 {
     vec4 centerColor = textureLod(img, textureCoord, 0.0);
@@ -847,10 +856,7 @@ void main()
                     sat_factor += saturation;
                 }
                 float new_chroma = clamp(chroma * sat_factor, 0.0, max_c);
-                vec3 pure_chroma = finalColor - min_c;
-                pure_chroma *= (new_chroma / chroma);
-                float new_min_c = max_c - new_chroma;
-                finalColor      = pure_chroma + new_min_c;
+                finalColor       = rescaleChroma(finalColor, min_c, max_c, new_chroma, chroma);
             }
         }
 
@@ -880,10 +886,7 @@ void main()
                 spec_mask *= localization;
                 float desat_factor = 1.0 - (spec_mask * specularDesat);
                 float new_chroma   = chroma * desat_factor;
-                vec3 pure_chroma   = finalColor - min_c;
-                pure_chroma *= (new_chroma / chroma);
-                float new_min_c = max_spec - new_chroma;
-                finalColor      = pure_chroma + new_min_c;
+                finalColor         = rescaleChroma(finalColor, min_c, max_spec, new_chroma, chroma);
             }
         }
 
