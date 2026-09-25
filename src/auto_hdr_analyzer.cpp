@@ -58,8 +58,6 @@ namespace vkBasalt
         int32_t calibrationMode,
         const std::string& monitorName) : pLogicalDevice(pDevice), m_extent(extent), m_imageCount(imageCount)
     {
-        m_lastTime = std::chrono::steady_clock::now();
-
         // 1. Populate Specialization Data
         m_accSpecData = {
             .width            = extent.width,
@@ -552,12 +550,10 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_reducePipeline);
         pLogicalDevice->vkd.CmdBindDescriptorSets(
             cmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, m_reduceLayout, 0, 1, &m_reduceSets[imageIndex], 0, nullptr);
-
-        auto now   = std::chrono::steady_clock::now();
-        float dt   = std::chrono::duration<float>(now - m_lastTime).count();
-        m_lastTime = now;
-        if (dt > 0.1f) dt = 0.1f;
-
+        // Use a fixed 60fps estimate; the reduce shader's exponential smoothing treats this
+        // as the per frame integration step. At higher framerates adaptation is slightly
+        // slower, at lower framerates slightly faster, but user configurable.
+        float dt = 1.0f / 60.0f;
         pLogicalDevice->vkd.CmdPushConstants(
             cmdBuf, m_reduceLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(float), &dt);
         pLogicalDevice->vkd.CmdDispatch(cmdBuf, 1, 1, 1);

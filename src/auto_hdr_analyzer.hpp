@@ -3,7 +3,6 @@
 #include "config.hpp"
 #include <vulkan/vulkan_core.h>
 #include <vector>
-#include <chrono>
 
 namespace vkBasalt
 {
@@ -36,7 +35,6 @@ namespace vkBasalt
         LogicalDevice* pLogicalDevice;
         VkExtent2D m_extent;
         uint32_t m_imageCount;
-        std::chrono::steady_clock::time_point m_lastTime;
 
         struct AccumulateSpecData
         {
