@@ -135,6 +135,7 @@ namespace vkBasalt
         samplerInfo.addressModeU        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerInfo.addressModeV        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samplerInfo.addressModeW        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.maxLod              = 1.0f; // Required: maxLod=0 causes RADV to return zeros for 8 bit formats
         pLogicalDevice->vkd.CreateSampler(pLogicalDevice->device, &samplerInfo, nullptr, &m_sampler);
 
         // 4. Create Descriptor Set Layouts
