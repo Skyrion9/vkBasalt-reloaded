@@ -207,7 +207,7 @@ namespace vkBasalt
 
             // Create dummy metrics buffer (DEVICE_LOCAL for optimal GPU cache behavior)
             VkBufferCreateInfo bufInfo = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            bufInfo.size               = 16;
+            bufInfo.size               = 32;
             bufInfo.usage              = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             pLogicalDevice->vkd.CreateBuffer(pLogicalDevice->device, &bufInfo, nullptr, &m_dummyMetricsBuffer);
             VkMemoryRequirements memReqs;
@@ -401,10 +401,17 @@ namespace vkBasalt
                 (detected.detected && detected.sdrWhitePointNits > 0.0f) ? detected.sdrWhitePointNits : 203.0f;
             float fallbackPeak =
                 (detected.detected && detected.peakBrightnessNits > 0.0f) ? detected.peakBrightnessNits : 1000.0f;
-            float dummyData[4] = {
+
+            float dummyData[8] = {
                 m_pConfigRef->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
-                m_pConfigRef->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f, 1.0f, 0.0f};
-            pLogicalDevice->vkd.CmdUpdateBuffer(commandBuffer, m_dummyMetricsBuffer, 0, 16, dummyData);
+                m_pConfigRef->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
+                1.0f,
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f};
+            pLogicalDevice->vkd.CmdUpdateBuffer(commandBuffer, m_dummyMetricsBuffer, 0, 32, dummyData);
 
             VkBufferMemoryBarrier initBarrier = {};
             initBarrier.sType                 = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -414,7 +421,7 @@ namespace vkBasalt
             initBarrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
             initBarrier.buffer                = m_dummyMetricsBuffer;
             initBarrier.offset                = 0;
-            initBarrier.size                  = 16;
+            initBarrier.size                  = 32;
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1,
                 &initBarrier, 0, nullptr);

@@ -114,18 +114,18 @@ namespace vkBasalt
             16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_temporalMemory,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         m_metricsBuffer =
-            createBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, m_metricsMemory);
+            createBuffer(32, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, m_metricsMemory);
 
         // Staging buffer for CPU readback of dynamic HDR metadata
         m_stagingMetricsBuffer = createBuffer(
-            16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_stagingMetricsMemory,
+            32, VK_BUFFER_USAGE_TRANSFER_DST_BIT, m_stagingMetricsMemory,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         pLogicalDevice->vkd.MapMemory(
             pLogicalDevice->device, m_stagingMetricsMemory, 0, VK_WHOLE_SIZE, 0, &m_mappedMetrics);
 
         // Zero init to prevent reading uninitialized VRAM garbage on the first frame before the GPU copy completes.
         if (m_mappedMetrics) {
-            std::memset(m_mappedMetrics, 0, 16);
+            std::memset(m_mappedMetrics, 0, 32);
         }
 
         // 3. Create Sampler
@@ -434,8 +434,8 @@ namespace vkBasalt
             return;
         }
         const auto* data = static_cast<const float*>(m_mappedMetrics);
-        outWhite         = data[0] * 100.0f; // nits * 0.01 -> nits
-        outPeak          = data[1] * 100.0f;
+        outWhite         = data[3] * 100.0f; // measuredWhite (nits * 0.01 -> nits)
+        outPeak          = data[4] * 100.0f; // measuredPeak
         outIntensity     = data[2];
     }
 
@@ -580,12 +580,12 @@ namespace vkBasalt
         reduceToCopyBarrier.dstAccessMask         = VK_ACCESS_TRANSFER_READ_BIT;
         reduceToCopyBarrier.buffer                = m_metricsBuffer;
         reduceToCopyBarrier.offset                = 0;
-        reduceToCopyBarrier.size                  = 16;
+        reduceToCopyBarrier.size                  = 32;
         pLogicalDevice->vkd.CmdPipelineBarrier(
             cmdBuf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1,
             &reduceToCopyBarrier, 0, nullptr);
 
-        VkBufferCopy copyRegion = {.srcOffset = 0, .dstOffset = 0, .size = 16};
+        VkBufferCopy copyRegion = {.srcOffset = 0, .dstOffset = 0, .size = 32};
         pLogicalDevice->vkd.CmdCopyBuffer(cmdBuf, m_metricsBuffer, m_stagingMetricsBuffer, 1, &copyRegion);
     }
 } // namespace vkBasalt

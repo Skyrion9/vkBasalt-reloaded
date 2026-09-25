@@ -16,10 +16,14 @@ layout(set = 0, binding = 1) buffer TemporalBuffer
 temporal;
 layout(set = 0, binding = 2) buffer MetricsBuffer
 {
-    float adaptiveWhite;
-    float adaptivePeak;
-    float intensity;
-    float padding;
+    float targetWhite;   // [0] For tone mapper / display metadata
+    float targetPeak;    // [1] For tone mapper / display metadata
+    float intensity;     // [2] For tone mapper / UI
+    float measuredWhite; // [3] For UI (actual scene average)
+    float measuredPeak;  // [4] For UI (actual scene peak)
+    float padding1;
+    float padding2;
+    float padding3;
 }
 metrics;
 
@@ -74,9 +78,11 @@ void main()
 
     if (totalPixels == 0) {
         if (tid == 0) {
-            metrics.adaptiveWhite = targetWhite;
-            metrics.adaptivePeak  = targetPeak;
+            metrics.targetWhite   = targetWhite;
+            metrics.targetPeak    = targetPeak;
             metrics.intensity     = 1.0;
+            metrics.measuredWhite = targetWhite;
+            metrics.measuredPeak  = targetPeak;
         }
         return;
     }
@@ -137,10 +143,12 @@ void main()
 
         if (calibrationMode == 1) {
             // Passthrough: Report raw measurements as metadata. The image passes through unchanged, but the display gets accurate MaxCLL/MaxFALL.
-            metrics.adaptiveWhite = temporal.smoothedAvg; // Measured frame average (MaxFALL)
-            metrics.adaptivePeak =
+            metrics.targetWhite = temporal.smoothedAvg; // Measured frame average (MaxFALL)
+            metrics.targetPeak =
                 min(temporal.smoothedP99, targetPeak); // Measured peak (MaxCLL), capped at display limit
-            metrics.intensity = 1.0;
+            metrics.intensity     = 1.0;
+            metrics.measuredWhite = temporal.smoothedAvg;
+            metrics.measuredPeak  = temporal.smoothedP99;
         } else {
             // Adaptive: Modulate gain based on scene brightness
             float avgRatio    = clamp(temporal.smoothedAvg / targetWhite, 0.0, 2.0);
@@ -151,9 +159,13 @@ void main()
             float sceneIntensity = mix(1.0, 0.2, smoothstep(0.5, 1.0, peakRatio));
             float finalIntensity = mix(sceneIntensity, 1.0, peakScale);
 
-            metrics.adaptiveWhite = targetWhite * midtoneBias;
-            metrics.adaptivePeak  = mix(targetWhite, targetPeak, finalIntensity);
-            metrics.intensity     = finalIntensity;
+            metrics.targetWhite = targetWhite * midtoneBias;
+            metrics.targetPeak  = mix(targetWhite, targetPeak, finalIntensity);
+            metrics.intensity   = finalIntensity;
+
+            // Measured values for UI: scale relative linear luma by targetWhite to get absolute nits
+            metrics.measuredWhite = temporal.smoothedAvg * targetWhite;
+            metrics.measuredPeak  = temporal.smoothedP99 * targetWhite;
         }
     }
 }

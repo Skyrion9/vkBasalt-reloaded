@@ -9,9 +9,14 @@ layout(constant_id = 3) const int applyGain       = 1; // 0=passthrough (game ca
 
 layout(set = 1, binding = 0) readonly buffer AdaptiveMetrics
 {
-    float adaptiveWhite;
-    float adaptivePeak;
-    float intensity;
+    float targetWhite;   // [0] For tone mapper
+    float targetPeak;    // [1] For tone mapper
+    float intensity;     // [2] For tone mapper
+    float measuredWhite; // [3] For UI (unused in shader)
+    float measuredPeak;  // [4] For UI (unused in shader)
+    float padding1;
+    float padding2;
+    float padding3;
 }
 metrics;
 
@@ -181,8 +186,8 @@ void main()
 
     if (autoHdrEnabled == 1 && sourceColorSpace == CSP_SDR_SRGB) {
         // AutoHDR path (SDR -> HDR). Source is SDR. 1.0 in linear space = SDR white.
-        float targetWhite = metrics.adaptiveWhite;
-        float targetPeak  = metrics.adaptivePeak;
+        float targetWhite = metrics.targetWhite;
+        float targetPeak  = metrics.targetPeak;
 
         if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
             float satFactor = 1.0;
@@ -248,11 +253,11 @@ void main()
         // Native HDR path (HDR -> HDR)
         if (applyGain == 1) {
             // Manual Calibration: Apply gain and scene-adaptive clipping
-            float gain = metrics.adaptiveWhite / SDR_WHITE_LINEAR;
+            float gain = metrics.targetWhite / SDR_WHITE_LINEAR;
             linear *= gain;
             mappedLuma = luma * gain;
 
-            float peakLinear = metrics.adaptivePeak;
+            float peakLinear = metrics.targetPeak;
 
             if (hdrToneMapperMode == HDR_TM_QUALITY || hdrToneMapperMode == HDR_TM_HERMITE) {
                 linear = achromaticGamutClip(linear, mappedLuma, peakLinear);
