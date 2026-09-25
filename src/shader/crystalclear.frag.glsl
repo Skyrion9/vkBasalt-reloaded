@@ -906,27 +906,30 @@ void main()
 
         // phase 14: shared noise generation (reused by deband, film grain, and dither)
         float noise = 0.0;
-        if ((enableFilmGrain == 1 && qualityLevel <= 3) || enableDithering == 1 || enableDeband == 1) {
+        if (enableDithering == 1 && enableFilmGrain == 0 && enableDeband == 0) {
+            // Dither only fast path that skips the coarse layer (floor, seed, hash chain) and the weighted blend.
+            uint seed = uint(gl_FragCoord.x) * 747796405u + uint(gl_FragCoord.y) * 2891336453u
+                        + frameData.frameCounter * 2654435761u;
+            seed      = (seed ^ (seed >> 16)) * 0x85ebca6bu;
+            seed      = (seed ^ (seed >> 13)) * 0xc2b2ae35u;
+            seed      = seed ^ (seed >> 16);
+            noise     = (float(seed & 0xFFFFu) / 65535.0) * 2.0 - 1.0;
+        } else if ((enableFilmGrain == 1 && qualityLevel <= 3) || enableDithering == 1 || enableDeband == 1) {
             // fine grain layer at 1:1 pixel resolution updating every frame
-            uint fineSeed = uint(gl_FragCoord.x) * 747796405u + uint(gl_FragCoord.y) * 2891336453u
-                            + frameData.frameCounter * 2654435761u;
-
+            uint fineSeed   = uint(gl_FragCoord.x) * 747796405u + uint(gl_FragCoord.y) * 2891336453u
+                              + frameData.frameCounter * 2654435761u;
             uint fineHash   = (fineSeed ^ (fineSeed >> 16)) * 0x85ebca6bu;
             fineHash        = (fineHash ^ (fineHash >> 13)) * 0xc2b2ae35u;
             fineHash        = fineHash ^ (fineHash >> 16);
             float fineNoise = (float(fineHash & 0xFFFFu) / 65535.0) * 2.0 - 1.0;
-
             // coarse grain layer at 1/4th resolution updating every 2 frames
-            vec2 coarseCoord = floor(gl_FragCoord.xy * 0.25);
-            uint coarseFrame = frameData.frameCounter / 2u;
-
-            uint coarseSeed = uint(coarseCoord.x) * 1013904223u + uint(coarseCoord.y) * 16807u + coarseFrame * 48271u;
-
+            vec2 coarseCoord  = floor(gl_FragCoord.xy * 0.25);
+            uint coarseFrame  = frameData.frameCounter / 2u;
+            uint coarseSeed   = uint(coarseCoord.x) * 1013904223u + uint(coarseCoord.y) * 16807u + coarseFrame * 48271u;
             uint coarseHash   = (coarseSeed ^ (coarseSeed >> 16)) * 0x85ebca6bu;
             coarseHash        = (coarseHash ^ (coarseHash >> 13)) * 0xc2b2ae35u;
             coarseHash        = coarseHash ^ (coarseHash >> 16);
             float coarseNoise = (float(coarseHash & 0xFFFFu) / 65535.0) * 2.0 - 1.0;
-
             // hybrid blend of fine and coarse layers
             noise = (fineNoise * fineGrainWeight) + (coarseNoise * coarseGrainWeight);
         }
