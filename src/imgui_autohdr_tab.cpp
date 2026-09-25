@@ -353,9 +353,9 @@ namespace vkBasalt
             if (hdrAdaptive) {
                 ImGui::Indent(kIndentWidth);
                 drawAdaptiveSlider(
-                    "hdrAdaptiveSpeed", "Adaptation Speed", "hdrAdaptiveSpeed", 2.0f, 0.01f, 2.0f, "%.2f",
+                    "hdrAdaptiveSpeed", "Adaptation Speed", "hdrAdaptiveSpeed", 3.0f, 0.05f, 15.0f, "%.2f",
                     "How quickly the adaptation responds to scene changes.\n"
-                    "0.01 = very slow (~100s), 0.1 = slow (~10s), 0.5 = moderate (~2s), 2.0 = fast (~0.5s).\n"
+                    "0.05 = very slow (~20s, cinematic), 0.5 = moderate (~2s), 3.0 = fast (~0.3s), 15.0 = instant.\n"
                     "Lower values prevent visible 'brightness pumping' but respond slower to scene transitions.",
                     perGameCalib);
                 drawAdaptiveSlider(

@@ -85,7 +85,8 @@ namespace vkBasalt
             (detected.detected && detected.peakBrightnessNits > 0.0f) ? detected.peakBrightnessNits : 1000.0f;
 
         m_redSpecData = {
-            .adaptationSpeed = std::clamp(pConfig->getOption<float>("hdrAdaptiveSpeed", 0.1f), 0.01f, 2.0f),
+            // adaptationSpeed acts as the rate (1/tau). A value of 3.0 adapts in ~0.3s, 5.0 in ~0.2s.
+            .adaptationSpeed = std::clamp(pConfig->getOption<float>("hdrAdaptiveSpeed", 3.0f), 0.05f, 15.0f),
             .targetWhite     = pConfig->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
             .targetPeak      = pConfig->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
             .peakScale       = std::clamp(pConfig->getOption<float>("hdrAdaptivePeakScale", 1.0f), 0.0f, 1.0f),
