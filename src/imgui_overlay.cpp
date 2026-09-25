@@ -917,11 +917,14 @@ namespace vkBasalt
 
             // Auto HDR tab owns the scopes. Enable and register on entry, disable and unregister on exit.
             if (m_activeTab == 1 && m_lastScopeTab != 1) {
+                // Entering Auto HDR tab: reset explicit disable flag and enable scopes
+                m_userDisabledScopes = false;
                 setScopesEnabled(true);
             } else if (m_activeTab != 1 && m_lastScopeTab == 1) {
+                // Leaving Auto HDR tab: disable scopes and reset flag for next entry
                 setScopesEnabled(false);
-                // Don't reorder this call before the tab bar rendering without verifying the above invariant.
                 invalidateScopeTextures();
+                m_userDisabledScopes = false;
             }
             m_lastScopeTab = m_activeTab;
         }

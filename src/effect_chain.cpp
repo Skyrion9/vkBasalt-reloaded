@@ -500,8 +500,9 @@ namespace vkBasalt
                 + " for swapchain (rebuild)");
         }
 
-        // Create compute passes. They read from the final output slice.
-        if (pLogicalSwapchain->computePasses.empty() && pConfig->getOption<bool>("scopesEnabled", false)) {
+        // Create compute passes. Always create FrameAnalyzer so it's available when the AutoHDR tab is opened.
+        // It starts disabled to save GPU cycles until the user opens the tab.
+        if (pLogicalSwapchain->computePasses.empty()) {
             std::vector<VkImage> computeSrcImages;
             VkFormat analyzerFormat;
             VkColorSpaceKHR analyzerColorSpace;
@@ -523,7 +524,8 @@ namespace vkBasalt
 
             auto fa = std::make_shared<FrameAnalyzer>(
                 pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages, analyzerFormat, analyzerColorSpace);
-            fa->setEnabled(true);
+            // Start disabled. The overlay UI will enable it when the Auto HDR tab is opened.
+            fa->setEnabled(false);
             pLogicalSwapchain->computePasses.push_back(fa);
             Logger::debug("created compute passes (FrameAnalyzer)");
         }

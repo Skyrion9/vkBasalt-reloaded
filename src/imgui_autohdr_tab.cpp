@@ -571,67 +571,72 @@ namespace vkBasalt
                 }
             }
 
-            if (analyzer) {
-                bool enabled = analyzer->isEnabled();
-                if (ImGui::Checkbox("Enable Scopes (GPU)", &enabled)) {
-                    analyzer->setEnabled(enabled);
-                    m_pConfig->setGlobalOption("scopesEnabled", enabled ? "true" : "false");
-                    m_pConfig->saveGlobal();
-                }
+            // If the analyzer was just recreated during a rebuild while on this tab & user didn't disable scopes this session, ensure on.
+            if (analyzer && !m_userDisabledScopes && !analyzer->isEnabled()) {
+                analyzer->setEnabled(true);
+            }
 
-                if (enabled) {
-                    // Register textures again if the FrameAnalyzer was recreated (swapchain rebuild, soft reload, etc.)
-                    if (!m_scopeTexturesRegistered || reinterpret_cast<void*>(analyzer) != m_lastAnalyzerPtr) {
-                        if (m_scopeTexturesRegistered) {
-                            ImGui_ImplVulkan_RemoveTexture(
-                                (VkDescriptorSet) static_cast<uintptr_t>(m_scopeTextureIDs[0]));
-                            ImGui_ImplVulkan_RemoveTexture(
-                                (VkDescriptorSet) static_cast<uintptr_t>(m_scopeTextureIDs[1]));
-                            ImGui_ImplVulkan_RemoveTexture(
-                                (VkDescriptorSet) static_cast<uintptr_t>(m_scopeTextureIDs[2]));
-                        }
-                        m_scopeTextureIDs[0] = (ImTextureID) ImGui_ImplVulkan_AddTexture(
-                            analyzer->getScopeSampler(), analyzer->getScopeImageView(FrameAnalyzer::HISTOGRAM),
-                            VK_IMAGE_LAYOUT_GENERAL);
-                        m_scopeTextureIDs[1] = (ImTextureID) ImGui_ImplVulkan_AddTexture(
-                            analyzer->getScopeSampler(), analyzer->getScopeImageView(FrameAnalyzer::WAVEFORM),
-                            VK_IMAGE_LAYOUT_GENERAL);
-                        m_scopeTextureIDs[2] = (ImTextureID) ImGui_ImplVulkan_AddTexture(
-                            analyzer->getScopeSampler(), analyzer->getScopeImageView(FrameAnalyzer::VECTORSCOPE),
-                            VK_IMAGE_LAYOUT_GENERAL);
-                        m_scopeTexturesRegistered = true;
-                        m_lastAnalyzerPtr         = reinterpret_cast<void*>(analyzer);
+            // If the analyzer was just recreated (e.g. during a save/rebuild),
+            // respect the user's explicit disable choice for this session. Otherwise read live state.
+            bool scopesEnabledCfg = analyzer ? analyzer->isEnabled() : !m_userDisabledScopes;
+            if (ImGui::Checkbox("Enable Scopes (GPU)", &scopesEnabledCfg)) {
+                m_userDisabledScopes = !scopesEnabledCfg;
+                if (analyzer) {
+                    this->setScopesEnabled(scopesEnabledCfg);
+                }
+            }
+
+            if (analyzer && scopesEnabledCfg) {
+                // Register textures again if the FrameAnalyzer was recreated (swapchain rebuild, soft reload, etc.)
+                if (!m_scopeTexturesRegistered || reinterpret_cast<void*>(analyzer) != m_lastAnalyzerPtr) {
+                    if (m_scopeTexturesRegistered) {
+                        ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet) static_cast<uintptr_t>(m_scopeTextureIDs[0]));
+                        ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet) static_cast<uintptr_t>(m_scopeTextureIDs[1]));
+                        ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet) static_cast<uintptr_t>(m_scopeTextureIDs[2]));
                     }
-
-                    float windowW = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x * 2.0f;
-                    float imgSize = (windowW - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
-                    imgSize       = std::min(imgSize, kScopeMaxSize);
-                    if (imgSize < kScopeMinSize) imgSize = kScopeFallbackSize;
-
-                    // Row 1: Histogram | Waveform
-                    ImGui::Text("Histogram (Brightness Distribution)");
-                    ImGui::Image(m_scopeTextureIDs[0], ImVec2(imgSize, imgSize));
-                    ImGui::SameLine();
-
-                    ImGui::BeginGroup();
-                    ImGui::Text("Waveform (Luma vs Position)");
-                    ImGui::Image(m_scopeTextureIDs[1], ImVec2(imgSize, imgSize));
-                    ImGui::EndGroup();
-
-                    // Row 2: Vectorscope | Info
-                    ImGui::Text("Vectorscope (Chroma Distribution)");
-                    ImGui::Image(m_scopeTextureIDs[2], ImVec2(imgSize, imgSize));
-                    ImGui::SameLine();
-
-                    ImGui::BeginGroup();
-                    ImGui::Text("Reference");
-                    ImGui::TextDisabled("Center = neutral gray");
-                    ImGui::TextDisabled("Outward = saturation");
-                    ImGui::TextDisabled("Clockwise = hue shift");
-                    ImGui::EndGroup();
+                    m_scopeTextureIDs[0] = (ImTextureID) ImGui_ImplVulkan_AddTexture(
+                        analyzer->getScopeSampler(), analyzer->getScopeImageView(FrameAnalyzer::HISTOGRAM),
+                        VK_IMAGE_LAYOUT_GENERAL);
+                    m_scopeTextureIDs[1] = (ImTextureID) ImGui_ImplVulkan_AddTexture(
+                        analyzer->getScopeSampler(), analyzer->getScopeImageView(FrameAnalyzer::WAVEFORM),
+                        VK_IMAGE_LAYOUT_GENERAL);
+                    m_scopeTextureIDs[2] = (ImTextureID) ImGui_ImplVulkan_AddTexture(
+                        analyzer->getScopeSampler(), analyzer->getScopeImageView(FrameAnalyzer::VECTORSCOPE),
+                        VK_IMAGE_LAYOUT_GENERAL);
+                    m_scopeTexturesRegistered = true;
+                    m_lastAnalyzerPtr         = reinterpret_cast<void*>(analyzer);
                 }
-            } else {
-                ImGui::TextDisabled("Frame Analyzer not available.");
+
+                float windowW = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x * 2.0f;
+                float imgSize = (windowW - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
+                imgSize       = std::min(imgSize, kScopeMaxSize);
+                if (imgSize < kScopeMinSize) imgSize = kScopeFallbackSize;
+
+                // Row 1: Histogram | Waveform
+                ImGui::Text("Histogram (Brightness Distribution)");
+                ImGui::Image(m_scopeTextureIDs[0], ImVec2(imgSize, imgSize));
+                ImGui::SameLine();
+
+                ImGui::BeginGroup();
+                ImGui::Text("Waveform (Luma vs Position)");
+                ImGui::Image(m_scopeTextureIDs[1], ImVec2(imgSize, imgSize));
+                ImGui::EndGroup();
+
+                // Row 2: Vectorscope | Info
+                ImGui::Text("Vectorscope (Chroma Distribution)");
+                ImGui::Image(m_scopeTextureIDs[2], ImVec2(imgSize, imgSize));
+                ImGui::SameLine();
+
+                ImGui::BeginGroup();
+                ImGui::Text("Reference");
+                ImGui::TextDisabled("Center = neutral gray");
+                ImGui::TextDisabled("Outward = saturation");
+                ImGui::TextDisabled("Clockwise = hue shift");
+                ImGui::EndGroup();
+            } else if (!analyzer && scopesEnabledCfg) {
+                ImGui::TextDisabled("Frame Analyzer initializing... (wait one frame)");
+            } else if (!scopesEnabledCfg) {
+                ImGui::TextDisabled("Enable scopes above to view waveform, histogram, and vectorscope.");
             }
         }
 

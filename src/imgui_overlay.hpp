@@ -139,7 +139,8 @@ namespace vkBasalt
         bool m_scopeTexturesRegistered = false;
         void* m_lastAnalyzerPtr        = nullptr;
 
-        int m_lastScopeTab = -1;
+        int m_lastScopeTab        = -1;
+        bool m_userDisabledScopes = false;
 
         struct BrowserEntry
         {
