@@ -22,7 +22,6 @@ namespace vkBasalt
         ~HdrDebugEffect() override;
 
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-        void updateEffect() override {}
 
         static std::atomic<float> s_debugPeakNits;
         static std::atomic<float> s_debugWhiteNits;
@@ -41,11 +40,18 @@ namespace vkBasalt
         VkDescriptorPool m_descPool       = VK_NULL_HANDLE;
         std::vector<VkDescriptorSet> m_descSets;
 
+        VkBuffer m_ubo             = VK_NULL_HANDLE;
+        VkDeviceMemory m_uboMemory = VK_NULL_HANDLE;
+        void* m_mappedUbo          = nullptr;
+
+        void updateEffect() override;
+
         struct UboData
         {
             float peakNits;
             float windowSize;
             int patternType;
+            int padding; // Required for 16 byte UBO alignment
         };
     };
 

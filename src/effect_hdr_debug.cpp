@@ -25,67 +25,103 @@ namespace vkBasalt
         // Create image views for output images (Storage Images)
         m_outImageViews = createImageViews(pLogicalDevice, format, outputImages);
 
-        // Create descriptor set layout for output storage image
-        VkDescriptorSetLayoutBinding binding = {};
-        binding.binding                      = 0;
-        binding.descriptorType               = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        binding.descriptorCount              = 1;
-        binding.stageFlags                   = VK_SHADER_STAGE_COMPUTE_BIT;
+        // Create UBO for live slider updates
+        VkBufferCreateInfo uboInfo = {};
+        uboInfo.sType              = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        uboInfo.size               = sizeof(UboData);
+        uboInfo.usage              = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        m_dev->vkd.CreateBuffer(m_dev->device, &uboInfo, nullptr, &m_ubo);
+
+        VkMemoryRequirements memReqs;
+        m_dev->vkd.GetBufferMemoryRequirements(m_dev->device, m_ubo, &memReqs);
+        VkMemoryAllocateInfo allocInfo = {};
+        allocInfo.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize       = memReqs.size;
+        VkPhysicalDeviceMemoryProperties memProps;
+        m_dev->vki.GetPhysicalDeviceMemoryProperties(m_dev->physicalDevice, &memProps);
+        for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+            if ((memReqs.memoryTypeBits & (1 << i))
+                && (memProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+                && (memProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+                allocInfo.memoryTypeIndex = i;
+                break;
+            }
+        }
+        m_dev->vkd.AllocateMemory(m_dev->device, &allocInfo, nullptr, &m_uboMemory);
+        m_dev->vkd.BindBufferMemory(m_dev->device, m_ubo, m_uboMemory, 0);
+        m_dev->vkd.MapMemory(m_dev->device, m_uboMemory, 0, sizeof(UboData), 0, &m_mappedUbo);
+
+        // Create descriptor set layout for output storage image + UBO
+        VkDescriptorSetLayoutBinding bindings[2] = {};
+        bindings[0].binding                      = 0;
+        bindings[0].descriptorType               = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        bindings[0].descriptorCount              = 1;
+        bindings[0].stageFlags                   = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        bindings[1].binding         = 1;
+        bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bindings[1].descriptorCount = 1;
+        bindings[1].stageFlags      = VK_SHADER_STAGE_COMPUTE_BIT;
 
         VkDescriptorSetLayoutCreateInfo layoutInfo = {};
         layoutInfo.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount                    = 1;
-        layoutInfo.pBindings                       = &binding;
+        layoutInfo.bindingCount                    = 2;
+        layoutInfo.pBindings                       = bindings;
         m_dev->vkd.CreateDescriptorSetLayout(m_dev->device, &layoutInfo, nullptr, &m_setLayout);
 
         // Create descriptor pool
-        VkDescriptorPoolSize poolSize = {
-            .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = static_cast<uint32_t>(m_outImages.size())};
+        VkDescriptorPoolSize poolSizes[2] = {
+            {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = static_cast<uint32_t>(m_outImages.size())},
+            {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = static_cast<uint32_t>(m_outImages.size())}};
         VkDescriptorPoolCreateInfo poolInfo = {};
         poolInfo.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.maxSets                    = static_cast<uint32_t>(m_outImages.size());
-        poolInfo.poolSizeCount              = 1;
-        poolInfo.pPoolSizes                 = &poolSize;
+        poolInfo.poolSizeCount              = 2;
+        poolInfo.pPoolSizes                 = poolSizes;
         m_dev->vkd.CreateDescriptorPool(m_dev->device, &poolInfo, nullptr, &m_descPool);
 
         // Allocate descriptor sets
         m_descSets.resize(m_outImages.size());
         std::vector<VkDescriptorSetLayout> layouts(m_outImages.size(), m_setLayout);
-        VkDescriptorSetAllocateInfo allocInfo = {};
-        allocInfo.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool              = m_descPool;
-        allocInfo.descriptorSetCount          = static_cast<uint32_t>(m_outImages.size());
-        allocInfo.pSetLayouts                 = layouts.data();
-        m_dev->vkd.AllocateDescriptorSets(m_dev->device, &allocInfo, m_descSets.data());
+        VkDescriptorSetAllocateInfo descAllocInfo = {};
+        descAllocInfo.sType                       = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        descAllocInfo.descriptorPool              = m_descPool;
+        descAllocInfo.descriptorSetCount          = static_cast<uint32_t>(m_outImages.size());
+        descAllocInfo.pSetLayouts                 = layouts.data();
+        m_dev->vkd.AllocateDescriptorSets(m_dev->device, &descAllocInfo, m_descSets.data());
 
         // Update descriptor sets
+        VkDescriptorBufferInfo uboBufInfo = {.buffer = m_ubo, .offset = 0, .range = sizeof(UboData)};
         for (size_t i = 0; i < m_outImages.size(); i++) {
             VkDescriptorImageInfo imgInfo = {};
             imgInfo.imageView             = m_outImageViews[i];
             imgInfo.imageLayout           = VK_IMAGE_LAYOUT_GENERAL;
 
-            VkWriteDescriptorSet write = {};
-            write.sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write.dstSet               = m_descSets[i];
-            write.dstBinding           = 0;
-            write.descriptorCount      = 1;
-            write.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-            write.pImageInfo           = &imgInfo;
-            m_dev->vkd.UpdateDescriptorSets(m_dev->device, 1, &write, 0, nullptr);
+            VkWriteDescriptorSet writes[2] = {};
+            writes[0].sType                = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[0].dstSet               = m_descSets[i];
+            writes[0].dstBinding           = 0;
+            writes[0].descriptorCount      = 1;
+            writes[0].descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            writes[0].pImageInfo           = &imgInfo;
+
+            writes[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[1].dstSet          = m_descSets[i];
+            writes[1].dstBinding      = 1;
+            writes[1].descriptorCount = 1;
+            writes[1].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            writes[1].pBufferInfo     = &uboBufInfo;
+
+            m_dev->vkd.UpdateDescriptorSets(m_dev->device, 2, writes, 0, nullptr);
         }
 
-        // Pipeline layout with push constants
-        VkPushConstantRange pushRange = {};
-        pushRange.stageFlags          = VK_SHADER_STAGE_COMPUTE_BIT;
-        pushRange.offset              = 0;
-        pushRange.size                = sizeof(UboData);
-
+        // Pipeline layout (no push constants, using UBO instead for live updates)
         VkPipelineLayoutCreateInfo plInfo = {};
         plInfo.sType                      = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         plInfo.setLayoutCount             = 1;
         plInfo.pSetLayouts                = &m_setLayout;
-        plInfo.pushConstantRangeCount     = 1;
-        plInfo.pPushConstantRanges        = &pushRange;
+        plInfo.pushConstantRangeCount     = 0;
+        plInfo.pPushConstantRanges        = nullptr;
         m_dev->vkd.CreatePipelineLayout(m_dev->device, &plInfo, nullptr, &m_pipelineLayout);
 
         // Create compute pipeline
@@ -115,6 +151,9 @@ namespace vkBasalt
     HdrDebugEffect::~HdrDebugEffect()
     {
         if (!m_dev) return;
+        if (m_mappedUbo) m_dev->vkd.UnmapMemory(m_dev->device, m_uboMemory);
+        if (m_ubo) m_dev->vkd.DestroyBuffer(m_dev->device, m_ubo, nullptr);
+        if (m_uboMemory) m_dev->vkd.FreeMemory(m_dev->device, m_uboMemory, nullptr);
         if (m_computePipeline) m_dev->vkd.DestroyPipeline(m_dev->device, m_computePipeline, nullptr);
         if (m_pipelineLayout) m_dev->vkd.DestroyPipelineLayout(m_dev->device, m_pipelineLayout, nullptr);
         if (m_descPool) m_dev->vkd.DestroyDescriptorPool(m_dev->device, m_descPool, nullptr);
@@ -155,12 +194,6 @@ namespace vkBasalt
         m_dev->vkd.CmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_pipelineLayout, 0, 1, &m_descSets[imageIndex], 0, nullptr);
 
-        // Push constants
-        UboData pc = {
-            .peakNits = s_debugPeakNits.load(), .windowSize = s_windowSize.load(), .patternType = s_patternType.load()};
-        m_dev->vkd.CmdPushConstants(
-            commandBuffer, m_pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(UboData), &pc);
-
         // Dispatch
         uint32_t groupCountX = (m_extent.width + 15) / 16;
         uint32_t groupCountY = (m_extent.height + 15) / 16;
@@ -189,4 +222,15 @@ namespace vkBasalt
             &barrier2);
     }
 
+    void HdrDebugEffect::updateEffect()
+    {
+        if (m_mappedUbo) {
+            UboData data = {
+                .peakNits    = s_debugPeakNits.load(),
+                .windowSize  = s_windowSize.load(),
+                .patternType = s_patternType.load(),
+                .padding     = 0};
+            std::memcpy(m_mappedUbo, &data, sizeof(UboData));
+        }
+    }
 } // namespace vkBasalt
