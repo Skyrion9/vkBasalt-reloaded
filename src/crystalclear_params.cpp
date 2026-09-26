@@ -15,20 +15,19 @@ namespace vkBasalt
     {
         // Parameters disabled below certain quality levels. Returns the MAXIMUM qualityLevel at which the param is still active. If current qualityLevel > returned value, the param is disabled.
         static const std::unordered_map<std::string, int> thresholds = {
-            // Perfect only (qualityLevel == 0)
+            // Perfect only (qualityLevel == 0), RGB edge detection needed, + 4 taps
             {"crystalclearEnableRGBEdgeDetection", 0},
             {"crystalclearEnableFringeFix", 0},
             {"crystalclearFringeStrength", 0},
-            // High+ (qualityLevel <= 2): meso/macro local contrast High/Ultra+
-            {"crystalclearLocalContrastStrength", 2},
-            // High+ (qualityLevel <= 2)
+            // Ultra (qualityLevel <= 3), empty for now but +4 taps without color edge detection)
+            // High+ (qualityLevel <= 2), 13 taps
             {"crystalclearEnableCheckerboardFix", 2},
             {"crystalclearCheckerboardStrength", 2},
             {"crystalclearEnableDespeckle", 2},
             {"crystalclearDespeckleThreshold", 2},
             {"crystalclearEnableBC1Fix", 2},
             {"crystalclearBC1FixStrength", 2},
-            // Medium+ (qualityLevel <= 3)
+            // Medium+ (qualityLevel <= 3), 13 taps
             {"crystalclearShimmerReduction", 3},
             {"crystalclearEnableFilmGrain", 3},
             {"crystalclearFilmGrainStrength", 3},

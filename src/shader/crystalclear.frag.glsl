@@ -643,7 +643,7 @@ void main()
                 * (invGuard + guardStrength * gradientCoherence);
     }
 
-    if (localContrastStrength > 0.0 && qualityLevel <= 2) {
+    if (localContrastStrength > 0.0) {
         float wideAvg;
         if (qualityLevel <= 1) {
             // Perfect/Ultra: 8 tap macro contrast (step1 + step2)
