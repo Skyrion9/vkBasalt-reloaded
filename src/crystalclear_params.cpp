@@ -489,14 +489,14 @@ namespace vkBasalt
             {.key        = "crystalclearEnableBC1Fix",
              .label      = "BC1 Artifact Fix",
              .type       = ParamType::Bool,
-             .defaultVal = 1.0,
+             .defaultVal = 0.0,
              .minVal     = 0.0,
              .maxVal     = 1.0,
              .step       = 1.0,
              .category   = "Artifact Protection",
              .tooltip = "Suppresses green/magenta color fringing from BC1/DXT1 texture compression. Detects the 6-bit "
                         "green vs 5-bit R/B quantization bias in low-saturation regions and corrects it. Also boosts "
-                        "chroma smoothing at 4px block boundaries. Disabled on Medium and below. Default on.",
+                        "chroma smoothing at 4px block boundaries. Disabled on Medium and below. Default off.",
              SPEC(73, enableBC1Fix)},
 
             {.key        = "crystalclearBC1FixStrength",
