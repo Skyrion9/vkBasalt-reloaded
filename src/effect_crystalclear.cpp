@@ -15,7 +15,6 @@
 #include "logger.hpp"
 #include "logical_device.hpp"
 #include "shader_sources.hpp"
-#include "util.hpp"
 #include "format.hpp"
 
 namespace vkBasalt

@@ -1,5 +1,4 @@
 #include "effect_crystalclear.hpp"
-#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>

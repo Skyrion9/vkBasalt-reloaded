@@ -1,12 +1,10 @@
 #pragma once
 
 #include <cstdint>
-#include <cstddef>
 #include <string>
 #include <unordered_map>
 
 #include "effect_simple.hpp"
-#include "vulkan_include.hpp"
 
 namespace vkBasalt
 {
