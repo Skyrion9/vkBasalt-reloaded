@@ -619,14 +619,14 @@ namespace vkBasalt
             {.key        = "crystalclearContrast",
              .label      = "Contrast",
              .type       = ParamType::Float,
-             .defaultVal = 0.2,
+             .defaultVal = 0.35,
              .minVal     = -1.0,
              .maxVal     = 1.0,
              .step       = 0.01,
              .category   = "Exposure & Contrast",
              .tooltip    = "Contrast scaling with hermite S-curve midtone shaping. Pushes midtones toward the extremes "
                            "more aggressively than values already near black/white, creating a natural filmic contrast "
-                           "roll-off. Default 0.2.",
+                           "roll-off. Default 0.35.",
              SPEC(77, contrast)},
 
             // Color & Tone
