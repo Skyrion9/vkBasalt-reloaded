@@ -47,6 +47,10 @@ namespace vkBasalt
         DISPLAY_P3_NONLINEAR  = 6  // sRGB/Gamma Float (Display P3 Primaries)
     };
 
+    enum class ColorPrimaries { Rec709, Rec2020, DisplayP3 };
+    bool isHDRTransferFunction(ColorSpaceMode csm);
+
+    ColorPrimaries getPrimaries(ColorSpaceMode csm);
     ColorSpaceMode getColorSpaceMode(VkFormat format, VkColorSpaceKHR colorSpace);
 
     // Readable names for Vulkan enums (used by UI tabs)

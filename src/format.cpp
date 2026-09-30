@@ -293,4 +293,29 @@ namespace vkBasalt
         // Fallback: SDR sRGB
         return ColorSpaceMode::SDR_SRGB;
     }
+
+    ColorPrimaries getPrimaries(ColorSpaceMode csm)
+    {
+        switch (csm) {
+            case ColorSpaceMode::HDR10_PQ:
+            case ColorSpaceMode::HDR_HLG:
+            case ColorSpaceMode::HDR_BT2020_LINEAR: return ColorPrimaries::Rec2020;
+            case ColorSpaceMode::HDR_DISPLAY_P3_LINEAR:
+            case ColorSpaceMode::DISPLAY_P3_NONLINEAR: return ColorPrimaries::DisplayP3;
+            default: return ColorPrimaries::Rec709;
+        }
+    }
+
+    bool isHDRTransferFunction(ColorSpaceMode csm)
+    {
+        switch (csm) {
+            case ColorSpaceMode::HDR10_PQ:
+            case ColorSpaceMode::HDR_HLG:
+            case ColorSpaceMode::HDR_SCRGB:
+            case ColorSpaceMode::HDR_BT2020_LINEAR:
+            case ColorSpaceMode::HDR_DISPLAY_P3_LINEAR: return true;
+            default: return false;
+        }
+    }
+
 } // namespace vkBasalt
