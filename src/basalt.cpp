@@ -1018,8 +1018,9 @@ namespace vkBasalt
                 auto path           = pConfig->getOption<std::string>("screenshotPath", "");
                 auto fmt            = pConfig->getOption<std::string>("screenshotFormat", "png");
                 int quality         = pConfig->getOption<int>("screenshotQuality", 95);
-                ColorSpaceMode csm  = getColorSpaceMode(pLogicalSwapchain->format, pLogicalSwapchain->colorSpace);
-                captureScreenshot(pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path, fmt, quality, csm);
+                float whitePoint    = pConfig->getOption<float>("sdrWhitePointNits", 203.0f);
+                captureScreenshot(
+                    pLogicalDevice.get(), pLogicalSwapchain, index, beforeAfter, path, fmt, quality, whitePoint);
             }
         }
 

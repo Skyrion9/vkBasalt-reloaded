@@ -2,7 +2,7 @@
 
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
-#include "format.hpp"
+
 #include <atomic>
 #include <string>
 
@@ -22,7 +22,7 @@ namespace vkBasalt
         const std::string& outputPath,
         const std::string& format,
         int quality,
-        ColorSpaceMode csm);
+        float sdrWhitePointNits = 203.0f);
 
     // Returns true if a screenshot GPU copy is in flight.
     bool hasPendingScreenshot();
