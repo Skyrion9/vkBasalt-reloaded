@@ -5,16 +5,14 @@
 #include "format.hpp"
 #include <atomic>
 #include <string>
-#include <vector>
 
 namespace vkBasalt
 {
-
     extern std::atomic<bool> g_triggerScreenshot;
 
-    // Submits a GPU copy of the current frame. Non-blocking the actual file
+    // Submits a GPU copy of the current frame. Non-blocking as the actual file
     // write happens on the next frame via processPendingScreenshot().
-    // format: "png", "jpg", "bmp", "tga", "hdr"
+    // format: "png", "jpg", "bmp", "tga", "hdr", "exr"
     // quality: JPEG quality 1-100 (ignored for other formats)
     void captureScreenshot(
         LogicalDevice* pDevice,

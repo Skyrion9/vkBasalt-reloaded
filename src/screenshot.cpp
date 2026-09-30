@@ -1,12 +1,12 @@
 #include "screenshot.hpp"
-#include "format.hpp"
-#include "logger.hpp"
-#include "game_detect.hpp"
-#include "color_math.hpp"
 
-#include <math.h>
+#include "color_math.hpp"
+#include "format.hpp"
+#include "game_detect.hpp"
+#include "logger.hpp"
+
 #include <stb_image_write.h>
-#include "tinyexr.h"
+#include <tinyexr.h>
 
 #include <algorithm>
 #include <cmath>
