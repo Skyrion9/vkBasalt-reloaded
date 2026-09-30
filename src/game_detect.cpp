@@ -356,23 +356,49 @@ namespace vkBasalt
         return std::string(hex);
     }
 
-    // Binary content hashing (first 4MB + file size for performance)
+    // Binary content hashing: samples beginning, middle, and end of the file.
     static std::string hashBinaryContent(const std::string& path)
     {
         std::ifstream f(path, std::ios::binary);
         if (!f.good()) return "";
 
-        const size_t CHUNK = 4 * 1024 * 1024; // 4MB
-        std::vector<char> buf(CHUNK);
-        f.read(buf.data(), CHUNK);
-        auto bytesRead = static_cast<size_t>(f.gcount());
-        if (bytesRead == 0) return "";
-
-        std::string content(buf.data(), bytesRead);
-
-        // Append file size to distinguish files with identical first 4MB
         f.seekg(0, std::ios::end);
-        size_t fileSize = (size_t) f.tellg();
+        size_t fileSize = static_cast<size_t>(f.tellg());
+        if (fileSize == 0) return "";
+
+        const size_t SAMPLE_SIZE = 1024 * 1024; // 1MB per region
+        std::string content;
+        content.reserve(std::min(fileSize, SAMPLE_SIZE * 3) + 64);
+
+        // Region 1: Beginning (PE/ELF headers, import tables, initial code)
+        {
+            size_t readSize = std::min(SAMPLE_SIZE, fileSize);
+            std::vector<char> buf(readSize);
+            f.seekg(0);
+            f.read(buf.data(), static_cast<std::streamsize>(readSize));
+            content.append(buf.data(), static_cast<size_t>(f.gcount()));
+        }
+
+        // Region 2: Middle (game logic, patched functions)
+        if (fileSize > SAMPLE_SIZE) {
+            size_t midOffset = fileSize / 2;
+            size_t readSize  = std::min(SAMPLE_SIZE, fileSize - midOffset);
+            std::vector<char> buf(readSize);
+            f.seekg(static_cast<std::streamoff>(midOffset));
+            f.read(buf.data(), static_cast<std::streamsize>(readSize));
+            content.append(buf.data(), static_cast<size_t>(f.gcount()));
+        }
+
+        // Region 3: End (appended resources, version strings, embedded data)
+        if (fileSize > SAMPLE_SIZE * 2) {
+            size_t endOffset = fileSize - SAMPLE_SIZE;
+            std::vector<char> buf(SAMPLE_SIZE);
+            f.seekg(static_cast<std::streamoff>(endOffset));
+            f.read(buf.data(), static_cast<std::streamsize>(SAMPLE_SIZE));
+            content.append(buf.data(), static_cast<size_t>(f.gcount()));
+        }
+
+        // File size as final discriminator
         content += "|" + std::to_string(fileSize);
 
         return md5Hash(content);
