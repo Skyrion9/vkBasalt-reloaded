@@ -128,10 +128,28 @@ vec3 p3_to_rec709(vec3 c)
 }
 
 // Luma Coefficients
-const vec3 LUMA_REC709  = vec3(0.2126, 0.7152, 0.0722);
-const vec3 LUMA_REC2020 = vec3(0.2627, 0.6780, 0.0593);
-const vec3 LUMA_P3      = vec3(0.2289, 0.6917, 0.0793); // SMPTE RP 431-2 (DCI-P3 D65 / Display P3)
-const vec3 LUMA_REC601  = vec3(0.299, 0.587, 0.114);    // Rec.601 (standard for gamma-space spatial AA)
+const vec3 LUMA_REC709      = vec3(0.2126, 0.7152, 0.0722);
+const vec3 LUMA_REC2020     = vec3(0.2627, 0.6780, 0.0593);
+const vec3 LUMA_P3          = vec3(0.2289, 0.6917, 0.0793); // SMPTE RP 431-2 (DCI-P3 D65 / Display P3)
+const vec3 LUMA_REC601      = vec3(0.299, 0.587, 0.114);    // Rec.601 (standard for gamma-space spatial AA)
+const int PRIMARIES_REC709  = 0;
+const int PRIMARIES_REC2020 = 1;
+const int PRIMARIES_P3      = 2;
+
+int getPrimaries(int csm)
+{
+    if (csm == CSP_HDR10_PQ || csm == CSP_HDR_HLG || csm == CSP_HDR_BT2020_LINEAR) return PRIMARIES_REC2020;
+    if (csm == CSP_HDR_DISPLAY_P3_LINEAR || csm == CSP_DISPLAY_P3_NONLINEAR) return PRIMARIES_P3;
+    return PRIMARIES_REC709; // SDR_SRGB, HDR_SCRGB
+}
+
+vec3 getLumaCoeffs(int csm)
+{
+    int prim = getPrimaries(csm);
+    if (prim == PRIMARIES_REC2020) return LUMA_REC2020;
+    if (prim == PRIMARIES_P3) return LUMA_P3;
+    return LUMA_REC709;
+}
 
 // Standardized edge detection luma for spatial AA algorithms (FXAA, SMAA, CMAA2).
 // SDR: Evaluates gamma color using Rec.601 weights and a sqrt curve.
