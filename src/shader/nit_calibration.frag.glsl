@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
+#include "color_space.h"
 
 layout(set = 0, binding = 0) uniform sampler2D img;
 
@@ -20,66 +22,17 @@ layout(set = 1, binding = 0) readonly buffer AdaptiveMetrics
 }
 metrics;
 
-#define CSP_SDR_SRGB              0
-#define CSP_HDR10_PQ              1
-#define CSP_HDR_HLG               2
-#define CSP_HDR_SCRGB             3
-#define CSP_HDR_BT2020_LINEAR     4
-#define CSP_HDR_DISPLAY_P3_LINEAR 5
-#define CSP_DISPLAY_P3_NONLINEAR  6
-
 #define HDR_TM_QUALITY 0
 #define HDR_TM_FAST    1
 #define HDR_TM_HERMITE 2
 
-layout(constant_id = 65533) const int hdrToneMapperMode = HDR_TM_HERMITE;
-layout(constant_id = 65534) const int sourceColorSpace  = CSP_SDR_SRGB;
-layout(constant_id = 65535) const int destColorSpace    = CSP_SDR_SRGB;
+// Shifted down to avoid collision with colorSpaceMode (65535) from color_space.h
+layout(constant_id = 65532) const int hdrToneMapperMode = HDR_TM_HERMITE;
+layout(constant_id = 65533) const int sourceColorSpace  = CSP_SDR_SRGB;
+layout(constant_id = 65534) const int destColorSpace    = CSP_SDR_SRGB;
 
 layout(location = 0) in vec2 textureCoord;
 layout(location = 0) out vec4 fragColor;
-
-vec3 srgb_to_linear(vec3 c)
-{
-    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
-}
-vec3 linear_to_srgb(vec3 c)
-{
-    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
-}
-
-const float PQ_M1 = 0.1593017578125;
-const float PQ_M2 = 78.84375;
-const float PQ_C1 = 0.8359375;
-const float PQ_C2 = 18.8515625;
-const float PQ_C3 = 18.6875;
-
-vec3 pq_to_linear(vec3 c)
-{
-    vec3 N      = pow(max(c, vec3(0.0)), vec3(1.0 / PQ_M2));
-    vec3 linear = pow(max(N - PQ_C1, vec3(0.0)) / (PQ_C2 - PQ_C3 * N), vec3(1.0 / PQ_M1));
-    return linear * 100.0;
-}
-vec3 linear_to_pq(vec3 c)
-{
-    vec3 L = pow(max(c / 100.0, vec3(0.0)), vec3(PQ_M1));
-    return pow((PQ_C1 + PQ_C2 * L) / (vec3(1.0) + PQ_C3 * L), vec3(PQ_M2));
-}
-
-const float HLG_A = 0.17883277;
-const float HLG_B = 0.28466892;
-const float HLG_C = 0.55991073;
-
-vec3 hlg_to_linear(vec3 c)
-{
-    vec3 linear = mix(c * c / 3.0, (exp((c - HLG_C) / HLG_A) + HLG_B) / 12.0, step(vec3(0.5), c));
-    return linear * 10.0;
-}
-vec3 linear_to_hlg(vec3 c)
-{
-    vec3 L = max(c / 10.0, vec3(0.0));
-    return mix(sqrt(3.0 * L), HLG_A * log(12.0 * L - HLG_B) + HLG_C, step(vec3(1.0 / 12.0), L));
-}
 
 vec3 srgb_to_linear_fast(vec3 c)
 {
@@ -103,11 +56,6 @@ vec3 encodeDest(vec3 c)
     if (destColorSpace == CSP_SDR_SRGB || destColorSpace == CSP_DISPLAY_P3_NONLINEAR) return linear_to_srgb(c);
     return c;
 }
-
-// Gamut & Luma
-const vec3 LUMA_REC709  = vec3(0.2126, 0.7152, 0.0722);
-const vec3 LUMA_REC2020 = vec3(0.2627, 0.6780, 0.0593);
-const vec3 LUMA_P3      = vec3(0.2289, 0.6917, 0.0793);
 
 const float SDR_WHITE_LINEAR = 2.03; // 203 nits / 100
 
@@ -150,38 +98,25 @@ void main()
     vec4 raw    = textureLod(img, textureCoord, 0.0);
     vec3 linear = decodeSource(raw.rgb);
 
-    // Exhaustive Gamut Mapping (Source Primaries -> Dest Primaries)
-    if (sourceColorSpace == CSP_SDR_SRGB || sourceColorSpace == CSP_HDR_SCRGB) {
-        if (destColorSpace == CSP_HDR10_PQ || destColorSpace == CSP_HDR_HLG
-            || destColorSpace == CSP_HDR_BT2020_LINEAR) {
+    // Gamut Mapping (Source Primaries -> Dest Primaries)
+    int srcPrim = getPrimaries(sourceColorSpace);
+    int dstPrim = getPrimaries(destColorSpace);
+    if (srcPrim != dstPrim) {
+        if (srcPrim == PRIMARIES_REC709 && dstPrim == PRIMARIES_REC2020)
             linear = MAT_709_TO_2020 * linear;
-        } else if (destColorSpace == CSP_HDR_DISPLAY_P3_LINEAR || destColorSpace == CSP_DISPLAY_P3_NONLINEAR) {
+        else if (srcPrim == PRIMARIES_REC709 && dstPrim == PRIMARIES_P3)
             linear = MAT_709_TO_P3 * linear;
-        }
-    } else if (sourceColorSpace == CSP_HDR_DISPLAY_P3_LINEAR || sourceColorSpace == CSP_DISPLAY_P3_NONLINEAR) {
-        if (destColorSpace == CSP_HDR10_PQ || destColorSpace == CSP_HDR_HLG
-            || destColorSpace == CSP_HDR_BT2020_LINEAR) {
+        else if (srcPrim == PRIMARIES_P3 && dstPrim == PRIMARIES_REC2020)
             linear = MAT_P3_TO_2020 * linear;
-        } else if (destColorSpace == CSP_SDR_SRGB || destColorSpace == CSP_HDR_SCRGB) {
+        else if (srcPrim == PRIMARIES_P3 && dstPrim == PRIMARIES_REC709)
             linear = MAT_P3_TO_709 * linear;
-        }
-    } else if (
-        sourceColorSpace == CSP_HDR10_PQ || sourceColorSpace == CSP_HDR_HLG
-        || sourceColorSpace == CSP_HDR_BT2020_LINEAR) {
-        if (destColorSpace == CSP_HDR_DISPLAY_P3_LINEAR || destColorSpace == CSP_DISPLAY_P3_NONLINEAR) {
+        else if (srcPrim == PRIMARIES_REC2020 && dstPrim == PRIMARIES_P3)
             linear = MAT_2020_TO_P3 * linear;
-        } else if (destColorSpace == CSP_SDR_SRGB || destColorSpace == CSP_HDR_SCRGB) {
+        else if (srcPrim == PRIMARIES_REC2020 && dstPrim == PRIMARIES_REC709)
             linear = MAT_2020_TO_709 * linear;
-        }
     }
 
-    vec3 lumaCoeffs = LUMA_REC709;
-    if (destColorSpace == CSP_HDR10_PQ || destColorSpace == CSP_HDR_HLG || destColorSpace == CSP_HDR_BT2020_LINEAR) {
-        lumaCoeffs = LUMA_REC2020;
-    } else if (destColorSpace == CSP_HDR_DISPLAY_P3_LINEAR || destColorSpace == CSP_DISPLAY_P3_NONLINEAR) {
-        lumaCoeffs = LUMA_P3;
-    }
-    float luma       = dot(linear, lumaCoeffs);
+    float luma       = dot(linear, getLumaCoeffs(destColorSpace));
     float mappedLuma = luma;
 
     if (autoHdrEnabled == 1 && sourceColorSpace == CSP_SDR_SRGB) {

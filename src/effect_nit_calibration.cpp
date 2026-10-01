@@ -35,7 +35,7 @@ namespace vkBasalt
                              "quality: Reinhard, rational curve with matched slope, Hunt effect, achromatic clipping.\n"
                              "fast: Polynomial sRGB decode, simpler curve, MaxRGB clamp.\n"
                              "hermite: BT.2390 cubic spline, C1 continuous roll-off (default).",
-             SPEC(65533, toneMapperMode)},
+             SPEC(65532, toneMapperMode)},
 
             {.key        = "sdrWhitePointNits",
              .label      = "SDR White Point (nits)",
@@ -155,13 +155,13 @@ namespace vkBasalt
 
         specData.sourceColorSpace = static_cast<int32_t>(getColorSpaceMode(sourceFormat, sourceColorSpace));
         mapEntries.push_back(
-            {.constantID = 65534,
+            {.constantID = 65533,
              .offset     = offsetof(NitCalibrationSpecData, sourceColorSpace),
              .size       = sizeof(int32_t)});
 
         specData.destColorSpace = static_cast<int32_t>(getColorSpaceMode(destFormat, destColorSpace));
         mapEntries.push_back(
-            {.constantID = 65535, .offset = offsetof(NitCalibrationSpecData, destColorSpace), .size = sizeof(int32_t)});
+            {.constantID = 65534, .offset = offsetof(NitCalibrationSpecData, destColorSpace), .size = sizeof(int32_t)});
 
         // Determine if adaptive analyzer should be created before setting spec data
         m_hdrAdaptive = pConfig->getOption<bool>("hdrAdaptive", true);
