@@ -32,15 +32,7 @@ void main()
         vec4 raw    = textureLod(inputImage, uv, 0.0);
         vec3 linear = decodeToLinear(raw.rgb);
 
-        vec3 lumaCoeffs = LUMA_REC709;
-        if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG
-            || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
-            lumaCoeffs = LUMA_REC2020;
-        } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
-            lumaCoeffs = LUMA_P3;
-        }
-
-        float luma = dot(linear, lumaCoeffs);
+        float luma = dot(linear, getLumaCoeffs(colorSpaceMode));
 
         // HDR aware - map [0, infinity] to [0, 1] using Reinhard compression. Prevents HDR highlights (e.g. 10.0 linear = 1000 nits) from clamping into the final bin.
         float mappedLuma = luma / (1.0 + luma);

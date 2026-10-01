@@ -39,14 +39,8 @@ void main()
     vec3 linear = decodeToLinear(raw.rgb);
 
     // Luma coefficients depend on the color space primaries. scRGB uses Rec.709 primaries, so it correctly falls through to the default.
-    vec3 lumaCoeffs = LUMA_REC709;
-
-    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
-        lumaCoeffs = LUMA_REC2020;
-    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
-        lumaCoeffs = LUMA_P3;
-    }
-    float luma = dot(linear, lumaCoeffs);
+    vec3 lumaCoeffs = getLumaCoeffs(colorSpaceMode);
+    float luma      = dot(linear, lumaCoeffs);
 
     // In HDR, 1.0 = SDR white (100 nits). Highlights exceed 1.0. We map a reference HDR peak (1000 nits = 10.0 in linear space) to the 255 bin.
     // This prevents HDR highlights from crushing into a single bin while preserving SDR distribution.
@@ -77,16 +71,9 @@ void main()
     uint waveY = uint(lumaClamped * 255.0);
     atomicAdd(waveData[waveY * 256u + waveX], 1u);
 
-    // Vectorscope: Cb vs Cr (Scaling constants depend on primaries). We use the UNSCALED linear values to preserve true chrominance angles.
-    float cbScale = 1.8556; // Rec.709: 2 * (1 - 0.0722)
-    float crScale = 1.5748; // Rec.709: 2 * (1 - 0.2126)
-    if (colorSpaceMode == CSP_HDR10_PQ || colorSpaceMode == CSP_HDR_HLG || colorSpaceMode == CSP_HDR_BT2020_LINEAR) {
-        cbScale = 1.8814; // Rec.2020: 2 * (1 - 0.0593)
-        crScale = 1.4746; // Rec.2020: 2 * (1 - 0.2627)
-    } else if (colorSpaceMode == CSP_HDR_DISPLAY_P3_LINEAR || colorSpaceMode == CSP_DISPLAY_P3_NONLINEAR) {
-        cbScale = 1.8414; // Display P3: 2 * (1 - 0.0793)
-        crScale = 1.5422; // Display P3: 2 * (1 - 0.2289)
-    }
+    // Vectorscope: Cb vs Cr. Scaling constants are mathematically derived from the luma coefficients to preserve true chrominance angles for the active primaries.
+    float cbScale = 2.0 * (1.0 - lumaCoeffs.b);
+    float crScale = 2.0 * (1.0 - lumaCoeffs.r);
 
     float cb  = 0.5 + (linear.b - luma) / cbScale;
     float cr  = 0.5 + (linear.r - luma) / crScale;
