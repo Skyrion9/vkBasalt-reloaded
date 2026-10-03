@@ -17,9 +17,12 @@ end
 
 # Configure
 meson setup build --prefix=/usr \
-  --buildtype=release \
-  -Dc_args='-march=native' \
-  -Dcpp_args='-march=native'
+                  --buildtype=release \
+                  -Db_lto=true \
+                  -Db_lto_mode=thin \
+                  -Doptimization=2 \
+                  -Dc_args='-march=native' \
+                  -Dcpp_args='-march=native'
 
 # Compile
 if meson compile -C build

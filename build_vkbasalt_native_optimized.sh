@@ -24,9 +24,12 @@ fi
 # -march=native: Targets your exact CPU microarchitecture
 # All other flags (O3, ThinLTO, visibility, ndebug, C++20) are in meson.build
 meson setup build --prefix=/usr \
-  --buildtype=release \
-  -Dc_args='-march=native' \
-  -Dcpp_args='-march=native'
+                  --buildtype=release \
+                  -Db_lto=true \
+                  -Db_lto_mode=thin \
+                  -Doptimization=2 \
+                  -Dc_args='-march=native' \
+                  -Dcpp_args='-march=native'
 
 # Compile
 if meson compile -C build; then
