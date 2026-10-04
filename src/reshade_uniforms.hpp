@@ -14,7 +14,7 @@
 
 namespace vkBasalt
 {
-    void enumerateReshadeUniforms(reshadefx::module module);
+    void enumerateReshadeUniforms(reshadefx::effect_module module);
 
     class ReshadeUniform
     {
@@ -27,7 +27,7 @@ namespace vkBasalt
         uint32_t size{};
     };
 
-    std::vector<std::shared_ptr<ReshadeUniform>> createReshadeUniforms(reshadefx::module module);
+    std::vector<std::shared_ptr<ReshadeUniform>> createReshadeUniforms(reshadefx::effect_module module);
 
     class FrameTimeUniform : public ReshadeUniform
     {

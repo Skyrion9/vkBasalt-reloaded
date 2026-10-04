@@ -237,7 +237,7 @@ private:
 		return block.instructions.emplace_back(op);
 	}
 
-	void write_result(module &module) override
+	void write_result(effect_module &module) override
 	{
 		// First initialize the UBO type now that all member types are known
 		if (_global_ubo_type != 0)

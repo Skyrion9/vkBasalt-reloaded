@@ -278,7 +278,7 @@ namespace reshadefx
 	/// <summary>
 	/// In-memory representation of an effect file.
 	/// </summary>
-	struct module
+	struct effect_module
 	{
 		std::string hlsl;
 		std::vector<uint32_t> spirv;

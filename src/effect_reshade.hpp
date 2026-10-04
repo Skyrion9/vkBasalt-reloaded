@@ -78,7 +78,7 @@ namespace vkBasalt
         std::vector<VkSampler> samplers;
         Config* pConfig;
         std::string effectName;
-        reshadefx::module module;
+        reshadefx::effect_module module;
         std::vector<VkDeviceMemory> textureMemory;
 
         VkFormat inputOutputFormatUNORM;

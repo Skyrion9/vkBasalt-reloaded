@@ -20,7 +20,7 @@
 
 namespace vkBasalt
 {
-    void enumerateReshadeUniforms(reshadefx::module module)
+    void enumerateReshadeUniforms(reshadefx::effect_module module)
     {
         for (auto& uniform : module.uniforms) {
             // Fixed: Safely check if the "source" annotation exists before dereferencing
@@ -37,7 +37,7 @@ namespace vkBasalt
         }
     }
 
-    std::vector<std::shared_ptr<ReshadeUniform>> createReshadeUniforms(reshadefx::module module)
+    std::vector<std::shared_ptr<ReshadeUniform>> createReshadeUniforms(reshadefx::effect_module module)
     {
         // Fixed: Seed the random number generator once so std::rand() is actually random
         static bool seeded = false;
