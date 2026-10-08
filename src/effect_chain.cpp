@@ -1,5 +1,6 @@
 #include "effect_chain.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <memory>
@@ -44,6 +45,8 @@ namespace vkBasalt
     extern bool g_vramReclaimedForCurrentBypass;
     extern bool g_passthroughActive;
     extern bool g_passthroughTimerActive;
+    extern std::chrono::steady_clock::time_point g_effectsDisabledTime;
+    extern bool g_effectsDisabledTimerActive;
 
     bool isHdrOutputNeeded(Config* pConfig, LogicalSwapchain* pLogicalSwapchain)
     {
@@ -165,6 +168,7 @@ namespace vkBasalt
         }
 
         pLogicalSwapchain->effects.clear();
+        pLogicalSwapchain->nitCalibrationEffect = nullptr;
         pLogicalSwapchain->defaultTransfer.reset();
         pLogicalSwapchain->defaultHdrEffect.reset();
         pLogicalSwapchain->defaultHdrDebugEffect.reset();
@@ -419,10 +423,10 @@ namespace vkBasalt
         }
 
         // Append HDR Output Effect (Auto HDR / Nit Calibration)
-        pLogicalSwapchain->nitCalibrationEffect = nullptr; // Reset before rebuild
-        if (shouldAppendHdrOutput) {
+        pLogicalSwapchain->nitCalibrationEffect = nullptr;
+        if (shouldAppendHdrOutput && !bypassedAndReclaimed) {
             std::vector<VkImage> hdrInputImages;
-            if (bypassedAndReclaimed || effectStrings.empty()) {
+            if (effectStrings.empty()) {
                 hdrInputImages = std::vector<VkImage>(
                     pLogicalSwapchain->fakeImages.begin(),
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
@@ -469,16 +473,30 @@ namespace vkBasalt
                     pLogicalSwapchain->images, pConfig)));
         }
 
-        // Fallback if no valid effects were created, use plain transfer from slice 0
+        // Fallback if no valid effects were created
         if (pLogicalSwapchain->effects.empty()) {
-            Logger::warn("No valid effects could be created; falling back to plain transfer.");
-            pLogicalSwapchain->effects.push_back(
-                std::shared_ptr<Effect>(new TransferEffect(
-                    pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
-                    std::vector<VkImage>(
-                        pLogicalSwapchain->fakeImages.begin(),
-                        pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
-                    pLogicalSwapchain->images, pConfig)));
+            if (shouldAppendHdrOutput) {
+                std::vector<VkImage> slice0Images(
+                    pLogicalSwapchain->fakeImages.begin(),
+                    pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
+                pLogicalSwapchain->effects.push_back(
+                    std::make_shared<NitCalibrationEffect>(
+                        pLogicalDevice, pLogicalSwapchain->sourceFormat, pLogicalSwapchain->destFormat,
+                        pLogicalSwapchain->imageExtent, slice0Images, pLogicalSwapchain->images, pConfig,
+                        pLogicalSwapchain->sourceColorSpace, pLogicalSwapchain->destColorSpace,
+                        pLogicalSwapchain->autoHdrActive, pLogicalSwapchain->monitorName));
+                pLogicalSwapchain->nitCalibrationEffect = pLogicalSwapchain->effects.back().get();
+                Logger::warn("Fallback: using NitCalibrationEffect for SDR->HDR conversion.");
+            } else {
+                Logger::warn("No valid effects could be created; falling back to plain transfer.");
+                pLogicalSwapchain->effects.push_back(
+                    std::shared_ptr<Effect>(new TransferEffect(
+                        pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
+                        std::vector<VkImage>(
+                            pLogicalSwapchain->fakeImages.begin(),
+                            pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount),
+                        pLogicalSwapchain->images, pConfig)));
+            }
         }
 
         VkImageView depthImageView =
@@ -604,6 +622,15 @@ namespace vkBasalt
         if (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrConfigEnabled != pLogicalSwapchain->autoHdrActive) {
             Logger::debug("AutoHDR config changed, forcing swapchain rebuild to apply format change...");
             pLogicalSwapchain->forceSwapchainRebuild = true;
+
+            // Reset passthrough state so the next CreateSwapchainKHR allocates fake images.
+            g_passthroughActive                    = false;
+            g_passthroughTimerActive               = false;
+            pLogicalSwapchain->passthroughEligible = false;
+
+            if (!g_effectsEnabled.load() && !g_vramReclaimedForCurrentBypass) {
+                g_effectsDisabledTime = std::chrono::steady_clock::now();
+            }
             return;
         }
 

@@ -992,9 +992,12 @@ namespace vkBasalt
             // Guard: fall back to commandBuffersNoEffect if commandBuffersEffect is empty (e.g., after rebuildFallbackChain allocated but didn't record it)
             bool useEffectChain           = g_effectsEnabled.load() && !pLogicalSwapchain->commandBuffersEffect.empty()
                                             && index < pLogicalSwapchain->commandBuffersEffect.size();
-            submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers    = useEffectChain ? &(pLogicalSwapchain->commandBuffersEffect[index])
-                                                           : &(pLogicalSwapchain->commandBuffersNoEffect[index]);
+            bool useNoEffectChain         = !useEffectChain && !pLogicalSwapchain->commandBuffersNoEffect.empty()
+                                            && index < pLogicalSwapchain->commandBuffersNoEffect.size();
+            submitInfo.commandBufferCount = (useEffectChain || useNoEffectChain) ? 1 : 0;
+            submitInfo.pCommandBuffers    = useEffectChain     ? &(pLogicalSwapchain->commandBuffersEffect[index])
+                                            : useNoEffectChain ? &(pLogicalSwapchain->commandBuffersNoEffect[index])
+                                                               : nullptr;
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores    = &(pLogicalSwapchain->semaphores[index]);
 
