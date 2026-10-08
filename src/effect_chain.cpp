@@ -318,9 +318,9 @@ namespace vkBasalt
         auto autoHdrOpt       = pConfig->getOption<std::string>("autoHdr", "on");
         bool autoHdrEnabled   = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
-
+        bool forceHdrPgo      = (std::getenv("VKBASALT_FORCE_HDR_PGO") != nullptr);
         bool shouldAppendHdrOutput =
-            (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled && pLogicalSwapchain->autoHdrActive)
+            (srcCsm == ColorSpaceMode::SDR_SRGB && (autoHdrEnabled || forceHdrPgo) && pLogicalSwapchain->autoHdrActive)
             || (srcCsm != ColorSpaceMode::SDR_SRGB
                 && pConfig->getOption<std::string>("hdrCalibrationMode", "passthrough") != "off");
 
@@ -618,8 +618,9 @@ namespace vkBasalt
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
         auto autoHdrOpt       = pConfig->getOption<std::string>("autoHdr", "on");
         bool autoHdrConfigEnabled = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
-
-        if (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrConfigEnabled != pLogicalSwapchain->autoHdrActive) {
+        bool forceHdrPgo          = (std::getenv("VKBASALT_FORCE_HDR_PGO") != nullptr);
+        if (srcCsm == ColorSpaceMode::SDR_SRGB
+            && (autoHdrConfigEnabled || forceHdrPgo) != pLogicalSwapchain->autoHdrActive) {
             Logger::debug("AutoHDR config changed, forcing swapchain rebuild to apply format change...");
             pLogicalSwapchain->forceSwapchainRebuild = true;
 

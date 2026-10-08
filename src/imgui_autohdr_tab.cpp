@@ -53,7 +53,12 @@ namespace vkBasalt
 
                 // Auto HDR toggle inline
                 ImGui::BeginDisabled(gameIsHDR);
-                bool autoHdr = m_pConfig->getOption<bool>("autoHdr", true);
+                bool autoHdr     = m_pConfig->getOption<bool>("autoHdr", true);
+                bool forceHdrPgo = (std::getenv("VKBASALT_FORCE_HDR_PGO") != nullptr);
+
+                // Reflect forced PGO state in the UI (Works regardless of this but helpful for debug)
+                if (forceHdrPgo) autoHdr = true;
+
                 if (ImGui::Checkbox("Auto HDR", &autoHdr)) {
                     m_pConfig->setOption("autoHdr", autoHdr ? "on" : "off");
                     m_pConfig->savePerGame();
@@ -61,6 +66,12 @@ namespace vkBasalt
                     if (m_pSwapchain) m_pSwapchain->forceSwapchainRebuild = true;
                 }
                 ImGui::EndDisabled();
+
+                if (forceHdrPgo) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.1f, 1.0f), "(PGO Forced)");
+                }
+
                 if (gameIsHDR && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
                     ImGui::SetTooltip("Disabled: Game is already outputting HDR.");
                 }

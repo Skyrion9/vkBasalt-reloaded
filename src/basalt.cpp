@@ -565,8 +565,15 @@ namespace vkBasalt
         bool autoHdrEnabled   = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
         ColorSpaceMode srcCsm = getColorSpaceMode(pCreateInfo->imageFormat, pCreateInfo->imageColorSpace);
 
+        // For PGO training force HDR mutation even if AutoHDR is disabled in config. Allows HDR compute/fragment shaders during headless CI profiling.
+        bool forceHdrPgo = (std::getenv("VKBASALT_FORCE_HDR_PGO") != nullptr);
+        if (forceHdrPgo) {
+            Logger::info("PGO Training: Forcing HDR swapchain mutation via VKBASALT_FORCE_HDR_PGO");
+        }
+
         // Auto HDR requires mutable format to bridge SDR fake images and HDR real swapchain images
-        if (srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled && pLogicalDevice->supportsMutableFormat) {
+        if (((srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled) || forceHdrPgo)
+            && pLogicalDevice->supportsMutableFormat) {
             uint32_t formatCount = 0;
             pLogicalDevice->vki.GetPhysicalDeviceSurfaceFormatsKHR(
                 pLogicalDevice->physicalDevice, pCreateInfo->surface, &formatCount, nullptr);
