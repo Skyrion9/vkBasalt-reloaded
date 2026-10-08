@@ -158,6 +158,12 @@ namespace vkBasalt
         }
         pLogicalSwapchain->computePasses.clear();
 
+        // Cap graveyard size to prevent VRAM leaks during frequent soft reloads/toggles.
+        // The overlay only needs the most recent previous FrameAnalyzer to survive until it updates its texture IDs in the next frame.
+        while (pLogicalSwapchain->computePassGraveyard.size() > 2) {
+            pLogicalSwapchain->computePassGraveyard.erase(pLogicalSwapchain->computePassGraveyard.begin());
+        }
+
         pLogicalSwapchain->effects.clear();
         pLogicalSwapchain->defaultTransfer.reset();
         pLogicalSwapchain->defaultHdrEffect.reset();
@@ -500,9 +506,9 @@ namespace vkBasalt
                 + " for swapchain (rebuild)");
         }
 
-        // Create compute passes. Always create FrameAnalyzer so it's available when the AutoHDR tab is opened.
-        // It starts disabled to save GPU cycles until the user opens the tab.
-        if (pLogicalSwapchain->computePasses.empty()) {
+        // Always create compute passes & FrameAnalyzer so it's available when the AutoHDR tab is opened.
+        // FrameAnalyzer starts disabled to save GPU cycles until the user opens the tab.
+        {
             std::vector<VkImage> computeSrcImages;
             VkFormat analyzerFormat;
             VkColorSpaceKHR analyzerColorSpace;
@@ -654,6 +660,11 @@ namespace vkBasalt
         // Move old compute passes to the graveyard instead of destroying them immediately.
         for (auto& pass : pLogicalSwapchain->computePasses) {
             pLogicalSwapchain->computePassGraveyard.push_back(pass);
+        }
+
+        // Cap graveyard size to prevent VRAM leaks during frequent soft reloads.
+        while (pLogicalSwapchain->computePassGraveyard.size() > 2) {
+            pLogicalSwapchain->computePassGraveyard.erase(pLogicalSwapchain->computePassGraveyard.begin());
         }
 
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {

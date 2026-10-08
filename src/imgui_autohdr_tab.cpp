@@ -57,6 +57,7 @@ namespace vkBasalt
                 if (ImGui::Checkbox("Auto HDR", &autoHdr)) {
                     m_pConfig->setOption("autoHdr", autoHdr ? "on" : "off");
                     m_pConfig->savePerGame();
+                    invalidateScopeTextures();
                     if (m_pSwapchain) m_pSwapchain->forceSwapchainRebuild = true;
                 }
                 ImGui::EndDisabled();

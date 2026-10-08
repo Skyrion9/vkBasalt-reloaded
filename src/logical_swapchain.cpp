@@ -6,6 +6,7 @@ namespace vkBasalt
     void LogicalSwapchain::destroy()
     {
         computePasses.clear();
+        computePassGraveyard.clear();
         effects.clear();
         defaultTransfer.reset();
         defaultHdrEffect.reset();
