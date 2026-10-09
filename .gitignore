@@ -3,3 +3,8 @@
 *.so
 *.o
 build*/
+
+# PGO profile data
+pgo-data/
+*.profraw
+*.profdata
