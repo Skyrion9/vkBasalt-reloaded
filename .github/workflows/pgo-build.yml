@@ -1,0 +1,418 @@
+name: PGO Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a Beta Release (pre-release) after build'
+        required: false
+        default: false
+        type: boolean
+      version:
+        description: 'Version tag for the release (e.g., v0.1.0-beta.1)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  pgo-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Create PGO build script
+        run: |
+          cat > build_pgo.sh << 'SCRIPT'
+          #!/bin/bash
+          set -euo pipefail
+
+          # Install dependencies
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git meson ninja \
+            vulkan-headers vulkan-icd-loader vulkan-tools vulkan-validation-layers \
+            mesa vulkan-swrast llvm lld clang \
+            libx11 libxrandr libxi libxcb wayland wayland-protocols libxkbcommon \
+            zstd glslang spirv-tools spirv-headers \
+            xorg-server-xvfb
+
+          export CC=clang
+          export CXX=clang++
+          export CC_LD=lld
+          export CXX_LD=lld
+
+          # Build instrumented
+          meson setup builddir-gen \
+            --buildtype=release \
+            -Db_lto=true \
+            -Db_lto_mode=thin \
+            -Doptimization=2 \
+            -Dpgo=generate \
+            -Dpgo_dir=$(pwd)/pgo-data
+          meson compile -C builddir-gen
+
+          # Debug Vulkan ICD discovery
+          echo "=== Searching for lavapipe ICD files ==="
+          find /usr/lib /usr/share -name "*lvp*" 2>/dev/null || echo "No lavapipe files found"
+          echo ""
+          echo "=== Contents of /usr/share/vulkan/icd.d/ ==="
+          ls -la /usr/share/vulkan/icd.d/ 2>/dev/null || echo "Directory does not exist"
+          echo ""
+          echo "=== Attempting vulkaninfo ==="
+          vulkaninfo --summary 2>&1 | head -30 || echo "vulkaninfo failed"
+
+          # Generate PGO profiles
+          export VKBASALT_FORCE_HDR_PGO=1
+          mkdir -p $(pwd)/pgo-data
+          mkdir -p /tmp/pgo
+          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          export LLVM_PROFILE_FILE="$(pwd)/pgo-data/vkbasalt-%m-%p.profraw"
+
+          echo "=== Baseline: vkcube WITHOUT vkBasalt layer ==="
+          rm -f /tmp/.X98-lock /tmp/.X11-unix/X98 2>/dev/null || true
+          Xvfb :98 -screen 0 1920x1080x24 &
+          BASELINE_XVFB=$!
+          sleep 2
+          export DISPLAY=:98
+          timeout --signal=INT 10 vkcube 2>&1 || echo "Baseline vkcube exited with code $?"
+          kill $BASELINE_XVFB 2>/dev/null || true
+          wait $BASELINE_XVFB 2>/dev/null || true
+          unset DISPLAY
+          echo "=== Baseline complete ==="
+          echo ""
+
+          LAYER_SO_PATH="$(pwd)/builddir-gen/src/libvkbasalt.so"
+          mkdir -p /root/.local/share/vulkan/implicit_layer.d
+          cat > /root/.local/share/vulkan/implicit_layer.d/vkBasalt.json << MANIFEST
+          {
+              "file_format_version": "1.0.0",
+              "layer": {
+                  "name": "VK_LAYER_VKBASALT_post_processing",
+                  "type": "GLOBAL",
+                  "library_path": "$LAYER_SO_PATH",
+                  "api_version": "1.3.223",
+                  "implementation_version": "1",
+                  "description": "a post processing layer",
+                  "functions": {
+                      "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
+                      "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
+                  },
+                  "enable_environment": { "ENABLE_VKBASALT_RELOADED": "1" },
+                  "disable_environment": { "DISABLE_VKBASALT_RELOADED": "1" }
+              }
+          }
+          MANIFEST
+
+          export ENABLE_VKBASALT_RELOADED=1
+
+          cat > /tmp/pgo/exit_handler.c << 'EOF'
+          #include <signal.h>
+          #include <stdlib.h>
+          static void on_signal(int s) { (void) s; exit(0); }
+          __attribute__((constructor)) static void init(void) { signal(SIGTERM, on_signal); signal(SIGINT, on_signal); }
+          EOF
+          clang -shared -fPIC -o /tmp/pgo/libexit_handler.so /tmp/pgo/exit_handler.c
+
+          CONFIG_DIR="/root/.config/vkBasalt-reloaded"
+          CONFIG_PATH="$CONFIG_DIR/vkBasalt-reloaded.conf"
+          mkdir -p "$CONFIG_DIR"
+          mkdir -p "$CONFIG_DIR/games"
+
+          echo "=== Verbose loader test WITH vkBasalt layer ==="
+          export VK_LOADER_DEBUG=all
+          rm -f /tmp/.X98-lock /tmp/.X11-unix/X98 2>/dev/null || true
+          Xvfb :98 -screen 0 1920x1080x24 &
+          VERBOSE_XVFB=$!
+          sleep 2
+          export DISPLAY=:98
+          
+          cat > "$CONFIG_PATH" << 'EOF'
+          effects=cas
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          EOF
+          
+          LD_PRELOAD=/tmp/pgo/libexit_handler.so timeout --preserve-status --signal=TERM --kill-after=5 10 vkcube 2>&1 || echo "Verbose vkcube exited with code $?"
+          kill $VERBOSE_XVFB 2>/dev/null || true
+          wait $VERBOSE_XVFB 2>/dev/null || true
+          unset DISPLAY
+          unset VK_LOADER_DEBUG
+          echo "=== Verbose test complete ==="
+          echo ""
+
+          run_profile() {
+              local duration=$1
+              local log_file="${2:-/dev/null}"
+              local exit_code=0
+              rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
+              Xvfb :99 -screen 0 1920x1080x24 &
+              local XVFB_PID=$!
+              sleep 2
+              export DISPLAY=:99
+              LD_PRELOAD=/tmp/pgo/libexit_handler.so timeout --preserve-status --signal=TERM --kill-after=5 "$duration" vkcube > "$log_file" 2>&1 || exit_code=$?
+              cat "$log_file"
+              unset DISPLAY
+              kill $XVFB_PID 2>/dev/null || true
+              wait $XVFB_PID 2>/dev/null || true
+              echo "run_profile(${duration}s) exited with code $exit_code"
+              if [ "$exit_code" -ge 128 ] && [ "$exit_code" -ne 137 ] && [ "$exit_code" -ne 143 ]; then
+                  echo "  WARNING: vkcube may have crashed with signal $((exit_code - 128)). Profile data may be incomplete."
+              fi
+              return 0
+          }
+
+          # Config 1: CMAA2 Only
+          cat > "$CONFIG_PATH" << 'EOF'
+          effects=cmaa2
+          cmaa2QualityPreset=2
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          EOF
+          run_profile 30 /tmp/pgo/config1.log
+          if ! grep -q "vkBasalt info" /tmp/pgo/config1.log 2>/dev/null; then
+              echo "ERROR: vkBasalt layer did not load. Check manifest and .so path."
+              exit 1
+          fi
+          echo "✓ Layer load verified"
+
+          # Config 2: CrystalClear Only
+          cat > "$CONFIG_PATH" << 'EOF'
+          effects=crystalclear
+          crystalclearPreset=devfav
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          EOF
+          run_profile 30
+
+          # Config 3: The Mega Chain + Scopes + HDR
+          cat > "$CONFIG_PATH" << 'EOF'
+          effects=fxaa:smaa:cmaa2:deband:dls:cas:clarity:clarityrcas:crystalclear
+          scopesEnabled=true
+          autoHdr=true
+          hdrCalibrationMode=manual
+          sdrWhitePointNits=203
+          hdrPeakNits=1000
+          casSharpness=0.5
+          clarityStrength=0.6
+          crystalclearPreset=devfav
+          debandRange=16.0
+          dlsSharpen=0.5
+          cmaa2QualityPreset=2
+          enableOnLaunch=true
+          EOF
+          run_profile 60
+
+          # Config 4: Passthrough / Bypass path
+          cat > "$CONFIG_PATH" << 'EOF'
+          effects=
+          scopesEnabled=false
+          autoHdr=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          EOF
+          run_profile 15
+
+          # Config 5: Depth capture interception
+          cat > "$CONFIG_PATH" << 'EOF'
+          effects=cas
+          depthCapture=on
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          EOF
+          run_profile 15
+
+          echo "Profile files generated:"
+          ls -la $(pwd)/pgo-data/*.profraw 2>/dev/null || echo "WARNING: No profile files found"
+
+          # Merge PGO profiles
+          if ! ls $(pwd)/pgo-data/*.profraw 1>/dev/null 2>&1; then
+              echo "ERROR: No .profraw files were generated. Aborting."
+              exit 1
+          fi
+          llvm-profdata merge \
+            -output=$(pwd)/pgo-data/default.profdata \
+            $(pwd)/pgo-data/*.profraw
+          echo "Merged profile size: $(stat -c%s $(pwd)/pgo-data/default.profdata) bytes"
+
+          # Build optimized
+          meson setup builddir-pgo \
+            --buildtype=release \
+            -Db_lto=true \
+            -Db_lto_mode=thin \
+            -Doptimization=2 \
+            -Dpgo=use \
+            -Dpgo_dir=$(pwd)/pgo-data
+          meson compile -C builddir-pgo
+
+          # Verify PGO build
+          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          export ENABLE_VKBASALT_RELOADED=1
+          LAYER_SO_PATH="$(pwd)/builddir-pgo/src/libvkbasalt.so"
+          mkdir -p /root/.local/share/vulkan/implicit_layer.d
+          cat > /root/.local/share/vulkan/implicit_layer.d/vkBasalt.json << MANIFEST
+          {
+              "file_format_version": "1.0.0",
+              "layer": {
+                  "name": "VK_LAYER_VKBASALT_post_processing",
+                  "type": "GLOBAL",
+                  "library_path": "$LAYER_SO_PATH",
+                  "api_version": "1.3.223",
+                  "implementation_version": "1",
+                  "description": "a post processing layer",
+                  "functions": {
+                      "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
+                      "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
+                  },
+                  "enable_environment": { "ENABLE_VKBASALT_RELOADED": "1" },
+                  "disable_environment": { "DISABLE_VKBASALT_RELOADED": "1" }
+              }
+          }
+          MANIFEST
+
+          mkdir -p "$CONFIG_DIR"
+          cat > "$CONFIG_DIR/vkBasalt-reloaded.conf" << 'EOF'
+          effects=fxaa:cas
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          EOF
+
+          rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
+          Xvfb :99 -screen 0 1920x1080x24 &
+          XVFB_PID=$!
+          sleep 2
+          export DISPLAY=:99
+          VERIFY_EXIT=0
+          LD_PRELOAD=/tmp/pgo/libexit_handler.so timeout --preserve-status --signal=TERM --kill-after=5 15 vkcube 2>&1 || VERIFY_EXIT=$?
+          unset DISPLAY
+          kill $XVFB_PID 2>/dev/null || true
+          wait $XVFB_PID 2>/dev/null || true
+          echo "Verify vkcube exited with code $VERIFY_EXIT"
+          if [ "$VERIFY_EXIT" -ge 128 ] && [ "$VERIFY_EXIT" -ne 137 ] && [ "$VERIFY_EXIT" -ne 143 ] && [ "$VERIFY_EXIT" -ne 124 ]; then
+              echo "ERROR: vkcube crashed with signal $((VERIFY_EXIT - 128))"
+              exit 1
+          fi
+
+          # Compare binary sizes
+          echo "=== Binary size comparison ==="
+          echo "Instrumented: $(stat -c%s builddir-gen/src/libvkbasalt.so) bytes"
+          echo "PGO optimized: $(stat -c%s builddir-pgo/src/libvkbasalt.so) bytes"
+          echo ""
+          echo "=== Section sizes ==="
+          echo "--- Instrumented ---"
+          llvm-size builddir-gen/src/libvkbasalt.so
+          echo "--- PGO Optimized ---"
+          llvm-size builddir-pgo/src/libvkbasalt.so
+
+          # Generate build info and package installer
+          cat > builddir-pgo/BUILD_INFO.txt << INFO
+          Artifact: PGO Optimized Build (CI-profiled on llvmpipe)
+          Commit: $GITHUB_SHA
+          Branch: $GITHUB_REF_NAME
+          Build type: release, ThinLTO, PGO (use)
+          Profiling source: llvmpipe (software rasterizer, CI container)
+          Profiling configs: CMAA2, CrystalClear, Mega Chain+HDR, Passthrough, Depth Capture
+          HDR enforcement: VKBASALT_FORCE_HDR_PGO=1
+          Optimized, but for best performance, build & profile locally on real GPU using buildpgo_vkbasalt_local_*.sh
+          Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          INFO
+          
+          # Flatten the .so and ship the installer
+          cp builddir-pgo/src/libvkbasalt.so builddir-pgo/libvkbasalt.so
+          cp install.sh builddir-pgo/install.sh
+          chmod +x builddir-pgo/install.sh
+          SCRIPT
+          chmod +x build_pgo.sh
+
+      - name: Run PGO build in Arch Linux container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e GITHUB_SHA=${{ github.sha }} \
+            -e GITHUB_REF_NAME=${{ github.ref_name }} \
+            archlinux:base-devel \
+            ./build_pgo.sh
+
+      # Package all release files into a single tar.gz archive when Beta release requested
+      - name: Package release archive
+        if: inputs.create_release == true && inputs.version != ''
+        run: |
+          VERSION="${{ inputs.version }}"
+          ARCHIVE_DIR="vkbasalt-reloaded-${VERSION}-linux-x86_64"
+          mkdir -p "$ARCHIVE_DIR"
+          cp builddir-pgo/libvkbasalt.so "$ARCHIVE_DIR/"
+          cp builddir-pgo/BUILD_INFO.txt "$ARCHIVE_DIR/"
+          cp builddir-pgo/install.sh "$ARCHIVE_DIR/"
+          chmod +x "$ARCHIVE_DIR/install.sh"
+          tar -czf "${ARCHIVE_DIR}.tar.gz" "$ARCHIVE_DIR"
+          echo "Created: ${ARCHIVE_DIR}.tar.gz ($(du -h "${ARCHIVE_DIR}.tar.gz" | cut -f1))"
+          echo "ARCHIVE_PATH=${ARCHIVE_DIR}.tar.gz" >> $GITHUB_ENV
+
+      - name: Upload PGO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vkbasalt-reloaded-pgo-llvmpipe-profiled
+          path: |
+            builddir-pgo/libvkbasalt.so
+            builddir-pgo/BUILD_INFO.txt
+            builddir-pgo/install.sh
+          retention-days: 90
+
+      - name: Upload profile data
+        uses: actions/upload-artifact@v4
+        with:
+          name: vkbasalt-reloaded-profdata-llvmpipe
+          path: pgo-data/default.profdata
+          retention-days: 30
+
+      # Conditionally create a GitHub Release marked as pre-release if "Create a Beta Release" checked during manual dispatch.
+      - name: Create Beta Release
+        if: inputs.create_release == true && inputs.version != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: "Beta ${{ inputs.version }} (CI PGO Build)"
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            ## ⚠️ Beta Build (CI-profiled on llvmpipe)
+
+            This is an automated optimized build profiled on **llvmpipe** (software rasterizer) in CI.
+            It's functional and optimized, but for best performance, use a locally profiled build from `buildpgo_vkbasalt_local_*.sh`.
+            Use the latest non-Beta release for stability.
+
+            ### Installation
+
+            ```bash
+            # 1. Download the archive from the assets below, then:
+            tar -xzf vkbasalt-reloaded-${{ inputs.version }}-linux-x86_64.tar.gz
+            cd vkbasalt-reloaded-${{ inputs.version }}-linux-x86_64
+            ./install.sh
+            ```
+
+            Then restart Steam fully (tray → Exit) so Proton re-reads the manifest.
+
+            ### Build Details
+
+            See `BUILD_INFO.txt` inside the archive for commit hash, profiling configs, and generation timestamp.
+
+            ---
+            *Stable releases (green badge) are manually uploaded with GPU profiled binaries instead of CI.*
+          files: ${{ env.ARCHIVE_PATH }}
+
