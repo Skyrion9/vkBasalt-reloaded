@@ -1,0 +1,254 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Create build script
+        run: |
+          cat > build_and_test.sh << 'SCRIPT'
+          #!/bin/bash
+          set -euo pipefail
+
+          # Install dependencies
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git meson ninja \
+            vulkan-headers vulkan-icd-loader vulkan-tools vulkan-validation-layers \
+            mesa vulkan-swrast llvm lld clang \
+            libx11 libxrandr libxi libxcb wayland wayland-protocols libxkbcommon \
+            zstd glslang spirv-tools spirv-headers \
+            xorg-server-xvfb
+
+          # Build with clang + lld + ThinLTO
+          export CC=clang
+          export CXX=clang++
+          export CC_LD=lld
+          export CXX_LD=lld
+          meson setup builddir \
+            --buildtype=release \
+            -Db_lto=true \
+            -Db_lto_mode=thin \
+            -Doptimization=2
+          meson compile -C builddir
+
+          # Verify layer loads
+          echo "=== File exists ==="
+          ls -la builddir/src/libvkbasalt.so
+
+          echo "=== Symbol check ==="
+          llvm-nm -D builddir/src/libvkbasalt.so | grep -c "vkBasalt_GetInstanceProcAddr" || exit 1
+          llvm-nm -D builddir/src/libvkbasalt.so | grep -c "vkBasalt_GetDeviceProcAddr" || exit 1
+
+          echo "=== No undefined critical symbols ==="
+          llvm-nm -D --undefined-only builddir/src/libvkbasalt.so | grep -v "vk\|GLIBC\|libstdc\|libm\|libgcc\|libpthread" | head -20 || true
+
+          # Runtime smoke test setup
+          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          export VK_LOADER_DEBUG=warn
+          # Force HDR swapchain mutation on llvmpipe so HDR hot paths are exercised to match PGO training pipeline.
+          export VKBASALT_FORCE_HDR_PGO=1
+
+          # Install layer manifest so the Vulkan loader actually injects vkBasalt
+          mkdir -p ~/.local/share/vulkan/implicit_layer.d
+          cat > ~/.local/share/vulkan/implicit_layer.d/vkBasalt.json << EOF
+          {
+              "file_format_version": "1.0.0",
+              "layer": {
+                  "name": "VK_LAYER_VKBASALT_post_processing",
+                  "type": "GLOBAL",
+                  "library_path": "$(pwd)/builddir/src/libvkbasalt.so",
+                  "api_version": "1.3.223",
+                  "implementation_version": "1",
+                  "description": "a post processing layer",
+                  "functions": {
+                      "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
+                      "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
+                  },
+                  "enable_environment": {
+                      "ENABLE_VKBASALT_RELOADED": "1"
+                  },
+                  "disable_environment": {
+                      "DISABLE_VKBASALT_RELOADED": "1"
+                  }
+              }
+          }
+          EOF
+          export ENABLE_VKBASALT_RELOADED=1
+
+          CONFIG_DIR=~/.config/vkBasalt-reloaded
+          CONFIG_PATH="$CONFIG_DIR/vkBasalt-reloaded.conf"
+          mkdir -p "$CONFIG_DIR"
+
+          FAILURES=0
+
+          run_smoke_test() {
+              local config_name="$1"
+              local duration="${2:-3}"
+              local exit_code=0
+
+              echo ""
+              echo "=== Smoke Test: $config_name ==="
+
+              rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
+              Xvfb :99 -screen 0 1920x1080x24 &
+              local XVFB_PID=$!
+              sleep 2
+              export DISPLAY=:99
+
+              timeout "$duration" vkcube > /tmp/smoke.log 2>&1 || exit_code=$?
+              head -50 /tmp/smoke.log
+
+              unset DISPLAY
+              kill $XVFB_PID 2>/dev/null || true
+              wait $XVFB_PID 2>/dev/null || true
+
+              # Verify layer injected
+              if ! grep -q "vkBasalt" /tmp/smoke.log; then
+                  echo "FAIL: [$config_name] vkBasalt layer did not inject"
+                  FAILURES=$((FAILURES + 1))
+                  return
+              fi
+
+              # Verify no crash (124=timeout, 0=clean exit are both acceptable)
+              if [ "$exit_code" -ne 124 ] && [ "$exit_code" -ne 0 ]; then
+                  echo "FAIL: [$config_name] vkcube crashed with exit code $exit_code"
+                  FAILURES=$((FAILURES + 1))
+                  return
+              fi
+
+              echo "PASS: [$config_name] (exit code $exit_code)"
+          }
+
+          # ---------------------------------------------------------------
+          # Config 1: CMAA2 Only (1-slice in-place compute)
+          # Exercises the compute shader dispatch path.
+          # ---------------------------------------------------------------
+          cat > "$CONFIG_PATH" << 'CONF'
+          effects=cmaa2
+          cmaa2QualityPreset=2
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          CONF
+          run_smoke_test "CMAA2 (compute)"
+
+          # ---------------------------------------------------------------
+          # Config 2: CrystalClear Only (1-slice fragment)
+          # Exercises the most complex/modified fragment shader.
+          # ---------------------------------------------------------------
+          cat > "$CONFIG_PATH" << 'CONF'
+          effects=crystalclear
+          crystalclearPreset=devfav
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          CONF
+          run_smoke_test "CrystalClear (fragment)"
+
+          # ---------------------------------------------------------------
+          # Config 3: Mega Chain + Scopes + HDR (2-slice ping-pong)
+          # Exercises multi effect ping-pong, HDR mutation, and compute passes.
+          # ---------------------------------------------------------------
+          cat > "$CONFIG_PATH" << 'CONF'
+          effects=fxaa:smaa:cmaa2:deband:dls:cas:clarity:clarityrcas:crystalclear
+          scopesEnabled=true
+          autoHdr=true
+          hdrCalibrationMode=manual
+          sdrWhitePointNits=203
+          hdrPeakNits=1000
+          casSharpness=0.5
+          clarityStrength=0.6
+          crystalclearPreset=devfav
+          debandRange=16.0
+          dlsSharpen=0.5
+          cmaa2QualityPreset=2
+          enableOnLaunch=true
+          CONF
+          run_smoke_test "Mega Chain + HDR + Scopes" 5
+
+          # ---------------------------------------------------------------
+          # Config 4: Passthrough (no effects)
+          # Exercises the empty chain / transfer fallback path.
+          # ---------------------------------------------------------------
+          cat > "$CONFIG_PATH" << 'CONF'
+          effects=
+          scopesEnabled=false
+          autoHdr=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          CONF
+          run_smoke_test "Passthrough (empty chain)"
+
+          # ---------------------------------------------------------------
+          # Config 5: Depth Capture
+          # Exercises the depth interception path.
+          # ---------------------------------------------------------------
+          cat > "$CONFIG_PATH" << 'CONF'
+          effects=cas
+          depthCapture=on
+          autoHdr=false
+          scopesEnabled=false
+          hdrCalibrationMode=off
+          enableOnLaunch=true
+          CONF
+          run_smoke_test "Depth Capture"
+
+          # ---------------------------------------------------------------
+          # Final verdict
+          # ---------------------------------------------------------------
+          echo ""
+          echo "========================================="
+          if [ "$FAILURES" -gt 0 ]; then
+              echo "SMOKE TEST FAILED: $FAILURES config(s) failed"
+              exit 1
+          fi
+          echo "✓ All 5 smoke tests passed"
+          echo "========================================="
+
+          # ---------------------------------------------------------------
+          # Generate build info (inside container to avoid host permission issues)
+          # ---------------------------------------------------------------
+          cat > builddir/BUILD_INFO.txt << INFO
+          Artifact: CI Smoke Test Build (NOT for distribution)
+          Commit: $GITHUB_SHA
+          Branch: $GITHUB_REF_NAME
+          Build type: release, ThinLTO, NO PGO
+          Profiling: None
+          Intended use: CI/compilation verification only, don't use this, use PGO builds instead.
+          Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          INFO
+          SCRIPT
+          chmod +x build_and_test.sh
+
+      - name: Run build and tests in Arch Linux container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e GITHUB_SHA=${{ github.sha }} \
+            -e GITHUB_REF_NAME=${{ github.ref_name }} \
+            archlinux:base-devel \
+            ./build_and_test.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vkbasalt-reloaded-ci-test-unoptimized
+          path: |
+            builddir/src/libvkbasalt.so
+            builddir/BUILD_INFO.txt
+          retention-days: 7
