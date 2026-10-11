@@ -56,12 +56,12 @@ namespace vkBasalt
              .type       = ParamType::Float,
              .defaultVal = 1000.0,
              .minVal     = 200.0,
-             .maxVal     = 4000.0,
+             .maxVal     = 10000.0,
              .step       = 10.0,
              .category   = "Display Calibration",
              .tooltip    = "Maximum display luminance.\n"
                            "Clamps HDR highlights to your display's measured peak.\n"
-                           "Common values: 400 (entry HDR), 600-1000 (mid-range), 1000-2000 (high-end OLED/MiniLED).",
+                           "Common values: 400 (entry HDR), 600-1000 (mid-range), 2000+ (high-end OLED/MiniLED).",
              SPEC(1, hdrPeakNits)},
         };
         return params;
