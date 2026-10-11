@@ -133,11 +133,6 @@ namespace vkBasalt
     bool g_effectsDisabledTimerActive    = false;
     bool g_vramReclaimedForCurrentBypass = false;
 
-    // Passthrough Mode State (zero effects, no HDR processing)
-    std::chrono::steady_clock::time_point g_passthroughTimerStart;
-    bool g_passthroughTimerActive = false;
-    bool g_passthroughActive      = false;
-
 #ifdef _GCC_
     using scoped_lock __attribute__((unused)) = std::lock_guard<std::mutex>;
 #else
@@ -572,6 +567,10 @@ namespace vkBasalt
         }
 
         // Auto HDR requires mutable format to bridge SDR fake images and HDR real swapchain images
+        Logger::trace(
+            "CreateSwapchainKHR: autoHdr config='" + autoHdrOpt + "' forceHdrPgo=" + std::to_string(forceHdrPgo)
+            + " passthroughActive=" + std::to_string(pLogicalSwapchain->passthroughActive));
+
         if (((srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled) || forceHdrPgo)
             && pLogicalDevice->supportsMutableFormat) {
             uint32_t formatCount = 0;
@@ -630,18 +629,23 @@ namespace vkBasalt
             if (bestTarget.format != VK_FORMAT_UNDEFINED) {
                 modifiedCreateInfo.imageFormat     = bestTarget.format;
                 modifiedCreateInfo.imageColorSpace = bestTarget.colorSpace;
-
-                // CRITICAL: Must flag as mutable and add the HDR format to the view list, otherwise the game will crash when creating SDR ImageViews on the HDR swapchain images.
+                // Must flag as mutable and add the HDR format to the view list, otherwise the game will crash when creating SDR ImageViews on the HDR swapchain images.
                 modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
                 formats[viewFormatCount++]                = bestTarget.format;
                 imageFormatListCreateInfo.viewFormatCount = viewFormatCount;
+                pLogicalSwapchain->destFormat             = modifiedCreateInfo.imageFormat;
+                pLogicalSwapchain->destColorSpace         = modifiedCreateInfo.imageColorSpace;
+                pLogicalSwapchain->autoHdrActive          = true;
 
-                pLogicalSwapchain->destFormat     = modifiedCreateInfo.imageFormat;
-                pLogicalSwapchain->destColorSpace = modifiedCreateInfo.imageColorSpace;
-                pLogicalSwapchain->autoHdrActive  = true;
+                // If mutated to HDR, can't use passthrough mode. Passthrough returns real images to the game.
+                // Force fake image allocation and build the NitCalibrationEffect.
+                pLogicalSwapchain->passthroughActive      = false;
+                pLogicalSwapchain->passthroughTimerActive = false;
+                pLogicalSwapchain->passthroughEligible    = false;
+
                 Logger::info(
                     "Auto HDR: Mutating swapchain to format " + std::to_string(bestTarget.format) + " / colorspace "
-                    + std::to_string(bestTarget.colorSpace));
+                    + std::to_string(bestTarget.colorSpace) + " (forced passthroughActive=false)");
             }
         }
 
@@ -649,11 +653,23 @@ namespace vkBasalt
         pLogicalSwapchain->colorSpace   = pLogicalSwapchain->destColorSpace;
         pLogicalDevice->swapchainFormat = pLogicalSwapchain->destFormat;
         pLogicalSwapchain->imageCount   = 0;
-
         VkResult result = pLogicalDevice->vkd.CreateSwapchainKHR(device, &modifiedCreateInfo, pAllocator, pSwapchain);
 
-        swapchainMap[*pSwapchain] = pLogicalSwapchain;
+        Logger::info(
+            "CreateSwapchainKHR RESULT=" + std::to_string(static_cast<int>(result))
+            + " format=" + std::to_string(modifiedCreateInfo.imageFormat)
+            + " colorSpace=" + std::to_string(modifiedCreateInfo.imageColorSpace)
+            + " extent=" + std::to_string(modifiedCreateInfo.imageExtent.width) + "x"
+            + std::to_string(modifiedCreateInfo.imageExtent.height)
+            + " imageCount=" + std::to_string(modifiedCreateInfo.minImageCount) + " usage=0x"
+            + std::to_string(modifiedCreateInfo.imageUsage)
+            + " presentMode=" + std::to_string(modifiedCreateInfo.presentMode));
 
+        if (result == VK_SUCCESS) {
+            swapchainMap[*pSwapchain] = pLogicalSwapchain;
+        } else {
+            Logger::err("CreateSwapchainKHR FAILED with VkResult=" + std::to_string(static_cast<int>(result)));
+        }
         return result;
     }
 
@@ -661,6 +677,9 @@ namespace vkBasalt
         VkDevice device, VkSwapchainKHR swapchain, uint32_t* pCount, VkImage* pSwapchainImages)
     {
         std::scoped_lock l(globalLock);
+        Logger::trace(
+            "GetSwapchainImagesKHR ENTERED pCount=" + std::to_string(pCount ? *pCount : 0)
+            + " pSwapchainImages=" + std::to_string(pSwapchainImages ? 1 : 0));
         Logger::trace("vkGetSwapchainImagesKHR " + std::to_string(*pCount));
 
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
@@ -684,7 +703,11 @@ namespace vkBasalt
             device, swapchain, &pLogicalSwapchain->imageCount, pLogicalSwapchain->images.data());
 
         // Passthrough mode: return real images directly, skip fake image allocation entirely
-        if (g_passthroughActive) {
+        Logger::trace(
+            "GetSwapchainImagesKHR: passthroughActive=" + std::to_string(pLogicalSwapchain->passthroughActive)
+            + " returning " + (pLogicalSwapchain->passthroughActive ? "real" : "fake") + " images");
+
+        if (pLogicalSwapchain->passthroughActive) {
             // Guard: if overlay already exists for this swapchain, just return the real images. Games often call vkGetSwapchainImagesKHR twice (count query + data query).
             if (g_overlayManager.hasOverlay(swapchain)) {
                 *pCount = std::min<uint32_t>(*pCount, pLogicalSwapchain->imageCount);
@@ -773,8 +796,10 @@ namespace vkBasalt
             } else if (!previouslyEnabled && currentlyEnabled) {
                 g_effectsDisabledTimerActive = false;
                 // Immediately exit passthrough so the next rebuild creates fake images
-                g_passthroughActive      = false;
-                g_passthroughTimerActive = false;
+                for (auto& [sc, lsc] : swapchainMap) {
+                    lsc->passthroughActive      = false;
+                    lsc->passthroughTimerActive = false;
+                }
                 if (g_vramReclaimedForCurrentBypass) {
                     // Pool was shrunk, must grow it back for the full effect chain
                     for (auto& [sc, lsc] : swapchainMap) {
@@ -791,58 +816,38 @@ namespace vkBasalt
                     g_vramReclaimedForCurrentBypass = true;
 
                     // Check if we can go straight to passthrough (0 MB) or if we must keep 1 slice for HDR
-                    bool anyHdrOutputNeeded = false;
                     for (auto& [sc, lsc] : swapchainMap) {
-                        if (isHdrOutputNeeded(pConfig.get(), lsc.get())) {
-                            anyHdrOutputNeeded = true;
-                            break;
+                        bool hdrNeeded = isHdrOutputNeeded(pConfig.get(), lsc.get());
+                        if (!hdrNeeded) {
+                            lsc->passthroughActive      = true;
+                            lsc->passthroughTimerActive = false;
+                        } else {
+                            lsc->passthroughTimerActive = false;
+                            lsc->passthroughActive      = false;
                         }
-                    }
-
-                    if (!anyHdrOutputNeeded) {
-                        // No HDR processing needed, go straight to passthrough (0 fake images, 0 MB)
-                        g_passthroughActive      = true;
-                        g_passthroughTimerActive = false;
-                    } else {
-                        // HDR processing needed, just shrink to 1 slice and reset passthrough timer
-                        g_passthroughTimerActive = false;
-                        g_passthroughActive      = false;
-                    }
-
-                    for (auto& [sc, lsc] : swapchainMap) {
                         lsc->forceSwapchainRebuild = true;
                     }
                 }
             }
 
-            // Passthrough Mode Timer
-            bool anyPassthroughEligible = true;
+            // Passthrough Mode Timer (Per swapchain)
             for (auto& [sc, lsc] : swapchainMap) {
-                if (!lsc->passthroughEligible) {
-                    anyPassthroughEligible = false;
-                    break;
-                }
-            }
-
-            if (anyPassthroughEligible && !g_passthroughActive) {
-                if (!g_passthroughTimerActive) {
-                    g_passthroughTimerStart  = std::chrono::steady_clock::now();
-                    g_passthroughTimerActive = true;
-                }
-                auto elapsed = std::chrono::steady_clock::now() - g_passthroughTimerStart;
-                if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= 15) {
-                    g_passthroughActive      = true;
-                    g_passthroughTimerActive = false;
-                    for (auto& [sc, lsc] : swapchainMap) {
-                        lsc->forceSwapchainRebuild = true;
+                if (lsc->passthroughEligible && !lsc->passthroughActive) {
+                    if (!lsc->passthroughTimerActive) {
+                        lsc->passthroughTimerStart  = std::chrono::steady_clock::now();
+                        lsc->passthroughTimerActive = true;
                     }
-                }
-            } else if (!anyPassthroughEligible) {
-                g_passthroughTimerActive = false;
-                // Don't undo passthrough if the bypass timer just activated it. passthroughEligible hasn't been updated yet (buildEffectChain hasn't run), but the bypass timer already decided passthrough is correct.
-                if (g_passthroughActive && !g_vramReclaimedForCurrentBypass) {
-                    g_passthroughActive = false;
-                    for (auto& [sc, lsc] : swapchainMap) {
+                    auto elapsed = std::chrono::steady_clock::now() - lsc->passthroughTimerStart;
+                    if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= 15) {
+                        lsc->passthroughActive      = true;
+                        lsc->passthroughTimerActive = false;
+                        lsc->forceSwapchainRebuild  = true;
+                    }
+                } else if (!lsc->passthroughEligible) {
+                    lsc->passthroughTimerActive = false;
+                    // Don't undo passthrough if the bypass timer just activated it.
+                    if (lsc->passthroughActive && !g_vramReclaimedForCurrentBypass) {
+                        lsc->passthroughActive     = false;
                         lsc->forceSwapchainRebuild = true;
                     }
                 }
@@ -900,7 +905,7 @@ namespace vkBasalt
             if (!pLogicalSwapchain) continue;
 
             // Passthrough mode: no effect chain, just forward semaphore for overlay
-            if (g_passthroughActive) {
+            if (pLogicalSwapchain->passthroughActive) {
                 // Handle forced rebuild (e.g., user toggled effects back on, or passthrough just activated)
                 if (pLogicalSwapchain->forceSwapchainRebuild) {
                     forceOutOfDate                           = true;

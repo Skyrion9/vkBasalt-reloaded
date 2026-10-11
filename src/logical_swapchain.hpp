@@ -34,8 +34,13 @@ namespace vkBasalt
         VkColorSpaceKHR sourceColorSpace;
         VkFormat destFormat;
         VkColorSpaceKHR destColorSpace;
-        bool autoHdrActive       = false;
-        bool passthroughEligible = false;
+        bool autoHdrActive = false;
+
+        // Passthrough mode states
+        std::chrono::steady_clock::time_point passthroughTimerStart;
+        bool passthroughEligible    = false;
+        bool passthroughTimerActive = false;
+        bool passthroughActive      = false;
 
         uint32_t imageCount{};
         std::vector<VkImage> images;

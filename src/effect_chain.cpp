@@ -43,8 +43,6 @@ namespace vkBasalt
 
     // Defined in basalt.cpp
     extern bool g_vramReclaimedForCurrentBypass;
-    extern bool g_passthroughActive;
-    extern bool g_passthroughTimerActive;
     extern std::chrono::steady_clock::time_point g_effectsDisabledTime;
     extern bool g_effectsDisabledTimerActive;
 
@@ -625,9 +623,9 @@ namespace vkBasalt
             pLogicalSwapchain->forceSwapchainRebuild = true;
 
             // Reset passthrough state so the next CreateSwapchainKHR allocates fake images.
-            g_passthroughActive                    = false;
-            g_passthroughTimerActive               = false;
-            pLogicalSwapchain->passthroughEligible = false;
+            pLogicalSwapchain->passthroughActive      = false;
+            pLogicalSwapchain->passthroughTimerActive = false;
+            pLogicalSwapchain->passthroughEligible    = false;
 
             if (!g_effectsEnabled.load() && !g_vramReclaimedForCurrentBypass) {
                 g_effectsDisabledTime = std::chrono::steady_clock::now();
@@ -646,10 +644,10 @@ namespace vkBasalt
         // If the fake image pool is empty (e.g., passthrough mode reclaimed VRAM), Can't build any command buffers. Force a swapchain rebuild to reallocate the pool.
         if (pLogicalSwapchain->fakeImages.empty()) {
             Logger::debug("Effect pool is empty (passthrough active). Forcing swapchain rebuild to reallocate...");
-            g_passthroughActive                      = false;
-            g_passthroughTimerActive                 = false;
-            pLogicalSwapchain->forceSwapchainRebuild = true;
-            pLogicalSwapchain->passthroughEligible   = false;
+            pLogicalSwapchain->passthroughActive      = false;
+            pLogicalSwapchain->passthroughTimerActive = false;
+            pLogicalSwapchain->forceSwapchainRebuild  = true;
+            pLogicalSwapchain->passthroughEligible    = false;
             return;
         }
 
