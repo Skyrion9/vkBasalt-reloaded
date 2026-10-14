@@ -72,6 +72,10 @@ namespace vkBasalt
         const char* steamAppId  = std::getenv("SteamAppId");
         std::string appId       = steamGameId ? steamGameId : (steamAppId ? steamAppId : "");
         if (appId.empty() || appId == "0" || appId == "default") return "";
+        // Steam AppIDs are purely numeric (e.g., "730", "2357570") with longer non-steam added games. Reject non-numeric values (e.g., Heroic/Epic hex UUIDs like "825cd0b5...").
+        for (char c : appId) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) return "";
+        }
         return appId;
     }
 
@@ -216,15 +220,36 @@ namespace vkBasalt
         return "";
     }
 
+    // Detect Heroic Games Launcher by prefix path. Heroic typically uses: ~/Games/Heroic/Prefixes/<game_name>/
+    // Unlike Lutris, Heroic doesn't set a dedicated env var, so we use path detection.
+    static std::string findHeroicGameName()
+    {
+        const char* winePrefix = std::getenv("WINEPREFIX");
+        if (!winePrefix) return "";
+
+        std::string prefix(winePrefix);
+        // Case-insensitive check for "heroic" in the prefix path
+        std::string lowerPrefix = prefix;
+        std::ranges::transform(lowerPrefix, lowerPrefix.begin(), ::tolower);
+
+        if (lowerPrefix.find("heroic") == std::string::npos) return "";
+
+        // Reuse the existing prefix game name extraction (walks up, skips generic dirs like "default")
+        return getWinePrefixGameName();
+    }
+
     struct GameIdentity
     {
         std::string steamAppId;
         std::string steamName;
         std::string lutrisName;
+        std::string lutrisUuid;
+        std::string heroicName;
         std::string exePath;
         std::string exeName;
         bool isSteam  = false;
         bool isLutris = false;
+        bool isHeroic = false;
         bool isWine   = false;
     };
 
@@ -240,6 +265,11 @@ namespace vkBasalt
 
         id.lutrisName = findLutrisGameName();
         id.isLutris   = !id.lutrisName.empty();
+
+        const char* lutrisUuidEnv = std::getenv("LUTRIS_GAME_UUID");
+        if (lutrisUuidEnv && std::strlen(lutrisUuidEnv) > 0) {
+            id.lutrisUuid = lutrisUuidEnv;
+        }
 
         id.exePath = getExePath();
         id.exeName = getExeName(id.exePath);
@@ -258,8 +288,18 @@ namespace vkBasalt
                 }
             }
         }
+        // Heroic detection: check prefix path before the generic Wine fallback. Heroic doesn't set dedicated env vars, so we use path based detection.
+        if (!id.isSteam && !id.isLutris && id.isWine) {
+            std::string heroicName = findHeroicGameName();
+            if (!heroicName.empty()) {
+                id.heroicName = heroicName;
+                id.isHeroic   = true;
+            }
+        }
+
         // If Lutris env vars were not inherited but we detected a Wine prefix name, promote it to a Lutris identity so computeGameId uses the "lutris_" prefix.
-        if (!id.isLutris && !id.isSteam && id.isWine) {
+        // Skip if already identified as Heroic.
+        if (!id.isLutris && !id.isSteam && !id.isHeroic && id.isWine) {
             std::string prefixName = getWinePrefixGameName();
             if (!prefixName.empty()) {
                 id.lutrisName = prefixName;
@@ -483,12 +523,33 @@ namespace vkBasalt
         }
 
         if (id.isLutris) {
-            Logger::debug("Lutris game detected: " + id.lutrisName);
-            cachedId = "lutris_" + sanitizeName(id.lutrisName);
+            std::string sanitizedName = sanitizeName(id.lutrisName);
+
+            if (!id.lutrisUuid.empty()) {
+                // UUID available: guaranteed unique, stable across moves/prefix changes. Truncated to 8 chars for reasonable filename length.
+                std::string uuidShort = id.lutrisUuid.substr(0, 8);
+                Logger::debug("Lutris game detected: " + id.lutrisName + " (uuid: " + uuidShort + ")");
+                cachedId = "lutris_" + sanitizedName + "_" + uuidShort;
+            } else {
+                // No UUID (older Lutris): append exe path hash for uniqueness. Two games sharing a prefix will have different exe paths.
+                std::string pathHash = md5Hash(id.exePath).substr(0, 8);
+                Logger::debug(
+                    "Lutris game detected: " + id.lutrisName + " (no uuid, using path hash: " + pathHash + ")");
+                cachedId = "lutris_" + sanitizedName + "_" + pathHash;
+            }
             return cachedId;
         }
 
-        // Non-Steam / Non-Lutris: registry based identification
+        if (id.isHeroic) {
+            std::string sanitizedName = sanitizeName(id.heroicName);
+            // Heroic doesn't have a UUID like Lutris. Use exe path hash for uniqueness. Two games sharing a prefix will have different exe paths.
+            std::string pathHash = md5Hash(id.exePath).substr(0, 8);
+            Logger::debug("Heroic game detected: " + id.heroicName + " (path hash: " + pathHash + ")");
+            cachedId = "heroic_" + sanitizedName + "_" + pathHash;
+            return cachedId;
+        }
+
+        // Non-Steam / Non-Lutris / Non-Heroic: registry based identification
         std::string fullPath  = id.exePath.empty() ? "unknown" : id.exePath;
         std::string cleanName = id.exeName;
 
@@ -569,6 +630,11 @@ namespace vkBasalt
 
         if (id.isLutris) {
             cachedName = id.lutrisName;
+            return cachedName;
+        }
+
+        if (id.isHeroic) {
+            cachedName = id.heroicName;
             return cachedName;
         }
         // Steam game with no manifest: show exe name instead of raw AppID
