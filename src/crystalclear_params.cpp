@@ -56,7 +56,7 @@ namespace vkBasalt
                   "film", "vivid", "noir"},
              .category = "Presets & Performance",
              .tooltip  = "Curated starting points. Adjust individual sliders after selecting.\n"
-                         "devfav: balanced sharpen+grain.\nesports: high clarity, low grain.\n"
+                         "devfav: balanced sharpen, recommended.\nesports: high clarity, low grain.\n"
                          "antitaa: maximum TAA deblur + ghost cleanup.\n"
                          "artifactless: soft, maximum protection.\nmaxsharp: aggressive sharpen.\n"
                          "vibrantsharp: sharp + color boost.\ndevfxaa: balanced + FXAA.\n"
