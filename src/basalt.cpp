@@ -1086,8 +1086,13 @@ namespace vkBasalt
 
         // we need to delete the infos of the oldswapchain
         Logger::trace("vkDestroySwapchainKHR " + convertToString(swapchain));
-        // Cleanup rebuild fence before destroying the swapchain
+
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+
+        // Wait for the GPU to finish using our internal resources before destroying them.
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
+
+        // Cleanup rebuild fence before destroying the swapchain
         if (it->second->rebuildFence != VK_NULL_HANDLE) {
             pLogicalDevice->vkd.DestroyFence(pLogicalDevice->device, it->second->rebuildFence, nullptr);
             it->second->rebuildFence = VK_NULL_HANDLE;
