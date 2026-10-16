@@ -78,10 +78,9 @@ namespace vkBasalt
                  "Ultra: Drops RGB edge detection + fringe fix. Recommended for discrete GPUs.\n"
                  "High (default): Drops wide step2 fetches (4 fewer taps), local contrast/clarity slightly affected "
                  "but worth the perf gain. ~13 taps\n"
-                 "Medium: Also drops oiliness/silhouette gates, checkerboard, despeckle, BC1 fix, shimmer reduction, "
-                 "film grain, saturation/dark-smear guards.\n"
-                 "iGPU: Core CAS + Clarity (step1) only. Band pass + edge mask + extreme protection + dithering. "
-                 "Minimum viable quality.",
+                 "Medium: Also drops oiliness/silhouette gates, checkerboard, despeckle, BC1 fix.\n"
+                 "iGPU: Also drops shimmer reduction, film grain, saturation/dark-smear guards. Core CAS + Clarity "
+                 "(step1) only. Band pass + edge mask + extreme protection + dithering. Minimum viable quality.",
              SPEC(72, qualityLevel)},
 
             // Sharpening & Contrast
