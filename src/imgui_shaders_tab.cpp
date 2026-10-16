@@ -1,5 +1,4 @@
 #include "imgui_overlay.hpp"
-#include "imgui_constants.hpp"
 #include "overlay_manager.hpp"
 #include "logical_swapchain.hpp"
 #include "config.hpp"

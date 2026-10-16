@@ -18,7 +18,6 @@
 #include "effect.hpp"
 #include "effect_nit_calibration.hpp"
 #include "overlay_manager.hpp"
-#include "imgui_constants.hpp"
 #include "imgui_theme.hpp"
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR

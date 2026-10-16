@@ -1,5 +1,4 @@
 #include "imgui_overlay.hpp"
-#include "imgui_constants.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
