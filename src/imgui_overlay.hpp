@@ -178,6 +178,14 @@ namespace vkBasalt
         std::vector<BrowserEntry> m_browserEntries;
         std::string m_browserCachedDir;
 
+        // Preset import/export browser (separate from FilePath widget browser)
+        bool m_showPresetBrowser = false;
+        std::string m_presetBrowserDir;
+        std::vector<BrowserEntry> m_presetBrowserEntries;
+        std::string m_presetBrowserCachedDir;
+        std::string m_presetStatusMsg;
+        float m_presetStatusTime = 0.0f;
+
         // Static shared resources across all overlays
         static VkDescriptorPool s_descriptorPool;
         static int s_instanceCount;
