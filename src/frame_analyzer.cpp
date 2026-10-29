@@ -413,70 +413,42 @@ namespace vkBasalt
             vkd.UpdateDescriptorSets(dev, std::size(writes), writes, 0, nullptr);
         }
 
-        // One time GPU setup: transition scope images from UNDEFINED to GENERAL to guarantee it runs once,
-        // regardless of which swapchain image's command buffer is recorded or submitted first.
-        {
-            VkCommandBufferAllocateInfo cmdAllocInfo = {};
-            cmdAllocInfo.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            cmdAllocInfo.commandPool                 = m_pDevice->commandPool;
-            cmdAllocInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            cmdAllocInfo.commandBufferCount          = 1;
-
-            VkCommandBuffer setupCmd = VK_NULL_HANDLE;
-            vkd.AllocateCommandBuffers(dev, &cmdAllocInfo, &setupCmd);
-
-            VkCommandBufferBeginInfo beginInfo = {};
-            beginInfo.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            vkd.BeginCommandBuffer(setupCmd, &beginInfo);
-
-            for (int i = 0; i < SCOPE_COUNT; i++) {
-                VkImageMemoryBarrier barrier = {};
-                barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                barrier.srcAccessMask        = 0;
-                barrier.dstAccessMask        = VK_ACCESS_SHADER_WRITE_BIT;
-                barrier.oldLayout            = VK_IMAGE_LAYOUT_UNDEFINED;
-                barrier.newLayout            = VK_IMAGE_LAYOUT_GENERAL;
-                barrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-                barrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-                barrier.image                = m_scopeImages[i];
-                barrier.subresourceRange     = {
-                    .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .baseMipLevel   = 0,
-                    .levelCount     = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount     = 1};
-                vkd.CmdPipelineBarrier(
-                    setupCmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
-                    nullptr, 1, &barrier);
-            }
-
-            vkd.EndCommandBuffer(setupCmd);
-
-            VkFenceCreateInfo fenceInfo = {};
-            fenceInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            VkFence setupFence          = VK_NULL_HANDLE;
-            vkd.CreateFence(dev, &fenceInfo, nullptr, &setupFence);
-
-            VkSubmitInfo submitInfo       = {};
-            submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers    = &setupCmd;
-            vkd.QueueSubmit(m_pDevice->queue, 1, &submitInfo, setupFence);
-
-            vkd.WaitForFences(dev, 1, &setupFence, VK_TRUE, UINT64_MAX);
-
-            vkd.DestroyFence(dev, setupFence, nullptr);
-            vkd.FreeCommandBuffers(dev, m_pDevice->commandPool, 1, &setupCmd);
-        }
-
         Logger::debug("FrameAnalyzer resources created");
     }
 
     void FrameAnalyzer::recordCommands(VkCommandBuffer cmdBuf, uint32_t imageIndex)
     {
-        if (imageIndex >= m_accumSets.size()) return;
         auto& vkd = m_pDevice->vkd;
+
+        // Layout transition: transition scope images from UNDEFINED to GENERAL every frame. As command buffers are recorded once,
+        // and reused (SIMULTANEOUS_USE_BIT), we must record this barrier in every command buffer.
+        // Using UNDEFINED as oldLayout is always legal and discards the previous frame's contents, which is safe because the resolve pass fully overwrites the
+        // 256x256 scope images every frame when enabled. When disabled, the images are not rendered by ImGui.
+        VkImageMemoryBarrier barriers[SCOPE_COUNT] = {};
+        for (int i = 0; i < SCOPE_COUNT; i++) {
+            barriers[i].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barriers[i].srcAccessMask       = 0;
+            barriers[i].dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT;
+            barriers[i].oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            barriers[i].newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+            barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barriers[i].image               = m_scopeImages[i];
+            barriers[i].subresourceRange    = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1};
+        }
+        vkd.CmdPipelineBarrier(
+            cmdBuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr,
+            SCOPE_COUNT, barriers);
+
+        // Always record the dispatches: command buffers are recorded once and reused, so gating on m_enabled here would permanently omit them.
+        // The analyzer starts disabled. GPU execution is gated instead by the host mapped active flag (shaders early exit when scopeActive == 0).
+        if (m_accumPipeline == VK_NULL_HANDLE) return;
+        if (imageIndex >= m_accumSets.size()) return;
 
         // 1. Clear SSBOs
         vkd.CmdFillBuffer(cmdBuf, m_histBuffer, 0, VK_WHOLE_SIZE, 0);
