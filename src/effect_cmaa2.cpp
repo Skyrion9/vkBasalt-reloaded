@@ -323,13 +323,6 @@ namespace vkBasalt
             {.constantID = 6, .offset = offsetof(Cmaa2SpecData, extraSharpness), .size = sizeof(int32_t)});
         mapEntries.push_back({.constantID = 7, .offset = offsetof(Cmaa2SpecData, resX), .size = sizeof(uint32_t)});
         mapEntries.push_back({.constantID = 8, .offset = offsetof(Cmaa2SpecData, resY), .size = sizeof(uint32_t)});
-        mapEntries.push_back(
-            {.constantID = 9, .offset = offsetof(Cmaa2SpecData, maxLineLength), .size = sizeof(uint32_t)});
-        mapEntries.push_back(
-            {.constantID = 10, .offset = offsetof(Cmaa2SpecData, minShapeLength), .size = sizeof(float)});
-        mapEntries.push_back({.constantID = 11, .offset = offsetof(Cmaa2SpecData, armRatio), .size = sizeof(float)});
-        mapEntries.push_back(
-            {.constantID = 12, .offset = offsetof(Cmaa2SpecData, edgeDetectionMode), .size = sizeof(int32_t)});
 
         specDataLocal.resX = resX;
         specDataLocal.resY = resY;
