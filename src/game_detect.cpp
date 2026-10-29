@@ -22,6 +22,14 @@ namespace vkBasalt
 {
 
     // Helpers
+    static std::string trimStr(const std::string& s)
+    {
+        size_t start = s.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) return "";
+        size_t end = s.find_last_not_of(" \t\r\n");
+        return s.substr(start, end - start + 1);
+    }
+
     static std::string sanitizeName(const std::string& s)
     {
         std::string result;
@@ -138,34 +146,146 @@ namespace vkBasalt
         return "";
     }
 
-    static std::string findLutrisGameName()
+    // Unquote a YAML scalar. Lutris single quotes names and escapes embedded quotes
+    static std::string unquoteYamlScalar(const std::string& raw)
     {
-        // 1. Direct env var (set by newer Lutris versions)
-        const char* gameName = std::getenv("LUTRIS_GAME_NAME");
-        if (gameName && std::strlen(gameName) > 0) return std::string(gameName);
+        std::string s = trimStr(raw);
+        if (s.size() >= 2 && (s.front() == '\'' || s.front() == '"') && s.front() == s.back()) {
+            char q = s.front();
+            s      = s.substr(1, s.size() - 2);
+            // Unescape doubled quotes of the enclosing quote style.
+            std::string doubled(2, q);
+            std::string single(1, q);
+            for (size_t pos = s.find(doubled); pos != std::string::npos; pos = s.find(doubled, pos + 1))
+                s.replace(pos, 2, single);
+        }
+        return s;
+    }
 
-        // 2. Look up by UUID in Lutris game config YAML
+    // Locate the Lutris game YAML for this process. Lutris does not always name the file after LUTRIS_GAME_UUID
+    // Reinstalls register with timestamped filenames such as game-name-<numbers>.yml, so fall back to matching the Wine prefix path inside the YAML content.
+    static std::string findLutrisYamlPath()
+    {
+        const char* home = std::getenv("HOME");
+        if (!home) return "";
+
+        std::vector<std::string> searchDirs = {
+            std::string(home) + "/.config/lutris/games", std::string(home) + "/.local/share/lutris/games"};
+
+        // 1. Match by LUTRIS_GAME_UUID filename (fast path, newer Lutris)
         const char* uuid = std::getenv("LUTRIS_GAME_UUID");
         if (uuid && std::strlen(uuid) > 0) {
-            const char* home = std::getenv("HOME");
-            if (!home) return "";
-            std::string ymlPath = std::string(home) + "/.config/lutris/games/" + uuid + ".yml";
-            std::ifstream f(ymlPath);
-            if (!f.good()) return "";
-            std::string line;
-            while (std::getline(f, line)) {
-                // Top level "name:" has no leading whitespace
-                if (line.starts_with("name:")) {
-                    std::string name = line.substr(5);
-                    size_t start     = name.find_first_not_of(" \t\r\n");
-                    size_t end       = name.find_last_not_of(" \t\r\n");
-                    if (start != std::string::npos && end != std::string::npos) {
-                        return name.substr(start, end - start + 1);
+            for (const auto& dir : searchDirs) {
+                std::string ymlPath = dir + "/" + std::string(uuid) + ".yml";
+                std::ifstream f(ymlPath);
+                if (f.good()) return ymlPath;
+            }
+        }
+
+        // 2. Content match: find the YAML whose prefix/exe points at our Wine prefix.
+        const char* winePrefix = std::getenv("WINEPREFIX");
+        if (!winePrefix) return "";
+        std::string prefix(winePrefix);
+        size_t pEnd = prefix.find_last_not_of(" \t\r\n/\\");
+        if (pEnd == std::string::npos) return "";
+        prefix = prefix.substr(0, pEnd + 1);
+        if (prefix.empty()) return "";
+
+        std::error_code ec;
+        for (const auto& dir : searchDirs) {
+            for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+                if (!entry.is_regular_file(ec)) continue;
+
+                std::string filename = entry.path().filename().string();
+                if (filename.size() < 4 || filename.substr(filename.size() - 4) != ".yml") continue;
+
+                std::ifstream f(entry.path());
+                if (!f.good()) continue;
+
+                std::string content;
+                std::string line;
+                while (std::getline(f, line)) {
+                    content += line;
+                    content += "\n";
+                    if (content.find(prefix) != std::string::npos) {
+                        Logger::debug("Lutris: Matched YAML by Wine prefix at " + entry.path().string());
+                        return entry.path().string();
                     }
                 }
             }
         }
         return "";
+    }
+
+    static std::string findLutrisGameName()
+    {
+        // 1. Direct env var (set by newer Lutris versions)
+        const char* gameName = std::getenv("LUTRIS_GAME_NAME");
+        if (gameName && std::strlen(gameName) > 0) {
+            std::string name(gameName);
+            size_t start = name.find_first_not_of(" \t\r\n");
+            if (start == std::string::npos) return "";
+            size_t end          = name.find_last_not_of(" \t\r\n");
+            std::string trimmed = name.substr(start, end - start + 1);
+            Logger::debug("Lutris: Found game name from LUTRIS_GAME_NAME: '" + trimmed + "'");
+            return trimmed;
+        }
+
+        // 2. Read the game YAML (by UUID filename if present, else by Wine prefix content match)
+        std::string ymlPath = findLutrisYamlPath();
+        if (!ymlPath.empty()) {
+            std::ifstream f(ymlPath);
+            if (f.good()) {
+                Logger::debug("Lutris: Found YAML at " + ymlPath);
+                std::string line;
+                while (std::getline(f, line)) {
+                    if (line.starts_with("name:")) {
+                        std::string trimmed = unquoteYamlScalar(line.substr(5));
+                        if (!trimmed.empty()) {
+                            Logger::debug("Lutris: Extracted game name from YAML: '" + trimmed + "'");
+                            return trimmed;
+                        }
+                    }
+                }
+            }
+        } else {
+            const char* uuid = std::getenv("LUTRIS_GAME_UUID");
+            if (uuid && std::strlen(uuid) > 0)
+                Logger::debug("Lutris: UUID " + std::string(uuid) + " but no YAML found in standard paths");
+            else
+                Logger::debug("Lutris: LUTRIS_GAME_UUID not set");
+        }
+        return "";
+    }
+
+    // The Lutris slug (game_slug:/slug: in the game YAML) is stable across reinstalls, updates and prefix moves.
+    // Nnlike the UUID which changes whenever Lutris re-registers a game.
+    static std::string findLutrisSlug()
+    {
+        const char* slugEnv = std::getenv("LUTRIS_GAME_SLUG");
+        if (slugEnv && std::strlen(slugEnv) > 0) return std::string(slugEnv);
+
+        std::string ymlPath = findLutrisYamlPath();
+        if (ymlPath.empty()) return "";
+
+        std::ifstream f(ymlPath);
+        if (!f.good()) return "";
+
+        std::string topSlug;     // game_slug: (stable, install level)
+        std::string variantSlug; // slug:   (install + script variant)
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.starts_with("game_slug:")) {
+                std::string value = unquoteYamlScalar(line.substr(10));
+                if (!value.empty() && topSlug.empty()) topSlug = value;
+            } else if (line.starts_with("slug:")) {
+                std::string value = unquoteYamlScalar(line.substr(5));
+                if (!value.empty() && variantSlug.empty()) variantSlug = value;
+            }
+        }
+        std::string slug = topSlug.empty() ? variantSlug : (topSlug + "_" + variantSlug);
+        if (!slug.empty()) Logger::debug("Lutris: Found stable slug '" + slug + "'");
+        return slug;
     }
 
     // Parse /proc/self/cmdline to find the actual game .exe path. Wine processes (wine64-preloader, wine-preloader) receive the game executable as a cmdline argument.
@@ -203,20 +323,45 @@ namespace vkBasalt
         const char* winePrefix = std::getenv("WINEPREFIX");
         if (!winePrefix) return "";
         std::string prefix(winePrefix);
+
+        // Trim trailing whitespace
+        size_t end = prefix.find_last_not_of(" \t\r\n");
+        if (end != std::string::npos) {
+            prefix = prefix.substr(0, end + 1);
+        }
+
+        // Reject obviously dynamic/temporary prefixes to prevent config resets
+        std::string lowerPrefix = prefix;
+        std::ranges::transform(lowerPrefix, lowerPrefix.begin(), ::tolower);
+        if (lowerPrefix.find("/tmp/") != std::string::npos || lowerPrefix.find("/var/tmp/") != std::string::npos) {
+            Logger::debug("WinePrefix: Rejected temporary prefix: '" + prefix + "'");
+            return "";
+        }
+
         // Remove trailing slashes
         while (!prefix.empty() && (prefix.back() == '/' || prefix.back() == '\\'))
             prefix.pop_back();
+
         // Walk up to find a meaningful directory name (skip generic names like "pfx", "drive_c")
         for (int depth = 0; depth < 3; depth++) {
             size_t slash = prefix.find_last_of('/');
             if (slash == std::string::npos) break;
             std::string dirName = prefix.substr(slash + 1);
+
+            // Trim dirName
+            size_t d_end = dirName.find_last_not_of(" \t\r\n");
+            if (d_end != std::string::npos) {
+                dirName = dirName.substr(0, d_end + 1);
+            }
+
             if (!dirName.empty() && dirName != "pfx" && dirName != "prefix" && dirName != "drive_c" && dirName != "wine"
                 && dirName != "default" && dirName != "dosdevices") {
+                Logger::debug("WinePrefix: Extracted game name from prefix: '" + dirName + "'");
                 return dirName;
             }
             prefix = prefix.substr(0, slash);
         }
+        Logger::debug("WinePrefix: No meaningful directory name found in: '" + std::string(winePrefix) + "'");
         return "";
     }
 
@@ -243,9 +388,11 @@ namespace vkBasalt
         std::string steamAppId;
         std::string steamName;
         std::string lutrisName;
+        std::string lutrisSlug;
         std::string lutrisUuid;
         std::string heroicName;
-        std::string exePath;
+        std::string exePath;     // /proc/self/exe (the running binary, e.g. the wine preloader)
+        std::string gameExePath; // the actual game .exe (wine cmdline arg) empty for non-wine
         std::string exeName;
         bool isSteam  = false;
         bool isLutris = false;
@@ -271,13 +418,21 @@ namespace vkBasalt
             id.lutrisUuid = lutrisUuidEnv;
         }
 
+        // Stable identity seed: the Lutris slug from the game YAML. The UUID changes whenever Lutris registers a game again (re-install/update)
+        // It's only used to locate the YAML.
+        if (id.isLutris || !id.lutrisUuid.empty()) {
+            id.lutrisSlug = findLutrisSlug();
+            if (!id.lutrisSlug.empty() && id.lutrisName.empty()) id.lutrisName = id.lutrisSlug;
+        }
+
         id.exePath = getExePath();
         id.exeName = getExeName(id.exePath);
         id.isWine  = isWineProcess(id.exeName);
         if (id.isWine) {
             std::string wineGameExe = findWineGameExe();
             if (!wineGameExe.empty()) {
-                id.exeName = getExeName(wineGameExe);
+                id.gameExePath = wineGameExe;
+                id.exeName     = getExeName(wineGameExe);
             }
             // If the exe name is still a generic Wine process (explorer, wine-preloader, etc.), try to extract the game name from the Wine prefix directory.
             if (id.exeName.empty() || id.exeName == "explorer" || id.exeName.find("wine") != std::string::npos
@@ -449,6 +604,7 @@ namespace vkBasalt
     {
         std::string id;
         std::string exeName;
+        std::string launcherName; // stable Heroic/Lutris name; empty for generic (path/binary) entries
         std::string path;
         std::string binaryMd5;
     };
@@ -471,9 +627,18 @@ namespace vkBasalt
             if (line.empty() || line[0] == '#') continue;
             std::stringstream ss(line);
             GameEntry e;
-            if (std::getline(ss, e.id, '|') && std::getline(ss, e.exeName, '|') && std::getline(ss, e.path, '|')
-                && std::getline(ss, e.binaryMd5)) {
+
+            if (std::getline(ss, e.id, '|') && std::getline(ss, e.exeName, '|') && std::getline(ss, e.launcherName, '|')
+                && std::getline(ss, e.path, '|') && std::getline(ss, e.binaryMd5)) {
                 entries.push_back(e);
+            } else {
+                // Fallback: parse without launcherName
+                std::stringstream ss2(line);
+                GameEntry legacy;
+                if (std::getline(ss2, legacy.id, '|') && std::getline(ss2, legacy.exeName, '|')
+                    && std::getline(ss2, legacy.path, '|') && std::getline(ss2, legacy.binaryMd5)) {
+                    entries.push_back(legacy);
+                }
             }
         }
         return entries;
@@ -488,10 +653,58 @@ namespace vkBasalt
         if (!f.good()) return;
 
         f << "# vkBasalt-reloaded game registry\n";
-        f << "# Format: id|exe_name|last_known_path|binary_md5\n";
+        f << "# Format: id|exe_name|launcher_name|last_known_path|binary_md5\n";
         for (auto& e : entries) {
-            f << e.id << "|" << e.exeName << "|" << e.path << "|" << e.binaryMd5 << "\n";
+            f << e.id << "|" << e.exeName << "|" << e.launcherName << "|" << e.path << "|" << e.binaryMd5 << "\n";
         }
+    }
+
+    // Resolve a stable config id for a launcher game (Heroic, or Lutris without a UUID) via the registry.
+    // Uses the stable launcher name so updates/moves keep the same config file.
+    static std::string
+    resolveLauncherGameId(const std::string& prefix, const std::string& sanitizedName, const GameIdentity& id)
+    {
+        auto entries = loadRegistry();
+        bool dirty   = false;
+
+        // Match by stable launcher name (ignores legacy entries where launcherName is empty)
+        for (auto& e : entries) {
+            if (!e.launcherName.empty() && e.launcherName == sanitizedName && e.id.starts_with(prefix)) {
+                std::string gamePath = id.gameExePath.empty() ? id.exePath : id.gameExePath;
+                if (e.path != gamePath) {
+                    e.path = gamePath;
+                    dirty  = true;
+                }
+                std::string md5 = hashBinaryContent(gamePath);
+                if (!md5.empty() && e.binaryMd5 != md5) {
+                    e.binaryMd5 = md5;
+                    dirty       = true;
+                }
+                if (dirty) saveRegistry(entries);
+                Logger::debug("Launcher game matched by name (registry): " + e.id);
+                return e.id;
+            }
+        }
+
+        // Mint a new stable ID seeded from the launcher name (reproducible, not path based)
+        std::string newId = prefix + sanitizedName + "_" + md5Hash(sanitizedName).substr(0, 8);
+        for (auto& e : entries) {
+            if (e.id == newId) {
+                newId += "_" + md5Hash(sanitizedName + "salt").substr(0, 4);
+                break;
+            }
+        }
+
+        GameEntry ne;
+        ne.id           = newId;
+        ne.exeName      = id.exeName;
+        ne.launcherName = sanitizedName;
+        ne.path         = id.gameExePath.empty() ? id.exePath : id.gameExePath;
+        ne.binaryMd5    = hashBinaryContent(ne.path);
+        entries.push_back(ne);
+        saveRegistry(entries);
+        Logger::debug("New launcher game registered: " + newId);
+        return newId;
     }
 
     // Public API
@@ -525,32 +738,33 @@ namespace vkBasalt
         if (id.isLutris) {
             std::string sanitizedName = sanitizeName(id.lutrisName);
 
-            if (!id.lutrisUuid.empty()) {
-                // UUID available: guaranteed unique, stable across moves/prefix changes. Truncated to 8 chars for reasonable filename length.
-                std::string uuidShort = id.lutrisUuid.substr(0, 8);
-                Logger::debug("Lutris game detected: " + id.lutrisName + " (uuid: " + uuidShort + ")");
-                cachedId = "lutris_" + sanitizedName + "_" + uuidShort;
+            if (!id.lutrisSlug.empty()) {
+                // Lutris slug from the game YAML: stable across re-installs, updates and prefix moves.
+                // No path or UUID, so a relaunch always maps to one config file.
+                std::string sanitizedSlug = sanitizeName(id.lutrisSlug);
+                Logger::debug("Lutris game detected: " + id.lutrisName + " (slug: " + id.lutrisSlug + ")");
+                cachedId = "lutris_" + sanitizedSlug;
             } else {
-                // No UUID (older Lutris): append exe path hash for uniqueness. Two games sharing a prefix will have different exe paths.
-                std::string pathHash = md5Hash(id.exePath).substr(0, 8);
-                Logger::debug(
-                    "Lutris game detected: " + id.lutrisName + " (no uuid, using path hash: " + pathHash + ")");
-                cachedId = "lutris_" + sanitizedName + "_" + pathHash;
+                // No slug available (unusual Lutris layout): identify via the registry using the stable launcher name so updates/moves keep the same config file.
+                // A fresh id is minted only for a brand-new game.
+                cachedId = resolveLauncherGameId("lutris_", sanitizedName, id);
             }
             return cachedId;
         }
 
         if (id.isHeroic) {
             std::string sanitizedName = sanitizeName(id.heroicName);
-            // Heroic doesn't have a UUID like Lutris. Use exe path hash for uniqueness. Two games sharing a prefix will have different exe paths.
-            std::string pathHash = md5Hash(id.exePath).substr(0, 8);
-            Logger::debug("Heroic game detected: " + id.heroicName + " (path hash: " + pathHash + ")");
-            cachedId = "heroic_" + sanitizedName + "_" + pathHash;
+            // Heroic has no UUID like Lutris. Identify via the registry using the stable launcher name.
+            // On update/move, game keeps the same config file instead of resetting to a fresh path-hash id.
+            cachedId = resolveLauncherGameId("heroic_", sanitizedName, id);
             return cachedId;
         }
 
-        // Non-Steam / Non-Lutris / Non-Heroic: registry based identification
-        std::string fullPath  = id.exePath.empty() ? "unknown" : id.exePath;
+        // Non-Steam/Lutris/Heroic: registry based identification
+        // For Wine games, prefer the actual game executable path over the wine preloader path
+        // to ensure the hash and registry tracking are game specific, not preloader specific.
+        std::string fullPath =
+            (!id.gameExePath.empty()) ? id.gameExePath : (id.exePath.empty() ? "unknown" : id.exePath);
         std::string cleanName = id.exeName;
 
         // Hash binary for update/move detection
