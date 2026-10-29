@@ -44,10 +44,12 @@ namespace vkBasalt
                         }
                     }
                 }
-                m_pConfig->savePreset(std::string(presetName));
+                std::string nameStr = presetName;
+                m_pConfig->savePreset(nameStr);
                 presetName[0]      = '\0';
-                m_presetStatusMsg  = "Saved preset: " + std::string(presetName);
+                m_presetStatusMsg  = "Saved preset: " + nameStr;
                 m_presetStatusTime = ImGui::GetTime();
+                m_presetBrowserCachedDir.clear();
             }
         }
 
@@ -120,6 +122,7 @@ namespace vkBasalt
                             entry.path, destPath, std::filesystem::copy_options::overwrite_existing, ec);
                         if (!ec) {
                             m_presetStatusMsg = "Imported: " + std::filesystem::path(destPath).filename().string();
+                            m_presetBrowserCachedDir.clear();
                         } else {
                             m_presetStatusMsg = "Import failed: " + ec.message();
                         }
@@ -216,6 +219,7 @@ namespace vkBasalt
                 std::filesystem::copy_file(srcPath, destPath, std::filesystem::copy_options::overwrite_existing, ec);
                 if (!ec) {
                     m_presetStatusMsg = "Exported to: " + destPath;
+                    m_presetBrowserCachedDir.clear();
                 } else {
                     m_presetStatusMsg = "Export failed: " + ec.message();
                 }
@@ -225,9 +229,9 @@ namespace vkBasalt
             ImGui::SameLine();
             if (ImGui::Button("Delete")) {
                 m_pConfig->deletePreset(presets[i]);
+                m_presetBrowserCachedDir.clear();
             }
             ImGui::PopID();
         }
     }
-
 } // namespace vkBasalt
