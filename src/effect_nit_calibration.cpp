@@ -276,8 +276,15 @@ namespace vkBasalt
         if (sourceFormat != destFormat) {
             for (size_t i = 0; i < inputImages.size(); i++) {
                 pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, inputImageViews[i], nullptr);
+                // Restrict usage to SAMPLED_BIT to satisfy VUID-VkImageViewCreateInfo-usage-02275.
+                // The fake images have STORAGE_BIT, but SRGB views don't support storage.
+                VkImageViewUsageCreateInfo usageRestriction = {};
+                usageRestriction.sType                      = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+                usageRestriction.usage                      = VK_IMAGE_USAGE_SAMPLED_BIT;
+
                 VkImageViewCreateInfo viewInfo = {};
                 viewInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                viewInfo.pNext                 = &usageRestriction;
                 viewInfo.image                 = inputImages[i];
                 viewInfo.viewType              = VK_IMAGE_VIEW_TYPE_2D;
                 viewInfo.format                = sourceFormat;
