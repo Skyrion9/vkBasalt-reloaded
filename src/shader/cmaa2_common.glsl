@@ -69,7 +69,7 @@
 #define CMAA2_QUAL_EXECUTE
 #endif
 #ifndef CMAA2_QUAL_OUT
-#define CMAA2_QUAL_OUT
+#define CMAA2_QUAL_OUT writeonly
 #endif
 
 // Descriptor bindings
@@ -102,10 +102,12 @@ layout(set = 0, binding = 8) CMAA2_QUAL_EXECUTE buffer ExecuteIndirectBuf
 }
 g_workingExecuteIndirectBuffer;
 
-// Output image format variants
-layout(set = 0, binding = 9, rgba8) CMAA2_QUAL_OUT uniform image2D g_outRGBA8;
-layout(set = 0, binding = 10, rgb10_a2) CMAA2_QUAL_OUT uniform image2D g_outRGB10A2;
-layout(set = 0, binding = 11, rgba16f) CMAA2_QUAL_OUT uniform image2D g_outRGBA16F;
+// Output image format variants. Omitting the format qualifier allows the shader to write to any compatible storage format
+// (BGRA8, RGBA8, 10-bit, 16F) without triggering vulkan validation layer warnings about format mismatches.
+// The GPU hardware automatically packs the vec4 into the correct memory layout based on the ImageView's actual format.
+layout(set = 0, binding = 9) CMAA2_QUAL_OUT uniform image2D g_outRGBA8;
+layout(set = 0, binding = 10) CMAA2_QUAL_OUT uniform image2D g_outRGB10A2;
+layout(set = 0, binding = 11) CMAA2_QUAL_OUT uniform image2D g_outRGBA16F;
 
 // Specialization constants
 layout(constant_id = 0) const float cmaa2EdgeThreshold           = 0.07;

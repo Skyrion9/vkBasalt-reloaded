@@ -83,6 +83,9 @@ namespace vkBasalt
         return presetTable;
     }
 
+    // Returns UINT32_MAX when no device local memory type satisfies the format's bits. Returning 0 instead would
+    // pick a type that may not be in typeBits at all, turning a clean "unsupported" into an opaque AllocateMemory
+    // failure that then leaves callers with null images feeding into descriptor sets and barriers.
     static uint32_t findDeviceLocalMemoryType(LogicalDevice* pDevice, uint32_t typeBits)
     {
         for (uint32_t i = 0; i < pDevice->memoryProperties.memoryTypeCount; i++) {
@@ -91,7 +94,7 @@ namespace vkBasalt
                        == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
                 return i;
         }
-        return 0;
+        return UINT32_MAX;
     }
 
     static VkBuffer
@@ -106,10 +109,16 @@ namespace vkBasalt
         if (pDevice->vkd.CreateBuffer(pDevice->device, &info, nullptr, &buffer) != VK_SUCCESS) return VK_NULL_HANDLE;
         VkMemoryRequirements memReqs;
         pDevice->vkd.GetBufferMemoryRequirements(pDevice->device, buffer, &memReqs);
+        uint32_t memoryTypeIndex = findDeviceLocalMemoryType(pDevice, memReqs.memoryTypeBits);
+        if (memoryTypeIndex == UINT32_MAX) {
+            Logger::err("CMAA2: no device-local memory type for scratch buffer, disabling scratch resource.");
+            pDevice->vkd.DestroyBuffer(pDevice->device, buffer, nullptr);
+            return VK_NULL_HANDLE;
+        }
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize       = memReqs.size;
-        allocInfo.memoryTypeIndex      = findDeviceLocalMemoryType(pDevice, memReqs.memoryTypeBits);
+        allocInfo.memoryTypeIndex      = memoryTypeIndex;
         if (pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
             pDevice->vkd.DestroyBuffer(pDevice->device, buffer, nullptr);
             return VK_NULL_HANDLE;
@@ -142,10 +151,16 @@ namespace vkBasalt
         if (pDevice->vkd.CreateImage(pDevice->device, &info, nullptr, &image) != VK_SUCCESS) return VK_NULL_HANDLE;
         VkMemoryRequirements memReqs;
         pDevice->vkd.GetImageMemoryRequirements(pDevice->device, image, &memReqs);
+        uint32_t memoryTypeIndex = findDeviceLocalMemoryType(pDevice, memReqs.memoryTypeBits);
+        if (memoryTypeIndex == UINT32_MAX) {
+            Logger::err("CMAA2: no device local memory type for scratch image, disabling scratch resource.");
+            pDevice->vkd.DestroyImage(pDevice->device, image, nullptr);
+            return VK_NULL_HANDLE;
+        }
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize       = memReqs.size;
-        allocInfo.memoryTypeIndex      = findDeviceLocalMemoryType(pDevice, memReqs.memoryTypeBits);
+        allocInfo.memoryTypeIndex      = memoryTypeIndex;
         if (pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
             pDevice->vkd.DestroyImage(pDevice->device, image, nullptr);
             return VK_NULL_HANDLE;
@@ -156,12 +171,24 @@ namespace vkBasalt
 
     static VkImageView createImageViewHelper(LogicalDevice* pDevice, VkImage image, VkFormat format)
     {
+        // A null image here means the scratch resource creation above already failed and reported it.
+        // Ceating a view on VK_NULL_HANDLE would only add validation issues downstream.
+        if (image == VK_NULL_HANDLE) return VK_NULL_HANDLE;
+
         VkImageViewCreateInfo info = {};
         info.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         info.image                 = image;
         info.viewType              = VK_IMAGE_VIEW_TYPE_2D;
         info.format                = format;
-        info.subresourceRange      = {
+
+        // We can't swizzle storage images (VUID-VkWriteDescriptorSet-descriptorType-00336).
+        // The shader is compiled to handle the native format, or the driver tolerates the format mismatch warning (0x13365b2) which we filter in CI.
+        info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+        info.subresourceRange = {
             .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseMipLevel   = 0,
             .levelCount     = 1,
@@ -224,6 +251,12 @@ namespace vkBasalt
 
         const std::string appliedPresetKey = "cmaa2PresetApplied";
         const auto lastAppliedPreset       = pConfig->getOption<std::string>(appliedPresetKey, "");
+
+        if (presetIt == presetTable.end()) {
+            // Unrecognized preset string: thresholds fall back to the Ultra preset while per param values come from each param's own defaultVal.
+            // Those coincide with Ultra as per the defaults. We log so a future default change doesn't silently mix two different baselines.
+            Logger::warn("CMAA2: unknown cmaa2QualityPreset '" + presetStr + "', falling back to param defaults.");
+        }
 
         if (presetStr != lastAppliedPreset) {
             Logger::debug("Applying CMAA2 preset baseline: " + presetStr);
@@ -336,13 +369,19 @@ namespace vkBasalt
             outputStorageViews[i] = createImageViewHelper(pLogicalDevice, outputImages[i], storageFormat);
         }
 
-        // Create 1x1 dummy images for the two unused output format variant bindings.
+        // The single compute descriptor set layout declares all three output format/variant bindings (9/10/11) as cmaa2_common.glsl declares them unconditionally.
+        // The active variant is picked at runtime via the formatVariant spec constant. So the two inactive bindings must still be bound to something.
+        // Hence 1x1 stand-ins. The active variant's dummy is never referenced (its binding gets the real swapchain storage view), so we skip it's creation.
+        // -------------------------------------------------------------------------------------------------------------------------------------------------
+        // Latent issue: if a shader path ever writes an inactive binding, that write is out of bounds with no Vulkan OOB guard on images.
+        // Keep formatVariant selection and writes in sync when adding variants. Cleaner fix would be one layout per applyVariant declaring only the active output binding.
         const VkFormat dummyFormats[3] = {
             VK_FORMAT_R8G8B8A8_UNORM,           // binding 9
             VK_FORMAT_A2B10G10R10_UNORM_PACK32, // binding 10
             VK_FORMAT_R16G16B16A16_SFLOAT       // binding 11
         };
         for (int i = 0; i < 3; i++) {
+            if (i == static_cast<int>(applyVariant)) continue; // active binding always gets the real view
             dummyOutputImages[i] = createDeviceLocalImage(
                 pLogicalDevice, 1, 1, dummyFormats[i], VK_IMAGE_USAGE_STORAGE_BIT, dummyOutputMemory[i]);
             dummyOutputViews[i] = createImageViewHelper(pLogicalDevice, dummyOutputImages[i], dummyFormats[i]);
@@ -461,13 +500,26 @@ namespace vkBasalt
         pLogicalDevice->vkd.CreateDescriptorSetLayout(
             pLogicalDevice->device, &computeLayoutInfo, nullptr, &computeDescriptorSetLayout);
 
+        // Pool sizes derived from computeBindings so they can't drift when a binding is added or removed to prevent overflows.
+        uint32_t imageSamplerBindingCount  = 0;
+        uint32_t storageImageBindingCount  = 0;
+        uint32_t storageBufferBindingCount = 0;
+        for (const auto& binding : computeBindings) {
+            if (binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                imageSamplerBindingCount += binding.descriptorCount;
+            else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                storageImageBindingCount += binding.descriptorCount;
+            else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+                storageBufferBindingCount += binding.descriptorCount;
+        }
+
         VkDescriptorPoolSize computePoolSizes[] = {
             {.type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-             .descriptorCount = static_cast<uint32_t>(inputImages.size())},
+             .descriptorCount = static_cast<uint32_t>(inputImages.size()) * imageSamplerBindingCount},
             {.type            = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-             .descriptorCount = static_cast<uint32_t>(inputImages.size()) * 5},
+             .descriptorCount = static_cast<uint32_t>(inputImages.size()) * storageImageBindingCount},
             {.type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-             .descriptorCount = static_cast<uint32_t>(inputImages.size()) * 5},
+             .descriptorCount = static_cast<uint32_t>(inputImages.size()) * storageBufferBindingCount},
         };
         VkDescriptorPoolCreateInfo computePoolInfo = {};
         computePoolInfo.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -680,106 +732,8 @@ namespace vkBasalt
         createComputePipeline(deferredApplyModule, deferredApplyPipeline);
         createComputePipeline(debugEdgesModule, debugEdgesPipeline);
 
-        // One time GPU setup: transition working images to GENERAL and zero the control buffers.
-        {
-            VkCommandBufferAllocateInfo cmdAllocInfo = {};
-            cmdAllocInfo.sType                       = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            cmdAllocInfo.commandPool                 = pLogicalDevice->commandPool;
-            cmdAllocInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            cmdAllocInfo.commandBufferCount          = 1;
-
-            VkCommandBuffer setupCmd = VK_NULL_HANDLE;
-            pLogicalDevice->vkd.AllocateCommandBuffers(pLogicalDevice->device, &cmdAllocInfo, &setupCmd);
-
-            VkCommandBufferBeginInfo beginInfo = {};
-            beginInfo.sType                    = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            pLogicalDevice->vkd.BeginCommandBuffer(setupCmd, &beginInfo);
-
-            VkImageMemoryBarrier imageBarriers[5] = {};
-            imageBarriers[0].sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            imageBarriers[0].srcAccessMask        = 0;
-            imageBarriers[0].dstAccessMask        = VK_ACCESS_SHADER_WRITE_BIT;
-            imageBarriers[0].oldLayout            = VK_IMAGE_LAYOUT_UNDEFINED;
-            imageBarriers[0].newLayout            = VK_IMAGE_LAYOUT_GENERAL;
-            imageBarriers[0].image                = edgeImage;
-            imageBarriers[0].subresourceRange     = {
-                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1};
-
-            imageBarriers[1].sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            imageBarriers[1].srcAccessMask    = 0;
-            imageBarriers[1].dstAccessMask    = VK_ACCESS_SHADER_WRITE_BIT;
-            imageBarriers[1].oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED;
-            imageBarriers[1].newLayout        = VK_IMAGE_LAYOUT_GENERAL;
-            imageBarriers[1].image            = deferredBlendHeadsImage;
-            imageBarriers[1].subresourceRange = {
-                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1};
-
-            for (int i = 0; i < 3; i++) {
-                imageBarriers[2 + i].sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                imageBarriers[2 + i].srcAccessMask    = 0;
-                imageBarriers[2 + i].dstAccessMask    = VK_ACCESS_SHADER_WRITE_BIT;
-                imageBarriers[2 + i].oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED;
-                imageBarriers[2 + i].newLayout        = VK_IMAGE_LAYOUT_GENERAL;
-                imageBarriers[2 + i].image            = dummyOutputImages[i];
-                imageBarriers[2 + i].subresourceRange = {
-                    .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .baseMipLevel   = 0,
-                    .levelCount     = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount     = 1};
-            }
-
-            pLogicalDevice->vkd.CmdPipelineBarrier(
-                setupCmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0,
-                nullptr, 5, imageBarriers);
-
-            pLogicalDevice->vkd.CmdFillBuffer(setupCmd, controlBuffer, 0, VK_WHOLE_SIZE, 0);
-            pLogicalDevice->vkd.CmdFillBuffer(setupCmd, executeIndirectBuffer, 0, VK_WHOLE_SIZE, 0);
-
-            VkBufferMemoryBarrier zeroBarriers[2] = {};
-            zeroBarriers[0].sType                 = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            zeroBarriers[0].srcAccessMask         = VK_ACCESS_TRANSFER_WRITE_BIT;
-            zeroBarriers[0].dstAccessMask         = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            zeroBarriers[0].buffer                = controlBuffer;
-            zeroBarriers[0].size                  = VK_WHOLE_SIZE;
-
-            zeroBarriers[1].sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            zeroBarriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            zeroBarriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            zeroBarriers[1].buffer        = executeIndirectBuffer;
-            zeroBarriers[1].size          = VK_WHOLE_SIZE;
-
-            pLogicalDevice->vkd.CmdPipelineBarrier(
-                setupCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 2,
-                zeroBarriers, 0, nullptr);
-
-            pLogicalDevice->vkd.EndCommandBuffer(setupCmd);
-
-            VkFenceCreateInfo fenceInfo = {};
-            fenceInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            VkFence setupFence          = VK_NULL_HANDLE;
-            pLogicalDevice->vkd.CreateFence(pLogicalDevice->device, &fenceInfo, nullptr, &setupFence);
-
-            VkSubmitInfo submitInfo       = {};
-            submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers    = &setupCmd;
-            pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, setupFence);
-
-            pLogicalDevice->vkd.WaitForFences(pLogicalDevice->device, 1, &setupFence, VK_TRUE, UINT64_MAX);
-
-            pLogicalDevice->vkd.DestroyFence(pLogicalDevice->device, setupFence, nullptr);
-            pLogicalDevice->vkd.FreeCommandBuffers(pLogicalDevice->device, pLogicalDevice->commandPool, 1, &setupCmd);
-        }
+        // NOTE: The scratch image layout transitions and the control/indirect buffer zeroing are recorded at the top of applyEffect instead.
+        // QueueSubmit + WaitForFences during swapchain image creation blocks the game thread on a fence that may not be signaled, which deadlocks game boot.
     }
 
     void Cmaa2Effect::applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer)
@@ -787,14 +741,76 @@ namespace vkBasalt
         const uint32_t resX = imageExtent.width;
         const uint32_t resY = imageExtent.height;
 
+        // Scratch setup, recorded per frame. oldLayout UNDEFINED is legal from any current layout and discards contents.
+        // We want this for the edge/head/dummy images. The control and indirect buffers are zeroed every frame so an aborted or partially executed frame can't leak counters
+        // into the next one (the dispatch args shader's end of frame clearing alone isn't enough in that case).
+        //
+        // COUPLING: because we discard the heads/edge images every frame instead of transitioning them once at construction, they arrive empty and rely on cmaa2_edges.comp.glsl
+        // clearing the deferred blend list heads for every quad in the output kernel (unconditionally, not gated on someNonZeroEdges). If that clear is made conditional again,
+        // quads with no edges keep a stale head from an earlier frame and cmaa2_deferred_apply.comp.glsl's linked list walk follows it to a stale item index.
+        // Potentially spinning to maxLoops per quad. See the matching note in cmaa2_edges.comp.glsl before changing that pass.
+        //
+        // The scratch images' layout transition also declares READ access: the edge image is read by cmaa2_process_candidates and the heads image by cmaa2_deferred_apply.
+        // A write-only mask under-declares what the following commands do (an omitted read can let a tiler keep the image in a form the consumer can't read), validation layer satisfied.
+        {
+            VkImageMemoryBarrier scratchBarriers[5] = {};
+            const VkImage scratchImages[5]          = {
+                edgeImage, deferredBlendHeadsImage, dummyOutputImages[0], dummyOutputImages[1], dummyOutputImages[2]};
+            // A null scratch image means resource creation failed at construction (already logged there).
+            // Feeding VK_NULL_HANDLE into a barrier is UB, so collect only the live ones and pass the real count.
+            uint32_t scratchBarrierCount = 0;
+            for (int i = 0; i < 5; i++) {
+                if (scratchImages[i] == VK_NULL_HANDLE) continue;
+                scratchBarriers[scratchBarrierCount].sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                scratchBarriers[scratchBarrierCount].srcAccessMask = 0;
+                scratchBarriers[scratchBarrierCount].dstAccessMask =
+                    VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+                scratchBarriers[scratchBarrierCount].oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED;
+                scratchBarriers[scratchBarrierCount].newLayout        = VK_IMAGE_LAYOUT_GENERAL;
+                scratchBarriers[scratchBarrierCount].image            = scratchImages[i];
+                scratchBarriers[scratchBarrierCount].subresourceRange = {
+                    .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel   = 0,
+                    .levelCount     = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 1};
+                scratchBarrierCount++;
+            }
+
+            if (scratchBarrierCount > 0) {
+                pLogicalDevice->vkd.CmdPipelineBarrier(
+                    commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
+                    nullptr, 0, nullptr, scratchBarrierCount, scratchBarriers);
+            }
+
+            pLogicalDevice->vkd.CmdFillBuffer(commandBuffer, controlBuffer, 0, VK_WHOLE_SIZE, 0);
+            pLogicalDevice->vkd.CmdFillBuffer(commandBuffer, executeIndirectBuffer, 0, VK_WHOLE_SIZE, 0);
+
+            VkBufferMemoryBarrier zeroBarriers[2] = {};
+            for (int i = 0; i < 2; i++) {
+                zeroBarriers[i].sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                zeroBarriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                zeroBarriers[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            }
+            zeroBarriers[0].buffer = controlBuffer;
+            zeroBarriers[0].size   = VK_WHOLE_SIZE;
+            zeroBarriers[1].buffer = executeIndirectBuffer;
+            zeroBarriers[1].size   = VK_WHOLE_SIZE;
+
+            pLogicalDevice->vkd.CmdPipelineBarrier(
+                commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 2,
+                zeroBarriers, 0, nullptr);
+        }
+
         VkImage targetImage = m_isInPlace ? inputImages[imageIndex] : outputImages[imageIndex];
 
         if (m_isInPlace) {
             // In-place: single barrier to SHADER_READ_ONLY for passes 1-3
             VkImageMemoryBarrier readBarrier = {};
             readBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            readBarrier.srcAccessMask =
-                isFirstInChain ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
+            readBarrier.srcAccessMask = isFirstInChain
+                                            ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                                            : (VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
             readBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             readBarrier.oldLayout =
                 isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -806,20 +822,20 @@ namespace vkBasalt
                 .levelCount     = 1,
                 .baseArrayLayer = 0,
                 .layerCount     = 1};
-
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer,
                 isFirstInChain ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                               : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+                               : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                                  | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &readBarrier);
         } else {
             // Ping-pong: copy input to output, then transition both
-            VkImage storageTarget = outputImages[imageIndex];
-
+            VkImage storageTarget                       = outputImages[imageIndex];
             VkImageMemoryBarrier inputToTransferBarrier = {};
             inputToTransferBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
             inputToTransferBarrier.srcAccessMask =
-                isFirstInChain ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT;
+                isFirstInChain ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                               : (VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
             inputToTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             inputToTransferBarrier.oldLayout =
                 isFirstInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -834,7 +850,8 @@ namespace vkBasalt
             pLogicalDevice->vkd.CmdPipelineBarrier(
                 commandBuffer,
                 isFirstInChain ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                               : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+                               : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                                  | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &inputToTransferBarrier);
 
             VkImageMemoryBarrier targetToTransferBarrier = {};
@@ -1186,12 +1203,16 @@ namespace vkBasalt
         pLogicalDevice->vkd.DestroyShaderModule(pLogicalDevice->device, debugEdgesModule, nullptr);
         pLogicalDevice->vkd.DestroyDescriptorPool(pLogicalDevice->device, computeDescriptorPool, nullptr);
 
-        pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, edgeImageView, nullptr);
-        pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, deferredBlendHeadsImageView, nullptr);
-        pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, edgeImage, nullptr);
-        pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, deferredBlendHeadsImage, nullptr);
-        pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, edgeMemory, nullptr);
-        pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, deferredBlendHeadsMemory, nullptr);
+        if (edgeImageView != VK_NULL_HANDLE)
+            pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, edgeImageView, nullptr);
+        if (deferredBlendHeadsImageView != VK_NULL_HANDLE)
+            pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, deferredBlendHeadsImageView, nullptr);
+        if (edgeImage != VK_NULL_HANDLE) pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, edgeImage, nullptr);
+        if (deferredBlendHeadsImage != VK_NULL_HANDLE)
+            pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, deferredBlendHeadsImage, nullptr);
+        if (edgeMemory != VK_NULL_HANDLE) pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, edgeMemory, nullptr);
+        if (deferredBlendHeadsMemory != VK_NULL_HANDLE)
+            pLogicalDevice->vkd.FreeMemory(pLogicalDevice->device, deferredBlendHeadsMemory, nullptr);
 
         for (auto& outputStorageView : outputStorageViews)
             pLogicalDevice->vkd.DestroyImageView(pLogicalDevice->device, outputStorageView, nullptr);

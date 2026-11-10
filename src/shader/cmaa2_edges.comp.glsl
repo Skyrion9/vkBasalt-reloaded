@@ -169,6 +169,11 @@ void main()
     if (inOutputKernel) {
         // Clear deferred color list heads for every quad in the output kernel. The union of all groups' output kernels covers
         // every on screen quad only once. Kept inside inOutputKernel because border threads' coords alias neighboring groups' quads.
+        //
+        // Don't gate this on someNonZeroEdges (or any other edge test). The C++ side re-declares this heads image with oldLayout = UNDEFINED at the top
+        // of every frame's command buffer (Cmaa2Effect::applyEffect), which discards its contents, so quads that skip this store keep a stale head from
+        // an earlier frame. cmaa2_deferred_apply.comp.glsl then follows that stale head into the blend item list and can walk to maxLoops on garbage indices.
+        // The unconditional clear is what makes the per-frame discard safe.
         uvec2 headsDims  = (uvec2(resX, resY) + uvec2(1, 1)) / uvec2(2, 2);
         ivec2 headsCoord = pixelPos / 2;
         if (uint(headsCoord.x) < headsDims.x && uint(headsCoord.y) < headsDims.y) {

@@ -80,7 +80,10 @@ void main()
         // Write actual item count for DeferredColorApply2x2CS to read
         g_workingControlBuffer.data[CTRL_ITEM_COUNT] = blendLocationCount;
 
-        // Clear counters for next frame
+        // Clear counters for next frame. Redundant by design: the C++ side (Cmaa2Effect::applyEffect) CmdFillBuffer zeroes the
+        // whole control buffer at the top of every frame, so a frame that aborted mid-chain can't leak counters into the next one
+        // either way. Kept as defense because it also covers the case where the scratch fill is ever moved or gated.
+        // if these are dropped, the per-frame zeroing in effect_cmaa2.cpp becomes load-bearing and must not be removed.
         g_workingControlBuffer.data[CTRL_SHAPE_CANDIDATES] = 0u;
         g_workingControlBuffer.data[CTRL_BLEND_LOCATIONS]  = 0u;
         g_workingControlBuffer.data[CTRL_BLEND_ITEMS]      = 0u;
