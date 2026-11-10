@@ -51,7 +51,8 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
             isFirstInChain ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                           : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+                           : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                              | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
         // Barrier 2: Output UNDEFINED -> TRANSFER_DST

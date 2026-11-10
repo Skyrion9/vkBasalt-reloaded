@@ -236,7 +236,8 @@ namespace vkBasalt
         pLogicalDevice->vkd.CmdPipelineBarrier(
             commandBuffer,
             isFirstInChain ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                           : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
+                           : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                              | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
 
         // Render Pass (writes to outputImages, automatically transitions them to finalLayout = PRESENT_SRC_KHR)

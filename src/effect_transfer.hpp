@@ -1,14 +1,8 @@
 #ifndef EFFECT_TRANSFER_HPP_INCLUDED
 #define EFFECT_TRANSFER_HPP_INCLUDED
 #include <vector>
-#include <fstream>
 #include <string>
-#include <iostream>
 #include <vector>
-#include <unordered_map>
-#include <memory>
-
-#include "vulkan_include.hpp"
 
 #include "effect.hpp"
 #include "config.hpp"
@@ -20,6 +14,8 @@ namespace vkBasalt
     class TransferEffect : public Effect
     {
     public:
+        std::string getName() const override { return "transfer"; }
+
         TransferEffect(
             LogicalDevice* pLogicalDevice,
             VkFormat format,
