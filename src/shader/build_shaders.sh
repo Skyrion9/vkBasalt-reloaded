@@ -72,16 +72,22 @@ for INPUT in "${GLSL_FILES[@]}"; do
     TEMP_SPV="$TEMP_DIR/${BASENAME}.spv"
     OPT_SPV="$TEMP_DIR/${BASENAME}.opt.spv"
 
-    "$GLSLANG" --target-env "$TARGET_ENV" --lto --nan-clamp -g0 -I"$(dirname "$INPUT")" "$INPUT" -o "$TEMP_SPV" >/dev/null 2>&1
+    if ! "$GLSLANG" --target-env "$TARGET_ENV" --lto --nan-clamp -g0 -I"$(dirname "$INPUT")" "$INPUT" -o "$TEMP_SPV"; then
+        echo -e "\033[0;31m✗ glslangValidator failed on $INPUT\033[0m"
+        exit 1
+    fi
 
-    "$SPIRV_OPT" \
+    if ! "$SPIRV_OPT" \
         --target-env="$TARGET_ENV" \
         --preserve-spec-constants --preserve-bindings --preserve-interface \
         -O --strength-reduction --cfg-cleanup --eliminate-dead-members \
         --eliminate-dead-const --eliminate-dead-variables --eliminate-dead-input-components \
         --unify-const --remove-duplicates --trim-capabilities \
         --fold-spec-const-op-composite --strip-debug --strip-nonsemantic --compact-ids \
-        "$TEMP_SPV" -o "$OPT_SPV" >/dev/null 2>&1
+        "$TEMP_SPV" -o "$OPT_SPV"; then
+        echo -e "\033[0;31m✗ spirv-opt failed on ${BASENAME}.spv\033[0m"
+        exit 1
+    fi  
 
     SPV_FILES+=("$OPT_SPV")
 done
@@ -89,7 +95,10 @@ done
 # - Step 2: Train dictionary -
 DICT_FILE="$TEMP_DIR/shader.zdict"
 echo -e "${BLUE}Training zstd dictionary from ${#SPV_FILES[@]} SPIR-V files...${NC}"
-"$ZSTD" --train --train-cover --maxdict=32768 --dictID=1 -o "$DICT_FILE" "${SPV_FILES[@]}" >/dev/null 2>&1
+if ! "$ZSTD" -q --train --train-cover --maxdict=32768 --dictID=1 -o "$DICT_FILE" "${SPV_FILES[@]}"; then
+    echo -e "\033[0;31m✗ zstd dictionary training failed\033[0m"
+    exit 1
+fi
 DICT_SIZE=$(stat -c%s "$DICT_FILE")
 echo -e "${GREEN}Dictionary trained ($(format_bytes "$DICT_SIZE"))${NC}"
 
@@ -134,8 +143,14 @@ for OPT_SPV in "${SPV_FILES[@]}"; do
     ZST_FILE="$TEMP_DIR/${BASENAME}.zst"
     OUTPUT="$OUTDIR/${BASENAME}.h"
 
-    "$ZSTD" -19 --single-thread --no-check --no-dictID -f -D "$DICT_FILE" "$OPT_SPV" -o "$ZST_FILE" >/dev/null 2>&1
-    "$ZSTD" -t -D "$DICT_FILE" "$ZST_FILE" >/dev/null 2>&1
+    if ! "$ZSTD" -q -19 --single-thread --no-check --no-dictID -f -D "$DICT_FILE" "$OPT_SPV" -o "$ZST_FILE"; then
+        echo -e "\033[0;31m✗ zstd compression failed on ${BASENAME}.opt.spv\033[0m"
+        exit 1
+    fi
+    if ! "$ZSTD" -q -t -D "$DICT_FILE" "$ZST_FILE"; then
+        echo -e "\033[0;31m✗ zstd verification failed on ${BASENAME}.zst\033[0m"
+        exit 1
+    fi
 
     ORIGINAL_SIZE=$(stat -c%s "$OPT_SPV")
     COMPRESSED_SIZE=$(stat -c%s "$ZST_FILE")

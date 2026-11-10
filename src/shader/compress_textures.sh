@@ -84,11 +84,23 @@ echo -e "${BLUE}Extracting texture data from C headers...${NC}"
 extract_to_bin "$AREA_H" "areaTexBytes" "$TEMP_DIR/area.bin"
 extract_to_bin "$SEARCH_H" "searchTexBytes" "$TEMP_DIR/search.bin"
 
-"$ZSTD" -19 --single-thread --no-check -f "$TEMP_DIR/area.bin" -o "$TEMP_DIR/area.zst" >/dev/null 2>&1
-"$ZSTD" -t "$TEMP_DIR/area.zst" >/dev/null 2>&1
+if ! "$ZSTD" -q -19 --single-thread --no-check -f "$TEMP_DIR/area.bin" -o "$TEMP_DIR/area.zst"; then
+    echo -e "\033[0;31m✗ zstd compression failed on area.bin\033[0m"
+    exit 1
+fi
+if ! "$ZSTD" -q -t "$TEMP_DIR/area.zst"; then
+    echo -e "\033[0;31m✗ zstd verification failed on area.zst\033[0m"
+    exit 1
+fi
 
-"$ZSTD" -19 --single-thread --no-check -f "$TEMP_DIR/search.bin" -o "$TEMP_DIR/search.zst" >/dev/null 2>&1
-"$ZSTD" -t "$TEMP_DIR/search.zst" >/dev/null 2>&1
+if ! "$ZSTD" -q -19 --single-thread --no-check -f "$TEMP_DIR/search.bin" -o "$TEMP_DIR/search.zst"; then
+    echo -e "\033[0;31m✗ zstd compression failed on search.bin\033[0m"
+    exit 1
+fi
+if ! "$ZSTD" -q -t "$TEMP_DIR/search.zst"; then
+    echo -e "\033[0;31m✗ zstd verification failed on search.zst\033[0m"
+    exit 1
+fi
 
 AREA_SIZE=$(stat -c%s "$TEMP_DIR/area.bin")
 AREA_ZST_SIZE=$(stat -c%s "$TEMP_DIR/area.zst")
