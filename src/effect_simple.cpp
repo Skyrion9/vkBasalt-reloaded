@@ -266,30 +266,31 @@ namespace vkBasalt
             commandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr,
             0, nullptr, 1, &secondBarrier);
 
-        // Barrier 3: Prepare outputImages for the next consumer.
-        if (!isLastInChain) {
-            VkImageMemoryBarrier thirdBarrier = {};
-            thirdBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            thirdBarrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            thirdBarrier.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            thirdBarrier.oldLayout            = finalLayout; // Left by render pass
-            thirdBarrier.newLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            thirdBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-            thirdBarrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-            thirdBarrier.image                = outputImages[imageIndex];
-            thirdBarrier.subresourceRange     = {
-                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1};
+        // Barrier 3: Prepare outputImages for the next consumer or for presentation.
+        VkImageMemoryBarrier thirdBarrier = {};
+        thirdBarrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        thirdBarrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        thirdBarrier.dstAccessMask = isLastInChain ? VK_ACCESS_MEMORY_READ_BIT
+                                                   : (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+        thirdBarrier.oldLayout     = finalLayout; // Left by render pass
+        thirdBarrier.newLayout =
+            isLastInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        thirdBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        thirdBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        thirdBarrier.image               = outputImages[imageIndex];
+        thirdBarrier.subresourceRange    = {
+            .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1};
 
-            pLogicalDevice->vkd.CmdPipelineBarrier(
-                commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-                    | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                0, 0, nullptr, 0, nullptr, 1, &thirdBarrier);
-        }
+        pLogicalDevice->vkd.CmdPipelineBarrier(
+            commandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            isLastInChain ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+                          : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                             | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
+            0, 0, nullptr, 0, nullptr, 1, &thirdBarrier);
     }
 
     SimpleEffect::~SimpleEffect()
