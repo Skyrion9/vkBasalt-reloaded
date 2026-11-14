@@ -146,16 +146,25 @@ namespace vkBasalt
     }
 
     VkImageView SimpleComputePass::createImageView(
-        LogicalDevice* pDevice, VkImage image, VkFormat format, VkImageViewType viewType, VkImageAspectFlags aspect)
+        LogicalDevice* pDevice,
+        VkImage image,
+        VkFormat format,
+        VkImageViewType viewType,
+        VkImageAspectFlags aspect,
+        VkImageUsageFlags usage)
     {
+        VkImageViewUsageCreateInfo usageInfo = {};
+        usageInfo.sType                      = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+        usageInfo.usage                      = usage;
+
         VkImageViewCreateInfo info = {};
         info.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        info.pNext                 = (usage != 0) ? &usageInfo : nullptr;
         info.image                 = image;
         info.viewType              = viewType;
         info.format                = format;
         info.subresourceRange      = {
             .aspectMask = aspect, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1};
-
         VkImageView view = VK_NULL_HANDLE;
         pDevice->vkd.CreateImageView(pDevice->device, &info, nullptr, &view);
         return view;
@@ -174,9 +183,9 @@ namespace vkBasalt
     }
 
     VkImageView SimpleComputePass::createImageView(
-        VkImage image, VkFormat format, VkImageViewType viewType, VkImageAspectFlags aspect)
+        VkImage image, VkFormat format, VkImageViewType viewType, VkImageAspectFlags aspect, VkImageUsageFlags usage)
     {
-        return createImageView(pLogicalDevice, image, format, viewType, aspect);
+        return createImageView(pLogicalDevice, image, format, viewType, aspect, usage);
     }
 
     void SimpleComputePass::transitionImageLayout(

@@ -32,7 +32,8 @@ namespace vkBasalt
             VkImage image,
             VkFormat format,
             VkImageViewType viewType  = VK_IMAGE_VIEW_TYPE_2D,
-            VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
+            VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT,
+            VkImageUsageFlags usage   = 0); // 0 = inherits from image
 
     protected:
         // Return compute shader SPIR-V.
@@ -66,7 +67,8 @@ namespace vkBasalt
             VkImage image,
             VkFormat format,
             VkImageViewType viewType  = VK_IMAGE_VIEW_TYPE_2D,
-            VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
+            VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT,
+            VkImageUsageFlags usage   = 0);
 
         // Transition image layouts during init (from UNDEFINED).
         void transitionImageLayout(
