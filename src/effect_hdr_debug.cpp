@@ -205,11 +205,11 @@ namespace vkBasalt
         barrier2.srcAccessMask        = VK_ACCESS_SHADER_WRITE_BIT;
         barrier2.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
         barrier2.oldLayout            = VK_IMAGE_LAYOUT_GENERAL;
-        barrier2.newLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier2.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-        barrier2.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-        barrier2.image                = m_outImages[imageIndex];
-        barrier2.subresourceRange     = {
+        barrier2.newLayout = isLastInChain ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier2.image               = m_outImages[imageIndex];
+        barrier2.subresourceRange    = {
             .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseMipLevel   = 0,
             .levelCount     = 1,
