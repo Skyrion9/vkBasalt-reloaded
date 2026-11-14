@@ -332,6 +332,8 @@ namespace vkBasalt
         ImGuiIO& io    = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        // Wayland compositors report subpixel coordinate jitter even during a stationary click, imgui defaults to 6.0f
+        io.MouseDragThreshold = 12.0f;
 
         // Apply UI scale to padding/spacing/widget sizes (only on context creation)
         if (m_uiScale > 0.5f) {
