@@ -15,7 +15,7 @@ namespace vkBasalt
         const std::vector<VkImage>& inputImages,
         VkFormat inputFormat,
         VkColorSpaceKHR colorSpace) :
-        m_pDevice(pDevice), m_extent(extent), m_inputImages(inputImages),
+        m_pDevice(pDevice), m_extent(extent), m_inputImages(inputImages), m_inputFormat(inputFormat),
         m_colorSpaceMode(static_cast<int>(getColorSpaceMode(inputFormat, colorSpace)))
     {
         m_pushConstants = {0};
@@ -91,13 +91,16 @@ namespace vkBasalt
             m_scopeViews[i] = SimpleComputePass::createImageView(m_pDevice, m_scopeImages[i], VK_FORMAT_R8G8B8A8_UNORM);
         }
 
-        // Input image views + sampler
+        // Input image views + sampler - Use UNORM view to prevent hardware sRGB decode (shader handles color space via colorSpaceMode).
+        // Restrict usage to SAMPLED_BIT to avoid inheriting STORAGE_BIT from fake images, which violates VUID-VkImageViewCreateInfo-usage-02275 since sRGB formats lack STORAGE_IMAGE feature.
+        VkFormat viewFormat = convertToUNORM(m_inputFormat);
+        if (viewFormat == VK_FORMAT_UNDEFINED) viewFormat = VK_FORMAT_B8G8R8A8_UNORM;
+
         m_inputViews.resize(m_inputImages.size());
         for (size_t i = 0; i < m_inputImages.size(); i++)
             m_inputViews[i] = SimpleComputePass::createImageView(
-                m_pDevice, m_inputImages[i],
-                m_pDevice->swapchainFormat != VK_FORMAT_UNDEFINED ? m_pDevice->swapchainFormat
-                                                                  : VK_FORMAT_B8G8R8A8_UNORM);
+                m_pDevice, m_inputImages[i], viewFormat, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT,
+                VK_IMAGE_USAGE_SAMPLED_BIT);
 
         VkSamplerCreateInfo samplerInfo = {};
         samplerInfo.sType               = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;

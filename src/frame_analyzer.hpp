@@ -5,7 +5,6 @@
 
 #include "compute_pass.hpp"
 #include "simple_compute_pass.hpp"
-#include "logical_swapchain.hpp"
 
 namespace vkBasalt
 {
@@ -51,6 +50,7 @@ namespace vkBasalt
         VkExtent2D m_extent;
         std::vector<VkImage> m_inputImages;
         std::vector<VkImageView> m_inputViews;
+        VkFormat m_inputFormat;
         int m_colorSpaceMode;
 
         // SSBOs: histogram (4KB), waveform (256KB), vectorscope (256KB)
