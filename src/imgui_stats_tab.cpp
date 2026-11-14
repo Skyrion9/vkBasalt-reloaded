@@ -106,6 +106,16 @@ namespace vkBasalt
         if (ImGui::CollapsingHeader("Effect Chain", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (m_pSwapchain) {
                 statRow("Effects Active", g_effectsEnabled.load() ? "YES" : "BYPASSED");
+
+                // Passthrough State
+                const char* passthroughState = "Inactive";
+                if (m_pSwapchain->passthroughActive) {
+                    passthroughState = "Active (0 MB overhead)";
+                } else if (m_pSwapchain->passthroughEligible) {
+                    passthroughState = "Eligible (Waiting 15s)";
+                }
+                statRow("Passthrough", passthroughState);
+
                 char effectCountBuf[16];
                 snprintf(effectCountBuf, sizeof(effectCountBuf), "%zu", m_pSwapchain->effects.size());
                 statRow("Effect Count", effectCountBuf);
@@ -113,21 +123,50 @@ namespace vkBasalt
                 // List active effect names
                 std::string effectNames;
                 for (size_t i = 0; i < m_pSwapchain->effects.size(); i++) {
-                    if (i > 0) effectNames += "->";
+                    if (i > 0) effectNames += " -> ";
                     effectNames += m_pSwapchain->effects[i]->getName();
                 }
                 statRow("Chain Order", effectNames.empty() ? "None" : effectNames.c_str());
 
+                // Allocated Slices
+                uint32_t slices =
+                    m_pSwapchain->fakeImages.empty() ? 0 : (m_pSwapchain->fakeImages.size() / m_pSwapchain->imageCount);
+                char sliceBuf[16];
+                snprintf(sliceBuf, sizeof(sliceBuf), "%u", slices);
+                statRow("Allocated Slices", sliceBuf);
+
+                // Fake Image Pool (SDR/Source format)
                 char fakeImgBuf[64];
                 size_t fakeCount = m_pSwapchain->fakeImages.size();
-                uint32_t bpp     = getBytesPerPixel(m_pSwapchain->sourceFormat);
-                float poolMB = static_cast<float>(
-                                   fakeCount * m_pSwapchain->imageExtent.width * m_pSwapchain->imageExtent.height * bpp)
-                               / (1024.0f * 1024.0f);
-                snprintf(fakeImgBuf, sizeof(fakeImgBuf), "%zu images (%.1f MB)", fakeCount, poolMB);
+                uint32_t srcBpp  = getBytesPerPixel(m_pSwapchain->sourceFormat);
+                float fakePoolMB =
+                    static_cast<float>(
+                        fakeCount * m_pSwapchain->imageExtent.width * m_pSwapchain->imageExtent.height * srcBpp)
+                    / (1024.0f * 1024.0f);
+                snprintf(fakeImgBuf, sizeof(fakeImgBuf), "%zu images (%.1f MB)", fakeCount, fakePoolMB);
                 statRow("Fake Image Pool", fakeImgBuf);
 
-                statRow("Auto HDR", m_pSwapchain->autoHdrActive ? "Active (SDR->HDR)" : "Inactive");
+                // Real Image Pool (HDR/Dest format)
+                uint32_t destBpp = getBytesPerPixel(m_pSwapchain->destFormat);
+                float realPoolMB = static_cast<float>(
+                                       m_pSwapchain->imageCount * m_pSwapchain->imageExtent.width
+                                       * m_pSwapchain->imageExtent.height * destBpp)
+                                   / (1024.0f * 1024.0f);
+                char realImgBuf[64];
+                snprintf(realImgBuf, sizeof(realImgBuf), "%u images (%.1f MB)", m_pSwapchain->imageCount, realPoolMB);
+                statRow("Real Image Pool", realImgBuf);
+
+                // Auto HDR & Metadata
+                if (m_pSwapchain->autoHdrActive) {
+                    statRow("Auto HDR", "Active (SDR->HDR)");
+                    float targetWhite = m_pConfig ? m_pConfig->getOption<float>("sdrWhitePointNits", 203.0f) : 203.0f;
+                    float targetPeak  = m_pConfig ? m_pConfig->getOption<float>("hdrPeakNits", 1000.0f) : 1000.0f;
+                    char hdrBuf[64];
+                    snprintf(hdrBuf, sizeof(hdrBuf), "White: %.0f nits | Peak: %.0f nits", targetWhite, targetPeak);
+                    statRow("HDR Targets", hdrBuf);
+                } else {
+                    statRow("Auto HDR", "Inactive");
+                }
 
                 char computeBuf[16];
                 snprintf(computeBuf, sizeof(computeBuf), "%zu", m_pSwapchain->computePasses.size());
