@@ -1,13 +1,16 @@
+#include <vulkan/vulkan_core.h>
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include "fake_swapchain.hpp"
 #include "logger.hpp"
 #include "logical_device.hpp"
 #include "memory.hpp"
 #include "format.hpp"
 #include "vulkan_include.hpp"
-#include <cstdint>
-#include <string>
-#include <vector>
-#include <vulkan/vulkan_core.h>
+#include "fake_image_tracker.hpp"
 
 namespace vkBasalt
 {
@@ -16,29 +19,27 @@ namespace vkBasalt
         LogicalDevice* pLogicalDevice,
         const VkSwapchainCreateInfoKHR& swapchainCreateInfo,
         uint32_t count,
-        VkDeviceMemory& deviceMemory)
+        VkDeviceMemory& deviceMemory,
+        const std::vector<VkFormat>& viewFormats)
     {
         std::vector<VkImage> fakeImages(count);
 
-        VkFormat srgbFormat  = isSRGB(swapchainCreateInfo.imageFormat) ? swapchainCreateInfo.imageFormat
-                                                                       : convertToSRGB(swapchainCreateInfo.imageFormat);
         VkFormat unormFormat = isSRGB(swapchainCreateInfo.imageFormat) ? convertToUNORM(swapchainCreateInfo.imageFormat)
                                                                        : swapchainCreateInfo.imageFormat;
-
-        VkFormat formats[] = {unormFormat, srgbFormat};
 
         VkImageFormatListCreateInfoKHR imageFormatListCreateInfo;
         imageFormatListCreateInfo.sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR;
         imageFormatListCreateInfo.pNext           = nullptr;
-        imageFormatListCreateInfo.viewFormatCount = 2;
-        imageFormatListCreateInfo.pViewFormats    = formats;
+        imageFormatListCreateInfo.viewFormatCount = static_cast<uint32_t>(viewFormats.size());
+        imageFormatListCreateInfo.pViewFormats    = viewFormats.data();
 
         VkImageCreateInfo imageCreateInfo;
-        imageCreateInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageCreateInfo.pNext                 = (unormFormat == srgbFormat) ? nullptr : &imageFormatListCreateInfo;
-        imageCreateInfo.flags                 = (unormFormat != srgbFormat) ? VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT : 0;
-        imageCreateInfo.imageType             = VK_IMAGE_TYPE_2D;
-        imageCreateInfo.format                = swapchainCreateInfo.imageFormat;
+        imageCreateInfo.sType     = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageCreateInfo.pNext     = viewFormats.size() > 1 ? &imageFormatListCreateInfo : nullptr;
+        imageCreateInfo.flags     = viewFormats.size() > 1 ? VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT : 0;
+        imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+        // Use UNORM format for fake images. SRGB formats don't support VK_IMAGE_USAGE_STORAGE_BIT, but compute effects like CMAA2 need storage images.
+        imageCreateInfo.format                = unormFormat;
         imageCreateInfo.extent.width          = swapchainCreateInfo.imageExtent.width;
         imageCreateInfo.extent.height         = swapchainCreateInfo.imageExtent.height;
         imageCreateInfo.extent.depth          = 1;
@@ -59,6 +60,9 @@ namespace vkBasalt
             result =
                 pLogicalDevice->vkd.CreateImage(pLogicalDevice->device, &imageCreateInfo, nullptr, &(fakeImages[i]));
             ASSERT_VULKAN(result);
+            // Record the usage so SRGB views of this image can be restricted.
+            // SRGB has no VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT, but the UNORM fake image needs STORAGE for CMAA2 etc.
+            registerFakeImageUsage(fakeImages[i], imageCreateInfo.usage);
         }
 
         // Allocate a bunch of memory for all images at one

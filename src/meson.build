@@ -32,6 +32,7 @@ vkBasalt_src = [
     'auto_hdr_analyzer.cpp',
     'hdr_detect.cpp',
     'display_info.cpp',
+    'fake_image_tracker.cpp',
     'fake_swapchain.cpp',
     'format.cpp',
     'framebuffer.cpp',

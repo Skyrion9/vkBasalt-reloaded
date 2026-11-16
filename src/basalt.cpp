@@ -58,6 +58,7 @@
 #include "screenshot.hpp"
 #include "format.hpp"
 #include "logger.hpp"
+#include "fake_image_tracker.hpp"
 
 #define VKBASALT_NAME "VK_LAYER_VKBASALT_post_processing"
 
@@ -506,38 +507,123 @@ namespace vkBasalt
         VkFormat unormFormat = isSRGB(format) ? convertToUNORM(format) : format;
         Logger::debug(std::to_string(srgbFormat) + " " + std::to_string(unormFormat));
 
-        VkFormat formats[3]      = {unormFormat, srgbFormat, VK_FORMAT_UNDEFINED};
-        uint32_t viewFormatCount = (srgbFormat == unormFormat) ? 1 : 2;
-        VkImageFormatListCreateInfoKHR imageFormatListCreateInfo;
+        std::shared_ptr<LogicalSwapchain> pLogicalSwapchain = std::make_shared<LogicalSwapchain>();
+        pLogicalSwapchain->pLogicalDevice                   = pLogicalDevice;
 
-        // Injecting VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR flag breaks direct scanout (zero-copy presentation) on Linux compositors.
+        std::vector<VkFormat> mergedFormats;
+        std::vector<std::unique_ptr<uint8_t[]>> pNextCopies;
+
+        // 1. Extract game's format list if any
+        const VkImageFormatListCreateInfo* gameFormatList = nullptr;
+        const void* currentPNext                          = pCreateInfo->pNext;
+        while (currentPNext) {
+            const VkBaseInStructure* base = reinterpret_cast<const VkBaseInStructure*>(currentPNext);
+            if (base->sType == VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO) {
+                gameFormatList = reinterpret_cast<const VkImageFormatListCreateInfo*>(base);
+            }
+            currentPNext = base->pNext;
+        }
+
+        // 2. Build merged format list
+        if (gameFormatList && gameFormatList->viewFormatCount > 0 && gameFormatList->pViewFormats) {
+            for (uint32_t i = 0; i < gameFormatList->viewFormatCount; i++) {
+                mergedFormats.push_back(gameFormatList->pViewFormats[i]);
+            }
+        } else {
+            mergedFormats.push_back(unormFormat);
+            if (srgbFormat != unormFormat) {
+                mergedFormats.push_back(srgbFormat);
+            }
+        }
+
+        auto addFormat = [&](VkFormat fmt) {
+            if (fmt != VK_FORMAT_UNDEFINED
+                && std::find(mergedFormats.begin(), mergedFormats.end(), fmt) == mergedFormats.end()) {
+                mergedFormats.push_back(fmt);
+            }
+        };
+
+        // Fake images are created as UNORM so compute effects can write them.
+        // That format must be present in the view format list, even when the game's own list omitted the UNORM variant.
+        addFormat(unormFormat);
+
+        // Injecting VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR flag breaks direct scanout on Linux compositors.
         // However, if Auto HDR mutates the format, we MUST set it so the game can still create SDR views on the HDR images.
         modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
                                          | VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // Required for screenshot readback
-        // Storage usage is needed when compute effects write directly to real swapchain images (mutable format path). Can cause vkCreateSwapchainKHR to fail on drivers that don't support it on swapchains.
-        if (pLogicalDevice->supportsMutableFormat) {
+
+        // Storage usage is needed when compute effects write directly to real swapchain images.
+        if (pLogicalDevice->supportsMutableFormat
+            && supportsStorageImage(pLogicalDevice, modifiedCreateInfo.imageFormat)) {
             modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
+        } else {
+            // If the format doesn't support storage, strip STORAGE_BIT even if the game requested it.
+            // This prevents validation errors when the game later creates image views that inherit the image usage.
+            modifiedCreateInfo.imageUsage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
         }
 
-        imageFormatListCreateInfo.sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR;
-        imageFormatListCreateInfo.pNext           = modifiedCreateInfo.pNext;
-        imageFormatListCreateInfo.viewFormatCount = viewFormatCount;
-        imageFormatListCreateInfo.pViewFormats    = formats;
-        modifiedCreateInfo.pNext                  = &imageFormatListCreateInfo;
+        // 3. Rebuild pNext chain, skipping the game's old format list
+        VkBaseOutStructure* newPNextHead  = nullptr;
+        VkBaseOutStructure** newPNextTail = &newPNextHead;
+
+        currentPNext = pCreateInfo->pNext;
+        while (currentPNext) {
+            const VkBaseInStructure* base = reinterpret_cast<const VkBaseInStructure*>(currentPNext);
+            if (base->sType == VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO) {
+                currentPNext = base->pNext;
+                continue; // Skip the game's format list
+            }
+
+            size_t structSize = 0;
+            switch (base->sType) {
+                case VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_EXT:
+                    structSize = sizeof(VkSwapchainPresentModesCreateInfoEXT);
+                    break;
+                case VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_SCALING_CREATE_INFO_EXT:
+                    structSize = sizeof(VkSwapchainPresentScalingCreateInfoEXT);
+                    break;
+                case VK_STRUCTURE_TYPE_DEVICE_GROUP_SWAPCHAIN_CREATE_INFO_KHR:
+                    structSize = sizeof(VkDeviceGroupSwapchainCreateInfoKHR);
+                    break;
+                case VK_STRUCTURE_TYPE_SWAPCHAIN_COUNTER_CREATE_INFO_EXT:
+                    structSize = sizeof(VkSwapchainCounterCreateInfoEXT);
+                    break;
+                default: structSize = 0; break; // Unknown: pass through original pointer
+            }
+
+            if (structSize > 0) {
+                // Known struct: deep copy with exact size (no truncation risk)
+                auto copy = std::make_unique<uint8_t[]>(structSize);
+                std::memcpy(copy.get(), base, structSize);
+
+                VkBaseOutStructure* newBase = reinterpret_cast<VkBaseOutStructure*>(copy.get());
+                newBase->pNext              = nullptr;
+                *newPNextTail               = newBase;
+                newPNextTail                = &newBase->pNext;
+
+                pNextCopies.push_back(std::move(copy));
+            } else {
+                // Unknown struct: pass through the original pointer directly. Safe as vkCreateSwapchainKHR is called synchronously on this thread.
+                // The game's original structs are still alive. Temporarily overwrite pNext to relink the chain (skipping the format list).
+                VkBaseOutStructure* passthrough =
+                    const_cast<VkBaseOutStructure*>(reinterpret_cast<const VkBaseOutStructure*>(base));
+                *newPNextTail = passthrough;
+                newPNextTail  = &passthrough->pNext;
+            }
+            currentPNext = base->pNext;
+        }
 
         modifiedCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         Logger::debug("format " + std::to_string(modifiedCreateInfo.imageFormat));
         Logger::debug("colorSpace " + std::to_string(modifiedCreateInfo.imageColorSpace));
 
-        std::shared_ptr<LogicalSwapchain> pLogicalSwapchain = std::make_shared<LogicalSwapchain>();
-        pLogicalSwapchain->pLogicalDevice                   = pLogicalDevice;
-        pLogicalSwapchain->swapchainCreateInfo              = *pCreateInfo;
-        pLogicalSwapchain->imageExtent                      = modifiedCreateInfo.imageExtent;
-        pLogicalSwapchain->sourceFormat                     = pCreateInfo->imageFormat;
-        pLogicalSwapchain->sourceColorSpace                 = pCreateInfo->imageColorSpace;
-        pLogicalSwapchain->destFormat                       = pCreateInfo->imageFormat;
-        pLogicalSwapchain->destColorSpace                   = pCreateInfo->imageColorSpace;
+        pLogicalSwapchain->swapchainCreateInfo = *pCreateInfo;
+        pLogicalSwapchain->imageExtent         = modifiedCreateInfo.imageExtent;
+        pLogicalSwapchain->sourceFormat        = pCreateInfo->imageFormat;
+        pLogicalSwapchain->sourceColorSpace    = pCreateInfo->imageColorSpace;
+        pLogicalSwapchain->destFormat          = pCreateInfo->imageFormat;
+        pLogicalSwapchain->destColorSpace      = pCreateInfo->imageColorSpace;
 
         // Platform monitor detection: Map surface to physical connector name
         auto surfIt = g_surfaceMap.find(pCreateInfo->surface);
@@ -631,8 +717,9 @@ namespace vkBasalt
                 modifiedCreateInfo.imageColorSpace = bestTarget.colorSpace;
                 // Must flag as mutable and add the HDR format to the view list, otherwise the game will crash when creating SDR ImageViews on the HDR swapchain images.
                 modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
-                formats[viewFormatCount++]                = bestTarget.format;
-                imageFormatListCreateInfo.viewFormatCount = viewFormatCount;
+
+                addFormat(bestTarget.format);
+
                 pLogicalSwapchain->destFormat             = modifiedCreateInfo.imageFormat;
                 pLogicalSwapchain->destColorSpace         = modifiedCreateInfo.imageColorSpace;
                 pLogicalSwapchain->autoHdrActive          = true;
@@ -653,6 +740,59 @@ namespace vkBasalt
         pLogicalSwapchain->colorSpace   = pLogicalSwapchain->destColorSpace;
         pLogicalDevice->swapchainFormat = pLogicalSwapchain->destFormat;
         pLogicalSwapchain->imageCount   = 0;
+
+        // Non-HDR direct write mutable format setup
+        if (!pLogicalSwapchain->autoHdrActive && pLogicalDevice->supportsMutableFormat) {
+            VkFormat directWriteViewFormat = convertToUNORM(modifiedCreateInfo.imageFormat);
+            if (directWriteViewFormat != VK_FORMAT_UNDEFINED
+                && directWriteViewFormat != modifiedCreateInfo.imageFormat) {
+                addFormat(directWriteViewFormat);
+                modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
+                pLogicalSwapchain->swapchainMutableFormat = true;
+
+                Logger::debug(
+                    "CreateSwapchainKHR: enabling non-HDR mutable swapchain for direct final effect writes, "
+                    "base format="
+                    + std::to_string(modifiedCreateInfo.imageFormat)
+                    + " view format=" + std::to_string(directWriteViewFormat));
+            }
+        }
+
+        // If the merged format list has more than 1 format, we've to set the mutable format flag.
+        // This satisfies VUID-VkSwapchainCreateInfoKHR-flags-04100, which requires the flag if viewFormatCount > 1.
+        // The game may have forgotten it, or we added HDR/direct write formats ourselves.
+        if (mergedFormats.size() > 1 && pLogicalDevice->supportsMutableFormat) {
+            modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
+            pLogicalSwapchain->swapchainMutableFormat = true;
+        }
+
+        // Allocate our new format list struct at the end, after all formats are added.
+        // This prevents dangling pointers if the vector reallocates during addFormat().
+        auto formatListCopy = std::make_unique<uint8_t[]>(sizeof(VkImageFormatListCreateInfo));
+        VkImageFormatListCreateInfo* newFormatList =
+            reinterpret_cast<VkImageFormatListCreateInfo*>(formatListCopy.get());
+        newFormatList->sType           = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
+        newFormatList->pNext           = nullptr;
+        newFormatList->viewFormatCount = static_cast<uint32_t>(mergedFormats.size());
+        newFormatList->pViewFormats    = mergedFormats.data();
+        *newPNextTail                  = reinterpret_cast<VkBaseOutStructure*>(newFormatList);
+        pNextCopies.push_back(std::move(formatListCopy));
+
+        // Move the temporary vectors into the swapchain object so they live as long as the swapchain.
+        // E.g. validation layer caches the VkImageFormatListCreateInfo pointer for the VkImage.
+        pLogicalSwapchain->mergedViewFormats = std::move(mergedFormats);
+        pLogicalSwapchain->pNextChainCopies  = std::move(pNextCopies);
+
+        // After the move, the vector storage is owned by pLogicalSwapchain.
+        // Update the format list pointer to reference the surviving vector data.
+        newFormatList->pViewFormats = pLogicalSwapchain->mergedViewFormats.data();
+
+        modifiedCreateInfo.pNext = newPNextHead;
+
+        // Store the actual usage flags the images will be created with, so that
+        // fake image tracker correctly stripsSTORAGE_BIT for SRGB views on real swapchain images.
+        pLogicalSwapchain->actualImageUsage = modifiedCreateInfo.imageUsage;
+
         VkResult result = pLogicalDevice->vkd.CreateSwapchainKHR(device, &modifiedCreateInfo, pAllocator, pSwapchain);
 
         Logger::info(
@@ -702,11 +842,16 @@ namespace vkBasalt
         pLogicalDevice->vkd.GetSwapchainImagesKHR(
             device, swapchain, &pLogicalSwapchain->imageCount, pLogicalSwapchain->images.data());
 
+        // Track real swapchain images so SRGB views created by the game get STORAGE_BIT stripped. Must use actualImageUsage
+        // (which includes STORAGE_BIT if we added it) rather than the game's original request, otherwise the tracker won't know to strip it.
+        for (uint32_t i = 0; i < pLogicalSwapchain->imageCount; i++) {
+            registerFakeImageUsage(pLogicalSwapchain->images[i], pLogicalSwapchain->actualImageUsage);
+        }
+
         // Passthrough mode: return real images directly, skip fake image allocation entirely
         Logger::trace(
             "GetSwapchainImagesKHR: passthroughActive=" + std::to_string(pLogicalSwapchain->passthroughActive)
             + " returning " + (pLogicalSwapchain->passthroughActive ? "real" : "fake") + " images");
-
         if (pLogicalSwapchain->passthroughActive) {
             // Guard: if overlay already exists for this swapchain, just return the real images. Games often call vkGetSwapchainImagesKHR twice (count query + data query).
             if (g_overlayManager.hasOverlay(swapchain)) {
@@ -762,8 +907,14 @@ namespace vkBasalt
         uint32_t fakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 
         pLogicalSwapchain->fakeImages = createFakeSwapchainImages(
-            pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, fakeImageCount, pLogicalSwapchain->fakeImageMemory);
+            pLogicalDevice, pLogicalSwapchain->swapchainCreateInfo, fakeImageCount, pLogicalSwapchain->fakeImageMemory,
+            pLogicalSwapchain->mergedViewFormats);
+
         Logger::debug("created fake swapchain images");
+
+        // Fake images are already registered with their actual usage (including STORAGE_BIT) inside createFakeSwapchainImages.
+        // Don't register again with actualImageUsage here as that overwrites the correct usage with the real swapchain's usage,
+        // Which has STORAGE_BIT stripped for SRGB. This would break the SRGB view restriction in vkBasalt_CreateImageView.
 
         buildEffectChain(pLogicalDevice, pLogicalSwapchain, swapchain, pConfig.get(), g_overlayManager);
         Logger::trace("vkGetSwapchainImagesKHR");
@@ -1086,8 +1237,11 @@ namespace vkBasalt
 
         // we need to delete the infos of the oldswapchain
         Logger::trace("vkDestroySwapchainKHR " + convertToString(swapchain));
-
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+
+        // Drop fake and real image usage records before the handles go away
+        unregisterFakeImageUsages(it->second->fakeImages);
+        unregisterFakeImageUsages(it->second->images);
 
         // Wait for the GPU to finish using our internal resources before destroying them.
         pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
@@ -1188,6 +1342,67 @@ namespace vkBasalt
         }
     }
 
+    VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateImageView(
+        VkDevice device,
+        const VkImageViewCreateInfo* pCreateInfo,
+        const VkAllocationCallbacks* pAllocator,
+        VkImageView* pView)
+    {
+        std::scoped_lock l(globalLock);
+        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
+
+        if (pCreateInfo) {
+            VkImageUsageFlags restrictedUsage = 0;
+            bool needsRestriction             = false;
+
+            // Only restrict if the image is tracked (i.e., we might have added STORAGE_BIT to it). If it's untracked, it's a regular game image.
+            // Therefore we can't safely guess the usage subset without risking VUID-VkImageViewCreateInfo-pNext-02662 or 08931.
+            if (getStorageStrippedViewUsage(
+                    pLogicalDevice, pCreateInfo->image, pCreateInfo->format, &restrictedUsage)) {
+                needsRestriction = true;
+            }
+
+            if (needsRestriction) {
+                // Walk the pNext chain. If the game already provided a usage restriction, copy it to the stack, strip STORAGE, and relink.
+                // Don't mutate the game's struct.
+                const void* pNext = pCreateInfo->pNext;
+                while (pNext) {
+                    const VkBaseInStructure* base = reinterpret_cast<const VkBaseInStructure*>(pNext);
+                    if (base->sType == VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO) {
+                        VkImageViewUsageCreateInfo patched = *reinterpret_cast<const VkImageViewUsageCreateInfo*>(base);
+                        patched.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+
+                        VkImageViewCreateInfo modifiedCreateInfo = *pCreateInfo;
+                        modifiedCreateInfo.pNext                 = &patched;
+                        return pLogicalDevice->vkd.CreateImageView(device, &modifiedCreateInfo, pAllocator, pView);
+                    }
+                    if (base->sType == VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_2_CREATE_INFO_KHR) {
+                        VkImageViewUsage2CreateInfoKHR patched =
+                            *reinterpret_cast<const VkImageViewUsage2CreateInfoKHR*>(base);
+                        patched.usage &= ~VK_IMAGE_USAGE_2_STORAGE_BIT_KHR;
+
+                        VkImageViewCreateInfo modifiedCreateInfo = *pCreateInfo;
+                        modifiedCreateInfo.pNext                 = &patched;
+                        return pLogicalDevice->vkd.CreateImageView(device, &modifiedCreateInfo, pAllocator, pView);
+                    }
+                    pNext = base->pNext;
+                }
+
+                // No existing structure found, safely prepend ours
+                VkImageViewUsageCreateInfo usageRestriction = {};
+                usageRestriction.sType                      = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+                usageRestriction.pNext                      = pCreateInfo->pNext;
+                usageRestriction.usage                      = restrictedUsage;
+
+                VkImageViewCreateInfo modifiedCreateInfo = *pCreateInfo;
+                modifiedCreateInfo.pNext                 = &usageRestriction;
+                return pLogicalDevice->vkd.CreateImageView(device, &modifiedCreateInfo, pAllocator, pView);
+            }
+        }
+
+        return pLogicalDevice->vkd.CreateImageView(device, pCreateInfo, pAllocator, pView);
+    }
+
     VKAPI_ATTR VkResult VKAPI_CALL vkBasalt_CreateImage(
         VkDevice device, const VkImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkImage* pImage)
     {
@@ -1235,13 +1450,12 @@ namespace vkBasalt
         std::scoped_lock l(globalLock);
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
 
+        unregisterFakeImageUsage(image);
         untrackDepthImage(pLogicalDevice, image);
         pLogicalDevice->vkd.DestroyImage(pLogicalDevice->device, image, pAllocator);
     }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Enumeration function
-
     VkResult VKAPI_CALL
     vkBasalt_EnumerateInstanceLayerProperties(uint32_t* pPropertyCount, VkLayerProperties* pProperties)
     {
@@ -1349,6 +1563,7 @@ extern "C"
     GETPROCADDR(QueuePresentKHR); \
     GETPROCADDR(DestroySwapchainKHR); \
     GETPROCADDR(DestroySurfaceKHR); \
+    GETPROCADDR(CreateImageView); \
 \
     if (vkBasalt::pConfig->getOption<std::string>("depthCapture", "off") == "on") { \
         GETPROCADDR(CreateImage); \

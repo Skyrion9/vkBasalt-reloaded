@@ -1,9 +1,13 @@
-#include "image_view.hpp"
-#include "logical_device.hpp"
-#include "vulkan_include.hpp"
+#include <vulkan/vulkan_core.h>
+
 #include <cstdint>
 #include <vector>
-#include <vulkan/vulkan_core.h>
+
+#include "image_view.hpp"
+#include "logical_device.hpp"
+
+#include "vulkan_include.hpp"
+#include "fake_image_tracker.hpp"
 
 namespace vkBasalt
 {
@@ -37,9 +41,22 @@ namespace vkBasalt
         imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
         imageViewCreateInfo.subresourceRange.layerCount     = 1;
 
+        VkImageViewUsageCreateInfo usageRestriction = {};
+        usageRestriction.sType                      = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+        usageRestriction.pNext                      = nullptr;
+
         for (uint32_t i = 0; i < images.size(); i++) {
             imageViewCreateInfo.image = images[i];
-            VkResult result           = pLogicalDevice->vkd.CreateImageView(
+
+            VkImageUsageFlags restrictedUsage = 0;
+            if (getStorageStrippedViewUsage(pLogicalDevice, images[i], format, &restrictedUsage)) {
+                usageRestriction.usage    = restrictedUsage;
+                imageViewCreateInfo.pNext = &usageRestriction;
+            } else {
+                imageViewCreateInfo.pNext = nullptr;
+            }
+
+            VkResult result = pLogicalDevice->vkd.CreateImageView(
                 pLogicalDevice->device, &imageViewCreateInfo, nullptr, &(imageViews[i]));
             if (result != VK_SUCCESS) {
                 for (uint32_t j = 0; j < i; j++)

@@ -34,7 +34,14 @@ namespace vkBasalt
         VkColorSpaceKHR sourceColorSpace;
         VkFormat destFormat;
         VkColorSpaceKHR destColorSpace;
-        bool autoHdrActive = false;
+        bool autoHdrActive                 = false;
+        bool swapchainMutableFormat        = false;
+        VkImageUsageFlags actualImageUsage = 0; // The actual usage flags the swapchain images were created with
+
+        // Keep the format list and pNext chain copies alive for the lifetime of the swapchain.
+        // The validation layer caches the VkImageFormatListCreateInfo pointer for the VkImage so the memory must not be freed until vkDestroySwapchainKHR.
+        std::vector<VkFormat> mergedViewFormats;
+        std::vector<std::unique_ptr<uint8_t[]>> pNextChainCopies;
 
         // Passthrough mode states
         std::chrono::steady_clock::time_point passthroughTimerStart;
