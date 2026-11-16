@@ -3,7 +3,6 @@
 #include "logical_device.hpp"
 
 #include <vector>
-#include <cstring>
 #include <vulkan/vulkan_core.h>
 
 namespace vkBasalt
@@ -47,6 +46,21 @@ namespace vkBasalt
             case VK_FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG: return VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG;
             default: return format;
         }
+    }
+
+    bool supportsStorageImage(LogicalDevice* pLogicalDevice, VkFormat format)
+    {
+        if (!pLogicalDevice || format == VK_FORMAT_UNDEFINED) return false;
+
+        // SRGB formats don't support VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT in Vulkan. While some drivers may allow, we explicitly reject it to prevent validation/compatibility issues.
+        // For SRGB swapchains, the layer will correctly fall back to using TransferEffect to copy from the UNORM fake slice to the SRGB real swapchain images.
+        if (isSRGB(format)) {
+            return false;
+        }
+
+        VkFormatProperties props;
+        pLogicalDevice->vki.GetPhysicalDeviceFormatProperties(pLogicalDevice->physicalDevice, format, &props);
+        return (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
     }
 
     VkFormat convertToUNORM(VkFormat format)
@@ -186,6 +200,13 @@ namespace vkBasalt
             case VK_FORMAT_A2R10G10B10_UNORM_PACK32: return true;
             default: return false;
         }
+    }
+
+    VkFormat getAlternate10BitFormat(VkFormat format)
+    {
+        if (format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) return VK_FORMAT_A2R10G10B10_UNORM_PACK32;
+        if (format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+        return VK_FORMAT_UNDEFINED;
     }
 
     bool isFloatFormat(VkFormat format)

@@ -1,13 +1,7 @@
 #ifndef FORMAT_HPP_INCLUDED
 #define FORMAT_HPP_INCLUDED
 #include <vector>
-#include <fstream>
-#include <string>
-#include <iostream>
 #include <vector>
-#include <memory>
-
-#include "vulkan_include.hpp"
 
 #include "logical_device.hpp"
 
@@ -35,7 +29,9 @@ namespace vkBasalt
     bool isExtendedRangeFormat(VkFormat format);
     bool isBGRFormat(VkFormat format);
     bool is10BitPackedFormat(VkFormat format);
+    VkFormat getAlternate10BitFormat(VkFormat format);
     bool isFloatFormat(VkFormat format);
+    bool supportsStorageImage(LogicalDevice* pLogicalDevice, VkFormat format);
 
     enum class ColorSpaceMode : int32_t {
         SDR_SRGB              = 0, // sRGB transfer function (ALU decode/encode)
