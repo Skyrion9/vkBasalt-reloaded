@@ -1,6 +1,6 @@
 #ifndef FORMAT_HPP_INCLUDED
 #define FORMAT_HPP_INCLUDED
-#include <vector>
+
 #include <vector>
 
 #include "logical_device.hpp"
