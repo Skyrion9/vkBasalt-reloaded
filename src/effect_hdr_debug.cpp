@@ -216,10 +216,17 @@ namespace vkBasalt
             .baseArrayLayer = 0,
             .layerCount     = 1};
 
-        m_dev->vkd.CmdPipelineBarrier(
-            commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
-            &barrier2);
+        if (isLastInChain) {
+            barrier2.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+            m_dev->vkd.CmdPipelineBarrier(
+                commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
+                nullptr, 0, nullptr, 1, &barrier2);
+        } else {
+            m_dev->vkd.CmdPipelineBarrier(
+                commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr,
+                1, &barrier2);
+        }
     }
 
     void HdrDebugEffect::updateEffect()
