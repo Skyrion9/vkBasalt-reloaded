@@ -1379,32 +1379,55 @@ namespace vkBasalt
             }
 
             if (needsRestriction) {
-                // Walk the pNext chain. If the game already provided a usage restriction, copy it to the stack, strip STORAGE, and relink.
-                // Don't mutate the game's struct.
-                const void* pNext = pCreateInfo->pNext;
+                // Patch the game's usage restriction without dropping any other pNext struct.
+                // Use VkBaseOutStructure because we temporarily relink the chain, then restore it.
+                VkBaseOutStructure* prev = nullptr;
+                const void* pNext        = pCreateInfo->pNext;
+
                 while (pNext) {
-                    const VkBaseInStructure* base = reinterpret_cast<const VkBaseInStructure*>(pNext);
+                    auto* base = const_cast<VkBaseOutStructure*>(reinterpret_cast<const VkBaseOutStructure*>(pNext));
+
                     if (base->sType == VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO) {
                         VkImageViewUsageCreateInfo patched = *reinterpret_cast<const VkImageViewUsageCreateInfo*>(base);
                         patched.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+                        patched.pNext = base->pNext;
+
+                        // Save the original predecessor target, which is base itself, not base->pNext.
+                        VkBaseOutStructure* savedPrevNext = base;
+                        if (prev) prev->pNext = reinterpret_cast<VkBaseOutStructure*>(&patched);
 
                         VkImageViewCreateInfo modifiedCreateInfo = *pCreateInfo;
-                        modifiedCreateInfo.pNext                 = &patched;
-                        return pLogicalDevice->vkd.CreateImageView(device, &modifiedCreateInfo, pAllocator, pView);
+                        if (!prev) modifiedCreateInfo.pNext = &patched;
+
+                        VkResult r =
+                            pLogicalDevice->vkd.CreateImageView(device, &modifiedCreateInfo, pAllocator, pView);
+                        if (prev) prev->pNext = savedPrevNext;
+                        return r;
                     }
+
                     if (base->sType == VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_2_CREATE_INFO_KHR) {
                         VkImageViewUsage2CreateInfoKHR patched =
                             *reinterpret_cast<const VkImageViewUsage2CreateInfoKHR*>(base);
                         patched.usage &= ~VK_IMAGE_USAGE_2_STORAGE_BIT_KHR;
+                        patched.pNext = base->pNext;
+
+                        VkBaseOutStructure* savedPrevNext = base;
+                        if (prev) prev->pNext = reinterpret_cast<VkBaseOutStructure*>(&patched);
 
                         VkImageViewCreateInfo modifiedCreateInfo = *pCreateInfo;
-                        modifiedCreateInfo.pNext                 = &patched;
-                        return pLogicalDevice->vkd.CreateImageView(device, &modifiedCreateInfo, pAllocator, pView);
+                        if (!prev) modifiedCreateInfo.pNext = &patched;
+
+                        VkResult r =
+                            pLogicalDevice->vkd.CreateImageView(device, &modifiedCreateInfo, pAllocator, pView);
+                        if (prev) prev->pNext = savedPrevNext;
+                        return r;
                     }
+
+                    prev  = base;
                     pNext = base->pNext;
                 }
 
-                // No existing structure found, safely prepend ours
+                // No existing structure found, safely prepend ours.
                 VkImageViewUsageCreateInfo usageRestriction = {};
                 usageRestriction.sType                      = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
                 usageRestriction.pNext                      = pCreateInfo->pNext;
