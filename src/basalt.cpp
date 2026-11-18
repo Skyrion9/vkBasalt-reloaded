@@ -1533,28 +1533,44 @@ namespace vkBasalt
         VkDevice device, const VkImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkImage* pImage)
     {
         std::scoped_lock l(globalLock);
+        LogicalDevice* pLogicalDevice        = deviceMap[GetKey(device)].get();
+        VkImageCreateInfo modifiedCreateInfo = *pCreateInfo;
 
-        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
-        if (isDepthFormat(pCreateInfo->format) && pCreateInfo->samples == VK_SAMPLE_COUNT_1_BIT
-            && ((pCreateInfo->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-                == VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
-            Logger::debug("detected depth image with format: " + convertToString(pCreateInfo->format));
-            Logger::debug(std::to_string(pCreateInfo->extent.width) + "x" + std::to_string(pCreateInfo->extent.height));
-            Logger::debug(
-                std::to_string(
-                    (pCreateInfo->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-                    == VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
-
-            VkImageCreateInfo modifiedCreateInfo = *pCreateInfo;
-            modifiedCreateInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-            VkResult result = pLogicalDevice->vkd.CreateImage(device, &modifiedCreateInfo, pAllocator, pImage);
-            pLogicalDevice->depthImages.push_back(*pImage);
-            pLogicalDevice->depthFormats.push_back(pCreateInfo->format);
-
-            return result;
-        } else {
-            return pLogicalDevice->vkd.CreateImage(device, pCreateInfo, pAllocator, pImage);
+        // Fix game bugs: if the game provides a format list with >1 formats but forgets MUTABLE_FORMAT_BIT, add it.
+        // This prevents VUID-VkImageCreateInfo-flags-04738 validation errors from poorly written game engines.
+        const void* pNext = modifiedCreateInfo.pNext;
+        while (pNext) {
+            const VkBaseInStructure* base = reinterpret_cast<const VkBaseInStructure*>(pNext);
+            if (base->sType == VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO) {
+                const VkImageFormatListCreateInfo* formatList =
+                    reinterpret_cast<const VkImageFormatListCreateInfo*>(base);
+                if (formatList->viewFormatCount > 1
+                    && !(modifiedCreateInfo.flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT)) {
+                    modifiedCreateInfo.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+                }
+                break;
+            }
+            pNext = base->pNext;
         }
+
+        bool isDepth = isDepthFormat(pCreateInfo->format) && pCreateInfo->samples == VK_SAMPLE_COUNT_1_BIT
+                       && (pCreateInfo->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        if (isDepth) {
+            // SAMPLED_BIT is required for depth capture visualization and effects that sample depth.
+            // TRANSFER_SRC_BIT is required for async screenshot readback of the depth buffer.
+            modifiedCreateInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        }
+
+        VkResult result = pLogicalDevice->vkd.CreateImage(device, &modifiedCreateInfo, pAllocator, pImage);
+        if (result == VK_SUCCESS && pImage && *pImage) {
+            // Only track actual depth images for depth capture feature.
+            if (isDepth) {
+                pLogicalDevice->depthImages.push_back(*pImage);
+                pLogicalDevice->depthFormats.push_back(pCreateInfo->format);
+            }
+        }
+
+        return result;
     }
 
     VKAPI_ATTR VkResult VKAPI_CALL
