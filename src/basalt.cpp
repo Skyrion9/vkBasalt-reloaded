@@ -140,33 +140,58 @@ namespace vkBasalt
             g_layer_init_pid = getpid();
         }
         auto* layerCreateInfo = (VkLayerInstanceCreateInfo*) pCreateInfo->pNext;
-
         // step through the chain of pNext until we get to the link info
         while (layerCreateInfo
                && (layerCreateInfo->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO
                    || layerCreateInfo->function != VK_LAYER_LINK_INFO)) {
             layerCreateInfo = (VkLayerInstanceCreateInfo*) layerCreateInfo->pNext;
         }
+        Logger::trace("vkCreateInstance ENTERED");
 
-        Logger::trace("vkCreateInstance");
+        if (pCreateInfo && pCreateInfo->pApplicationInfo) {
+            Logger::info(
+                "vkCreateInstance: Game requested API version "
+                + std::to_string(VK_API_VERSION_MAJOR(pCreateInfo->pApplicationInfo->apiVersion)) + "."
+                + std::to_string(VK_API_VERSION_MINOR(pCreateInfo->pApplicationInfo->apiVersion)));
+        } else {
+            Logger::info("vkCreateInstance: Game requested API version (null pApplicationInfo, defaulting to 1.0)");
+        }
 
         if (layerCreateInfo == nullptr) {
-            // No loader instance create info
+            Logger::err("vkCreateInstance FAILED: No loader instance create info");
             return VK_ERROR_INITIALIZATION_FAILED;
         }
 
+        // 1. Get the function pointer FIRST
         PFN_vkGetInstanceProcAddr gpa = layerCreateInfo->u.pLayerInfo->pfnNextGetInstanceProcAddr;
-        // move chain on for next layer
+
+        // 2. Move chain on for next layer
         layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
-
-        auto createFunc = reinterpret_cast<PFN_vkCreateInstance>(gpa(VK_NULL_HANDLE, "vkCreateInstance"));
-
+        auto createFunc               = reinterpret_cast<PFN_vkCreateInstance>(gpa(VK_NULL_HANDLE, "vkCreateInstance"));
         VkInstanceCreateInfo modifiedCreateInfo = *pCreateInfo;
-        VkApplicationInfo appInfo;
+
+        std::vector<const char*> enabledExtensionNames;
+        if (modifiedCreateInfo.enabledExtensionCount) {
+            enabledExtensionNames = std::vector<const char*>(
+                modifiedCreateInfo.ppEnabledExtensionNames,
+                modifiedCreateInfo.ppEnabledExtensionNames + modifiedCreateInfo.enabledExtensionCount);
+        }
+
+        // Always attempt to inject VK_EXT_swapchain_colorspace for AutoHDR.
+        addUniqueCString(enabledExtensionNames, "VK_EXT_swapchain_colorspace");
+        // VK_EXT_swapchain_colorspace strictly requires VK_KHR_surface. If the game/loader didn't explicitly add it,
+        // The validation layer will flag VUID-vkCreateInstance-ppEnabledExtensionNames-01388.
+        addUniqueCString(enabledExtensionNames, "VK_KHR_surface");
+
+        modifiedCreateInfo.ppEnabledExtensionNames = enabledExtensionNames.data();
+        modifiedCreateInfo.enabledExtensionCount   = enabledExtensionNames.size();
+
+        // Advertise Vulkan 1.3 downstream.DXVK's HDR path and vkBasalt's HDR swapchain mutation rely on this.
+        VkApplicationInfo appInfo{};
         if (modifiedCreateInfo.pApplicationInfo) {
             appInfo = *(modifiedCreateInfo.pApplicationInfo);
-            if (appInfo.apiVersion < VK_API_VERSION_1_1) {
-                appInfo.apiVersion = VK_API_VERSION_1_1;
+            if (appInfo.apiVersion < VK_API_VERSION_1_3) {
+                appInfo.apiVersion = VK_API_VERSION_1_3;
             }
         } else {
             appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -175,11 +200,33 @@ namespace vkBasalt
             appInfo.applicationVersion = 0;
             appInfo.pEngineName        = nullptr;
             appInfo.engineVersion      = 0;
-            appInfo.apiVersion         = VK_API_VERSION_1_1;
+            appInfo.apiVersion         = VK_API_VERSION_1_3;
+        }
+        modifiedCreateInfo.pApplicationInfo = &appInfo;
+
+        Logger::info("vkCreateInstance: Calling next layer's vkCreateInstance (with colorspace ext)...");
+        VkResult ret = createFunc(&modifiedCreateInfo, pAllocator, pInstance);
+
+        bool supportsSwapchainColorspace = true;
+        if (ret == VK_ERROR_EXTENSION_NOT_PRESENT) {
+            Logger::warn("VK_EXT_swapchain_colorspace not supported by driver, retrying without it...");
+            // Remove it and retry
+            enabledExtensionNames.erase(
+                std::remove_if(
+                    enabledExtensionNames.begin(), enabledExtensionNames.end(),
+                    [](const char* ext) { return std::strcmp(ext, "VK_EXT_swapchain_colorspace") == 0; }),
+                enabledExtensionNames.end());
+            modifiedCreateInfo.ppEnabledExtensionNames = enabledExtensionNames.data();
+            modifiedCreateInfo.enabledExtensionCount   = enabledExtensionNames.size();
+            ret                                        = createFunc(&modifiedCreateInfo, pAllocator, pInstance);
+            supportsSwapchainColorspace                = false;
         }
 
-        modifiedCreateInfo.pApplicationInfo = &appInfo;
-        VkResult ret                        = createFunc(&modifiedCreateInfo, pAllocator, pInstance);
+        if (ret != VK_SUCCESS) {
+            Logger::err("vkCreateInstance FAILED with VkResult: " + std::to_string(static_cast<int>(ret)));
+            return ret;
+        }
+        Logger::info("vkCreateInstance SUCCEEDED");
 
         // fetch our own dispatch table for the functions we need, into the next layer
         InstanceDispatch dispatchTable;
@@ -188,16 +235,27 @@ namespace vkBasalt
         // store the table by key
         {
             std::scoped_lock l(globalLock);
-            instanceDispatchMap[GetKey(*pInstance)] = dispatchTable;
-            instanceMap[GetKey(*pInstance)]         = *pInstance;
-            instanceVersionMap[GetKey(*pInstance)]  = modifiedCreateInfo.pApplicationInfo->apiVersion;
+            instanceDispatchMap[GetKey(*pInstance)]   = dispatchTable;
+            instanceMap[GetKey(*pInstance)]           = *pInstance;
+            instanceVersionMap[GetKey(*pInstance)]    = appInfo.apiVersion;
+            instanceColorspaceMap[GetKey(*pInstance)] = supportsSwapchainColorspace;
         }
+
+        Logger::info(
+            "vkCreateInstance RETURNING success to app, instance="
+            + std::to_string(reinterpret_cast<uintptr_t>(*pInstance))
+            + ", colorspaceExt=" + std::to_string(supportsSwapchainColorspace)
+            + ", usedApiVersion=" + std::to_string(VK_API_VERSION_MAJOR(appInfo.apiVersion)) + "."
+            + std::to_string(VK_API_VERSION_MINOR(appInfo.apiVersion)) + "."
+            + std::to_string(VK_API_VERSION_PATCH(appInfo.apiVersion)));
 
         return ret;
     }
 
     void VKAPI_CALL vkBasalt_DestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator)
     {
+        Logger::trace("vkDestroyInstance ENTERED, instance=" + std::to_string(reinterpret_cast<uintptr_t>(instance)));
+
         if (!instance) return;
         std::scoped_lock l(globalLock);
         Logger::trace("vkDestroyInstance");
@@ -208,6 +266,7 @@ namespace vkBasalt
         instanceDispatchMap.erase(GetKey(instance));
         instanceMap.erase(GetKey(instance));
         instanceVersionMap.erase(GetKey(instance));
+        instanceColorspaceMap.erase(GetKey(instance));
     }
 
     VkResult VKAPI_CALL vkBasalt_CreateDevice(
@@ -216,6 +275,8 @@ namespace vkBasalt
         const VkAllocationCallbacks* pAllocator,
         VkDevice* pDevice)
     {
+        Logger::trace(
+            "vkCreateDevice ENTERED, physicalDevice=" + std::to_string(reinterpret_cast<uintptr_t>(physicalDevice)));
         std::scoped_lock l(globalLock);
         Logger::trace("vkCreateDevice");
         auto* layerCreateInfo = (VkLayerDeviceCreateInfo*) pCreateInfo->pNext;
@@ -248,16 +309,12 @@ namespace vkBasalt
         instanceDispatchMap[GetKey(physicalDevice)].EnumerateDeviceExtensionProperties(
             physicalDevice, nullptr, &extensionCount, extensionProperties.data());
 
-        bool supportsMutableFormat       = false;
-        bool supportsSwapchainColorspace = false;
-        bool supportsHdrMetadata         = false;
+        bool supportsMutableFormat = false;
+        bool supportsHdrMetadata   = false;
         for (VkExtensionProperties properties : extensionProperties) {
             if (properties.extensionName == std::string("VK_KHR_swapchain_mutable_format")) {
                 Logger::debug("device supports VK_KHR_swapchain_mutable_format");
                 supportsMutableFormat = true;
-            } else if (properties.extensionName == std::string("VK_EXT_swapchain_colorspace")) {
-                Logger::debug("device supports VK_EXT_swapchain_colorspace");
-                supportsSwapchainColorspace = true;
             } else if (properties.extensionName == std::string("VK_EXT_hdr_metadata")) {
                 Logger::debug("device supports VK_EXT_hdr_metadata");
                 supportsHdrMetadata = true;
@@ -279,10 +336,6 @@ namespace vkBasalt
             Logger::debug("activating mutable_format");
             addUniqueCString(enabledExtensionNames, "VK_KHR_swapchain_mutable_format");
         }
-        if (supportsSwapchainColorspace) {
-            Logger::debug("activating swapchain_colorspace");
-            addUniqueCString(enabledExtensionNames, "VK_EXT_swapchain_colorspace");
-        }
         if (supportsHdrMetadata) {
             Logger::debug("activating hdr_metadata");
             addUniqueCString(enabledExtensionNames, "VK_EXT_hdr_metadata");
@@ -300,7 +353,45 @@ namespace vkBasalt
             deviceFeatures = *(modifiedCreateInfo.pEnabledFeatures);
         }
         deviceFeatures.shaderImageGatherExtended = VK_TRUE;
-        modifiedCreateInfo.pEnabledFeatures      = &deviceFeatures;
+        // Required for CMAA2 to write to BGRA8 swapchain images without explicit rgba8 format qualifiers,
+        // Fixes 0x13365b2 validation warning without using illegal storage image swizzles.
+        deviceFeatures.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+        modifiedCreateInfo.pEnabledFeatures                 = &deviceFeatures;
+
+        // Force enable vulkanMemoryModelDeviceScope to prevent VUID-RuntimeSpirv-vulkanMemoryModel-06265.
+        // Some of our shaders use atomic operations with Device scope.
+        bool foundMemModel = false;
+
+        // Safely cast away constness from pNext to walk and potentially modify the chain
+        void** ppNext               = const_cast<void**>(&modifiedCreateInfo.pNext);
+        VkBaseOutStructure* current = reinterpret_cast<VkBaseOutStructure*>(*ppNext);
+
+        while (current) {
+            if (current->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES) {
+                auto* existing = reinterpret_cast<VkPhysicalDeviceVulkanMemoryModelFeatures*>(current);
+                existing->vulkanMemoryModelDeviceScope = VK_TRUE;
+                foundMemModel                          = true;
+                break;
+            }
+            if (current->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES) {
+                auto* existing                         = reinterpret_cast<VkPhysicalDeviceVulkan12Features*>(current);
+                existing->vulkanMemoryModelDeviceScope = VK_TRUE;
+                foundMemModel                          = true;
+                break;
+            }
+            ppNext  = reinterpret_cast<void**>(&current->pNext);
+            current = current->pNext;
+        }
+
+        if (!foundMemModel) {
+            // Safe to use static here because globalLock is held at the top of vkBasalt_CreateDevice
+            static VkPhysicalDeviceVulkanMemoryModelFeatures s_memModelFeatures{};
+            s_memModelFeatures.sType             = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES;
+            s_memModelFeatures.pNext             = *ppNext;
+            s_memModelFeatures.vulkanMemoryModel = VK_TRUE;
+            s_memModelFeatures.vulkanMemoryModelDeviceScope = VK_TRUE;
+            *ppNext                                         = &s_memModelFeatures;
+        }
 
         VkResult ret = createFunc(physicalDevice, &modifiedCreateInfo, pAllocator, pDevice);
 
@@ -315,6 +406,7 @@ namespace vkBasalt
         pLogicalDevice->queueFamilyIndex              = 0;
         pLogicalDevice->commandPool                   = VK_NULL_HANDLE;
         pLogicalDevice->supportsMutableFormat         = supportsMutableFormat;
+        pLogicalDevice->supportsSwapchainColorspace   = instanceColorspaceMap[GetKey(pLogicalDevice->instance)];
         pLogicalDevice->supportsHdrMetadata           = supportsHdrMetadata;
         pLogicalDevice->physicalDeviceProperties      = deviceProps;
 
