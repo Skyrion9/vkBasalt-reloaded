@@ -1622,7 +1622,8 @@ namespace vkBasalt
     VkResult VKAPI_CALL vkBasalt_EnumerateInstanceExtensionProperties(
         const char* pLayerName, uint32_t* pPropertyCount, VkExtensionProperties* /*pProperties*/)
     {
-        if (pLayerName == nullptr || std::strcmp(pLayerName, VKBASALT_NAME) != 0) {
+        // If pLayerName is null, the loader is querying global extensions. Return 0 with SUCCESS.
+        if (pLayerName != nullptr && std::strcmp(pLayerName, VKBASALT_NAME) != 0) {
             return VK_ERROR_LAYER_NOT_PRESENT;
         }
 
@@ -1687,8 +1688,6 @@ extern "C"
 #define INTERCEPT_CALLS \
     /* instance chain functions we intercept */ \
     if (!std::strcmp(pName, "vkGetInstanceProcAddr")) return (PFN_vkVoidFunction) & vkBasalt_GetInstanceProcAddr; \
-    GETPROCADDR(EnumerateInstanceLayerProperties); \
-    GETPROCADDR(EnumerateInstanceExtensionProperties); \
     GETPROCADDR(CreateInstance); \
     GETPROCADDR(DestroyInstance); \
     VKBASALT_INTERCEPT_WAYLAND \
@@ -1696,8 +1695,6 @@ extern "C"
 \
     /* device chain functions we intercept*/ \
     if (!std::strcmp(pName, "vkGetDeviceProcAddr")) return (PFN_vkVoidFunction) & vkBasalt_GetDeviceProcAddr; \
-    GETPROCADDR(EnumerateDeviceLayerProperties); \
-    GETPROCADDR(EnumerateDeviceExtensionProperties); \
     GETPROCADDR(CreateDevice); \
     GETPROCADDR(DestroyDevice); \
     GETPROCADDR(CreateSwapchainKHR); \
