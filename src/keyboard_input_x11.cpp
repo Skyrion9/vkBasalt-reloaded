@@ -16,6 +16,13 @@
 #include "keyboard_input.hpp"
 #include "logger.hpp"
 
+#ifndef VKBASALT_WAYLAND
+#define VKBASALT_WAYLAND 1
+#endif
+#if VKBASALT_WAYLAND
+#include "keyboard_input_wayland.hpp"
+#endif
+
 namespace vkBasalt
 {
     static Display* g_gameDisplay     = nullptr;
@@ -168,8 +175,7 @@ namespace vkBasalt
     void supplementX11MouseButtons()
     {
         if (!ImGui::GetCurrentContext()) return;
-        ImGuiIO& io = ImGui::GetIO();
-
+        ImGuiIO& io  = ImGui::GetIO();
         Display* dpy = g_gameDisplay;
         if (!dpy) {
             if (!g_fallbackDisplay) {
@@ -181,10 +187,21 @@ namespace vkBasalt
             dpy = g_fallbackDisplay;
         }
 
+        Window win = g_gameWindow;
+        if (win == 0) {
+            Window focus_win = 0;
+            int revert_to    = 0;
+            XGetInputFocus(dpy, &focus_win, &revert_to);
+            if (focus_win != 0 && focus_win != PointerRoot) {
+                win = focus_win;
+            } else {
+                win = DefaultRootWindow(dpy);
+            }
+        }
+
         Window root = 0, child = 0;
         int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
         unsigned int mask = 0;
-        Window win        = g_gameWindow ? g_gameWindow : DefaultRootWindow(dpy);
         if (XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
             // X11: Button2=Middle, Button3=Right. ImGui: 1=Right, 2=Middle.
             if (!io.MouseDown[1]) io.MouseDown[1] = (mask & Button3Mask) != 0;
@@ -195,9 +212,27 @@ namespace vkBasalt
     void updateX11ImGuiIO(bool /*overlayOpen*/, float scale)
     {
         if (!ImGui::GetCurrentContext()) return;
+
+        // Under Proton/winewayland, prefer the Wine safe, pointer only Wayland queue if it has valid data.
+        // This keeps keyboard on X11 while restoring accurate surface relative mouse coordinates.
+        bool isWineEnv =
+            (getenv("WINELOADER") != nullptr || getenv("WINEDLLPATH") != nullptr || getenv("WINEPREFIX") != nullptr
+             || getenv("STEAM_COMPAT_DATA_PATH") != nullptr);
+
+#if VKBASALT_WAYLAND
+        if (isWineEnv) {
+            float waylandScale = getWaylandUIScale();
+            if (waylandScale < 0.5f) waylandScale = scale;
+            if (updateWaylandPointerImGuiIO(waylandScale)) {
+                return;
+            }
+        }
+#endif
+
         ImGuiIO& io  = ImGui::GetIO();
         Display* dpy = g_gameDisplay;
         Window win   = g_gameWindow;
+
         if (!dpy) {
             if (!g_fallbackDisplay) {
                 const char* disVar = getenv("DISPLAY");
@@ -206,13 +241,57 @@ namespace vkBasalt
                 if (!g_fallbackDisplay) return;
             }
             dpy = g_fallbackDisplay;
-            win = DefaultRootWindow(dpy);
         }
+
+        // Determine the query window.Under Wine in WAYLAND mode (g_gameWindow == 0), no X11 window exists for the game.
+        // So we must fall back to the root window for absolute screen coordinates.
+        // Under Wine in X11 mode (g_gameWindow != 0), the game has a real X11 window.
+        // So we must use window relative coordinates via XQueryPointer on that window.
+        if (win == 0) {
+            if (isWineEnv) {
+                // No X11 surface was created (Wayland mode under winewayland.drv).
+                // Use root window for absolute screen coordinates.
+                win = DefaultRootWindow(dpy);
+            } else {
+                Window focus_win = 0;
+                int revert_to    = 0;
+                XGetInputFocus(dpy, &focus_win, &revert_to);
+                if (focus_win != 0 && focus_win != PointerRoot) {
+                    win = focus_win;
+                } else {
+                    win = DefaultRootWindow(dpy);
+                }
+            }
+        }
+
         Window root = 0, child = 0;
         int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
         unsigned int mask = 0;
+
         if (XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
-            io.MousePos     = ImVec2(static_cast<float>(win_x) * scale, static_cast<float>(win_y) * scale);
+            float mx = static_cast<float>(win_x);
+            float my = static_cast<float>(win_y);
+
+            // Under winewayland.drv (Wayland mode), no real X11 window exists.
+            // We fell back to root window above, so use absolute screen coordinates.
+            // Under winex11.drv (X11 mode), g_gameWindow is set and win_x/win_y are
+            // already window relative, so we use them directly.
+            bool useRootCoords = (isWineEnv && g_gameWindow == 0) || win == DefaultRootWindow(dpy) || win == root
+                                 || (child == 0 && win_x == 0 && win_y == 0);
+            if (useRootCoords) {
+                mx = static_cast<float>(root_x);
+                my = static_cast<float>(root_y);
+            } else if (child != 0 && child != win) {
+                int translated_x = 0, translated_y = 0;
+                Window translated_child = 0;
+                if (XTranslateCoordinates(
+                        dpy, root, win, root_x, root_y, &translated_x, &translated_y, &translated_child)) {
+                    mx = static_cast<float>(translated_x);
+                    my = static_cast<float>(translated_y);
+                }
+            }
+
+            io.MousePos     = ImVec2(mx * scale, my * scale);
             io.MouseDown[0] = (mask & Button1Mask) != 0; // Left
             io.MouseDown[1] = (mask & Button3Mask) != 0; // Right
             io.MouseDown[2] = (mask & Button2Mask) != 0; // Middle

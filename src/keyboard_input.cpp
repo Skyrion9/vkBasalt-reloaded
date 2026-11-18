@@ -34,16 +34,22 @@ namespace vkBasalt
         if (input_initialized) return;
         const char* wayland_var = getenv("WAYLAND_DISPLAY");
         const char* x11_var     = getenv("DISPLAY");
+        // Fallback logic if no surface was created before the first key check.
+        // Under recent cachyosproton and dwproton 11.0-13+, winewayland.drv uses a dedicated reader thread.
+        // If we try to use the Wayland backend here, wl_display_roundtrip_queue will race
+        // with Wine's reader thread and cause a fatal deadlock/crash. We must force X11.
+        bool isWine =
+            (getenv("WINELOADER") != nullptr || getenv("WINEDLLPATH") != nullptr || getenv("WINEPREFIX") != nullptr
+             || getenv("STEAM_COMPAT_DATA_PATH") != nullptr);
 
-        // Fallback logic if no surface was created before the first key check
-        if (wayland_var && strcmp(wayland_var, "") != 0) {
+        if (wayland_var && strcmp(wayland_var, "") != 0 && !isWine) {
 #if VKBASALT_WAYLAND
             Logger::debug("Wayland session detected via env. Waiting for surface hook.");
             is_wayland = true;
 #endif
         } else if (x11_var && strcmp(x11_var, "") != 0) {
 #if VKBASALT_X11
-            Logger::debug("Pure X11 session detected via env. Using X11 input backend.");
+            Logger::debug("X11/XWayland session detected via env. Using X11 input backend.");
             is_wayland = false;
 #endif
         }

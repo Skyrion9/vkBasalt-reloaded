@@ -5,6 +5,8 @@
 namespace vkBasalt
 {
     void initWaylandInput(void* display_ptr, void* surface_ptr = nullptr);
+    void initWaylandPointerOnly(void* display_ptr, void* surface_ptr = nullptr);
+    bool updateWaylandPointerImGuiIO(float scale);
     void ensureWaylandRegistryBound();
     void updateWaylandImGuiIO(float scale);
 

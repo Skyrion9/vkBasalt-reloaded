@@ -434,9 +434,25 @@ namespace vkBasalt
 
         // Grab display pointer
         if (pCreateInfo && pCreateInfo->display) {
-            setInputBackend(true); // Confirm Wayland backend
-            initWaylandInput(
-                reinterpret_cast<void*>(pCreateInfo->display), reinterpret_cast<void*>(pCreateInfo->surface));
+            // Skip Wayland input init under Wine/Proton to avoid conflicting with winewayland.so's event loop
+            // which causes deadlocks during vkCreateWaylandSurfaceKHR or the first QueuePresentKHR.
+            bool isWine =
+                (getenv("WINELOADER") != nullptr || getenv("WINEDLLPATH") != nullptr || getenv("WINEPREFIX") != nullptr
+                 || getenv("STEAM_COMPAT_DATA_PATH") != nullptr);
+            if (!isWine) {
+                setInputBackend(true); // Confirm Wayland backend
+                initWaylandInput(
+                    reinterpret_cast<void*>(pCreateInfo->display), reinterpret_cast<void*>(pCreateInfo->surface));
+            } else {
+                Logger::info("Using Wine-safe pointer-only Wayland input with X11 keyboard fallback");
+                setInputBackend(false); // Keep keyboard/hotkeys on X11
+
+                const char* winePointerEnv = getenv("VKBASALT_WINE_WAYLAND_POINTER");
+                if (!winePointerEnv || std::strcmp(winePointerEnv, "0") != 0) {
+                    initWaylandPointerOnly(
+                        reinterpret_cast<void*>(pCreateInfo->display), reinterpret_cast<void*>(pCreateInfo->surface));
+                }
+            }
         }
 
         InstanceDispatch dispatchTable = instanceDispatchMap[GetKey(instance)];

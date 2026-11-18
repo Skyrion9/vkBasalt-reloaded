@@ -21,6 +21,7 @@
 #include <cfloat>
 #include <cstdint>
 #include <string>
+#include <mutex>
 
 #include "keyboard_input.hpp"
 #include "keyboard_input_x11.hpp"
@@ -84,8 +85,8 @@ namespace vkBasalt
     };
 
     static std::map<struct wl_display*, wayland_display> displays;
-
-    static int g_outputScale = 1; // Tracks the maximum scale across all displays
+    static int g_outputScale      = 1; // Tracks the maximum scale across all displays
+    static bool g_winePointerOnly = false;
 
     // wl_output listener for integer scale fallback
     static void wl_output_geometry(
@@ -142,6 +143,8 @@ namespace vkBasalt
 
     bool isWaylandInputActive()
     {
+        // Return true here so imgui_overlay takes the Wayland path and calls feedWaylandKeyEventsToImGui.
+        // The X11 fallback path lacks proper AddInputCharacter support for letters/text input.
         return !displays.empty();
     }
 
@@ -302,6 +305,16 @@ namespace vkBasalt
     {
         if (!data) return;
         auto* wayland = static_cast<wayland_display*>(data);
+
+        // Fallback: If the compositor didn't send us the keymap (common when sharing the seat with winewayland.so),
+        // create a default keymap so we can still translate keycodes to characters for ImGui text input.
+        if (!wayland->state_xkb) {
+            if (!context_xkb) context_xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+            if (context_xkb) {
+                wayland->keymap_xkb = xkb_keymap_new_from_names(context_xkb, nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS);
+                if (wayland->keymap_xkb) wayland->state_xkb = xkb_state_new(wayland->keymap_xkb);
+            }
+        }
         if (!wayland->state_xkb) return;
         uint32_t* key = nullptr;
         wl_array_for_each(key, keys)
@@ -335,6 +348,19 @@ namespace vkBasalt
     {
         if (!data) return;
         auto* wayland = static_cast<wayland_display*>(data);
+
+        // Fallback: If the compositor didn't send us the keymap (common when sharing the seat with winewayland.so),
+        // create a default keymap so we can still translate keycodes to characters for ImGui text input.
+        if (!wayland->state_xkb) {
+            if (!context_xkb) context_xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+            if (context_xkb) {
+                wayland->keymap_xkb = xkb_keymap_new_from_names(context_xkb, nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS);
+                if (wayland->keymap_xkb) {
+                    wayland->state_xkb = xkb_state_new(wayland->keymap_xkb);
+                    Logger::debug("Created default XKB keymap (compositor keymap not received)");
+                }
+            }
+        }
         if (!wayland->state_xkb) return;
         xkb_keycode_t keycode = key + 8;
         xkb_keysym_t keysym   = xkb_state_key_get_one_sym(wayland->state_xkb, keycode);
@@ -439,6 +465,10 @@ namespace vkBasalt
         auto* wayland = static_cast<wayland_display*>(data);
         Logger::debug("seat_handle_capabilities: caps=" + std::to_string(caps));
 
+        // Keyboard is bound even in Wine-safe mode: feedWaylandKeyEventsToImGui() dispatches the private queue,
+        // then calls io.AddInputCharacter() for typed characters (numbers, decimals, letters).
+        // Without this, only ImGui navigation keys work via X11 fallback.
+        // Bind keyboard even in Wine-safe mode so we receive key events for text input.
         if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !wayland->keyboard) {
             wayland->keyboard = wl_seat_get_keyboard(seat);
             // Route keyboard events to our custom queue, not the game's default queue
@@ -446,6 +476,7 @@ namespace vkBasalt
             wl_keyboard_add_listener(wayland->keyboard, &keyboard_listener, data);
             Logger::debug("Bound keyboard to custom queue");
         }
+
         if ((caps & WL_SEAT_CAPABILITY_POINTER) && !wayland->pointer) {
             wayland->pointer = wl_seat_get_pointer(seat);
             // Route pointer events to our custom queue
@@ -453,8 +484,9 @@ namespace vkBasalt
             wl_pointer_add_listener(wayland->pointer, &pointer_listener, data);
             Logger::debug("Bound pointer to custom queue");
 
-            // Create relative pointer for FPS games that lock the cursor
-            if (wayland->relative_manager && !wayland->relative_pointer) {
+            // Create relative pointer for FPS games that lock the cursor.
+            // Skip it in Wine pointer only mode to minimize protocol surface.
+            if (!g_winePointerOnly && wayland->relative_manager && !wayland->relative_pointer) {
                 wayland->relative_pointer =
                     zwp_relative_pointer_manager_v1_get_relative_pointer(wayland->relative_manager, wayland->pointer);
                 // Route relative pointer events to our custom queue
@@ -482,21 +514,21 @@ namespace vkBasalt
             wl_seat_add_listener(wayland->seat, &seat_listener, data);
             Logger::debug("Bound wl_seat to custom queue");
         }
-        if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0) {
+        if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0 && !g_winePointerOnly) {
             wayland->relative_manager = static_cast<struct zwp_relative_pointer_manager_v1*>(
                 wl_registry_bind(registry, name, &zwp_relative_pointer_manager_v1_interface, 1));
             // Route manager events to our custom queue
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wayland->relative_manager), wayland->queue);
             Logger::debug("Bound relative_pointer_manager");
         }
-        if (strcmp(interface, wl_output_interface.name) == 0) {
+        if (strcmp(interface, wl_output_interface.name) == 0 && !g_winePointerOnly) {
             auto* output = static_cast<struct wl_output*>(
                 wl_registry_bind(registry, name, &wl_output_interface, version < 4 ? version : 4));
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(output), wayland->queue);
             wl_output_add_listener(output, &output_listener, nullptr);
             wayland->outputs.push_back(output);
         }
-        if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
+        if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0 && !g_winePointerOnly) {
             wayland->fractional_manager = static_cast<struct wp_fractional_scale_manager_v1*>(
                 wl_registry_bind(registry, name, &wp_fractional_scale_manager_v1_interface, 1));
             wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wayland->fractional_manager), wayland->queue);
@@ -509,6 +541,7 @@ namespace vkBasalt
     static bool g_registryInitialized          = false;
     static struct wl_display* g_pendingDisplay = nullptr;
     static struct wl_surface* g_pendingSurface = nullptr;
+    static std::mutex g_waylandMutex;
 
     void initWaylandInput(void* display_ptr, void* surface_ptr)
     {
@@ -526,10 +559,82 @@ namespace vkBasalt
         Logger::debug("Wayland input: display registered, deferring all Wayland setup.");
     }
 
+    void initWaylandPointerOnly(void* display_ptr, void* surface_ptr)
+    {
+        g_winePointerOnly = true;
+        initWaylandInput(display_ptr, surface_ptr);
+        Logger::debug("Wayland pointer-only input registered for Wine/Proton.");
+    }
+
     // Called lazily on the first QueuePresentKHR to safely bind registry globals
+    static struct wl_registry* g_wineSafeRegistry = nullptr;
+
+    static bool isWineWaylandEnv()
+    {
+        static const bool cached =
+            (std::getenv("WINELOADER") != nullptr || std::getenv("WINEDLLPATH") != nullptr
+             || std::getenv("WINEPREFIX") != nullptr || std::getenv("STEAM_COMPAT_DATA_PATH") != nullptr);
+        return cached;
+    }
+
+    static void ensureWineSafeWaylandRegistry()
+    {
+        struct wl_display* display = g_pendingDisplay;
+        struct wl_surface* surface = g_pendingSurface;
+
+        if (!display || displays.find(display) == displays.end()) return;
+
+        auto& wayland = displays[display];
+
+        if (!wayland.queue) {
+            wayland.queue = wl_display_create_queue(display);
+        }
+        if (!wayland.queue) return;
+
+        if (!g_wineSafeRegistry) {
+            auto* display_wrapped = static_cast<struct wl_display*>(wl_proxy_create_wrapper(display));
+            if (!display_wrapped) return;
+
+            wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(display_wrapped), wayland.queue);
+            g_wineSafeRegistry = wl_display_get_registry(display_wrapped);
+            wl_proxy_wrapper_destroy(display_wrapped);
+
+            if (!g_wineSafeRegistry) return;
+
+            wl_registry_add_listener(g_wineSafeRegistry, &registry_listener, &wayland);
+
+            // Send the registry request without blocking and without stealing events from winewayland.
+            wl_display_flush(display);
+
+            Logger::debug("Wayland registry attached in Wine-safe non-blocking mode");
+        }
+
+        // Process only events that Wine's Wayland reader has already placed on our private queue.
+        wl_display_dispatch_queue_pending(display, wayland.queue);
+
+        // The fractional scale manager can arrive after the first pending dispatch.
+        if (!g_winePointerOnly && wayland.fractional_manager && surface && !wayland.fractional_scale) {
+            wayland.fractional_scale =
+                wp_fractional_scale_manager_v1_get_fractional_scale(wayland.fractional_manager, surface);
+            if (wayland.fractional_scale) {
+                wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wayland.fractional_scale), wayland.queue);
+                wp_fractional_scale_v1_add_listener(wayland.fractional_scale, &fractional_scale_listener, &wayland);
+                wl_display_flush(display);
+            }
+        }
+    }
+
     void ensureWaylandRegistryBound()
     {
-        if (g_registryInitialized || !g_pendingDisplay) return;
+        std::scoped_lock lock(g_waylandMutex);
+        if (!g_pendingDisplay) return;
+
+        if (isWineWaylandEnv()) {
+            ensureWineSafeWaylandRegistry();
+            return;
+        }
+
+        if (g_registryInitialized) return;
         g_registryInitialized = true;
 
         struct wl_display* display = g_pendingDisplay;
@@ -582,7 +687,7 @@ namespace vkBasalt
     {
         bool pressed = false;
         for (const auto& display : displays) {
-            if (!display.second.queue) continue; // Queue not yet created — skip
+            if (!display.second.queue) continue; // Queue not yet created so we skip
             wl_display_dispatch_queue_pending(display.first, display.second.queue);
             if (display.second.wl_pressed_keys.count(static_cast<xkb_keysym_t>(ks))) {
                 pressed = true;
@@ -711,6 +816,51 @@ namespace vkBasalt
         }
     }
 
+    bool updateWaylandPointerImGuiIO(float scale)
+    {
+        if (!ImGui::GetCurrentContext()) return false;
+        if (displays.empty()) return false;
+
+        ImGuiIO& io = ImGui::GetIO();
+
+        for (auto& display_pair : displays) {
+            wayland_display& wayland = display_pair.second;
+            if (!wayland.queue) continue;
+
+            // Non-blocking dispatch of the Wine safe private queue.
+            wl_display_dispatch_queue_pending(display_pair.first, wayland.queue);
+
+            if (!wayland.mouse_valid && !wayland.pointer_locked) continue;
+
+            // Clamp only when pointer locked, same as the full Wayland path.
+            if (!wayland.mouse_valid && wayland.pointer_locked) {
+                if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0) {
+                    float maxX = io.DisplaySize.x / scale;
+                    float maxY = io.DisplaySize.y / scale;
+                    if (wayland.mouse_x < 0) wayland.mouse_x = 0;
+                    if (wayland.mouse_y < 0) wayland.mouse_y = 0;
+                    if (wayland.mouse_x > maxX) wayland.mouse_x = maxX;
+                    if (wayland.mouse_y > maxY) wayland.mouse_y = maxY;
+                }
+            }
+
+            static bool s_loggedWaylandPointer = false;
+            if (!s_loggedWaylandPointer) {
+                Logger::debug("Wine-safe Wayland pointer active");
+                s_loggedWaylandPointer = true;
+            }
+
+            io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
+            for (int i = 0; i < 5; i++)
+                io.MouseDown[i] = wayland.mouse_down[i];
+            io.MouseWheel += wayland.mouse_wheel;
+            wayland.mouse_wheel = 0.0f;
+            return true;
+        }
+
+        return false;
+    }
+
     void clearWaylandInputQueues()
     {
         for (auto& display_pair : displays) {
@@ -746,14 +896,22 @@ namespace vkBasalt
 
     void shutdownWaylandInput()
     {
+        std::scoped_lock lock(g_waylandMutex);
+
+        if (g_wineSafeRegistry) {
+            wl_registry_destroy(g_wineSafeRegistry);
+            g_wineSafeRegistry = nullptr;
+        }
+
+        g_registryInitialized = false;
+        g_pendingDisplay      = nullptr;
+        g_pendingSurface      = nullptr;
+        g_winePointerOnly     = false;
         displays.clear(); // wayland_display destructors clean up all Wayland resources
         if (context_xkb) {
             xkb_context_unref(context_xkb);
             context_xkb = nullptr;
         }
-        g_registryInitialized = false;
-        g_pendingDisplay      = nullptr;
-        g_pendingSurface      = nullptr;
         Logger::debug("Wayland input shut down.");
     }
 } // namespace vkBasalt
