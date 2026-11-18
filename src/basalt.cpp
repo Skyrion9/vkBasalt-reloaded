@@ -1255,23 +1255,26 @@ namespace vkBasalt
             submitInfo.waitSemaphoreCount = i == 0 ? pPresentInfo->waitSemaphoreCount : 0;
             submitInfo.pWaitSemaphores    = i == 0 ? pPresentInfo->pWaitSemaphores : nullptr;
             submitInfo.pWaitDstStageMask  = i == 0 ? waitStages : nullptr;
-            // Guard: fall back to commandBuffersNoEffect if commandBuffersEffect is empty (e.g., after rebuildFallbackChain allocated but didn't record it)
-            bool useEffectChain           = g_effectsEnabled.load() && !pLogicalSwapchain->commandBuffersEffect.empty()
-                                            && index < pLogicalSwapchain->commandBuffersEffect.size();
-            bool useNoEffectChain         = !useEffectChain && !pLogicalSwapchain->commandBuffersNoEffect.empty()
-                                            && index < pLogicalSwapchain->commandBuffersNoEffect.size();
-            submitInfo.commandBufferCount = (useEffectChain || useNoEffectChain) ? 1 : 0;
-            submitInfo.pCommandBuffers    = useEffectChain     ? &(pLogicalSwapchain->commandBuffersEffect[index])
-                                            : useNoEffectChain ? &(pLogicalSwapchain->commandBuffersNoEffect[index])
-                                                               : nullptr;
+            // Guard: fall back to commandBuffersNoEffect if commandBuffersEffect is empty or effects were cleared
+            // (e.g., during a forced swapchain rebuild for pool growth).
+            // Submitting stale command buffers that reference destroyed effect resources causes a GPU crash.
+            bool useEffectChain             = g_effectsEnabled.load() && !pLogicalSwapchain->effects.empty()
+                                              && !pLogicalSwapchain->commandBuffersEffect.empty()
+                                              && index < pLogicalSwapchain->commandBuffersEffect.size();
+            bool useNoEffectChain           = !useEffectChain && !pLogicalSwapchain->commandBuffersNoEffect.empty()
+                                              && index < pLogicalSwapchain->commandBuffersNoEffect.size();
+            submitInfo.commandBufferCount   = (useEffectChain || useNoEffectChain) ? 1 : 0;
+            submitInfo.pCommandBuffers      = useEffectChain     ? &(pLogicalSwapchain->commandBuffersEffect[index])
+                                              : useNoEffectChain ? &(pLogicalSwapchain->commandBuffersNoEffect[index])
+                                                                 : nullptr;
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores    = &(pLogicalSwapchain->semaphores[index]);
 
             presentSemaphores[presentSemCount++] = pLogicalSwapchain->semaphores[index];
 
             VkResult vr = pLogicalDevice->vkd.QueueSubmit(pLogicalDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
-
             if (vr != VK_SUCCESS) {
+                Logger::err("QueueSubmit FAILED with VkResult=" + std::to_string(static_cast<int>(vr)));
                 return vr;
             }
 
@@ -1366,6 +1369,8 @@ namespace vkBasalt
     static void rerecordAllCommandBuffers(
         LogicalDevice* pLogicalDevice, VkImage depthImage, VkImageView depthImageView, VkFormat depthFormat)
     {
+        // Wait for GPU to finish before freeing command buffers to prevent pending state validation errors.
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
         for (auto& it_swap : swapchainMap) {
             LogicalSwapchain* pLogicalSwapchain = it_swap.second.get();
             if (pLogicalSwapchain->pLogicalDevice != pLogicalDevice) continue;

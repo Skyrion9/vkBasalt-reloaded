@@ -1,5 +1,6 @@
 #include "effect_chain.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <fstream>
@@ -64,6 +65,21 @@ namespace vkBasalt
             totalEffectCount = isHdrOutputNeeded(pConfig, pLogicalSwapchain) ? 1 : 0;
         }
         return totalEffectCount;
+    }
+
+    // Backstop cap for retired compute passes. QueueWaitIdle makes eviction GPU safe. The cap bounds how many dead FrameAnalyzers
+    // we keep alive for CPU side ImGui scope descriptor lifetime. Derive it from swapchain depth so it scales with FIFO-2 vs mailbox-3+ setups.
+    // The floor of 4 keeps rapid toggle sequences safe when imageCount is unusually small.
+    static void trimComputePassGraveyard(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain)
+    {
+        const uint32_t graveyardCap = std::max(4u, pLogicalSwapchain->imageCount + 2);
+        if (pLogicalSwapchain->computePassGraveyard.size() <= graveyardCap) return;
+
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
+
+        const size_t excess = pLogicalSwapchain->computePassGraveyard.size() - graveyardCap;
+        pLogicalSwapchain->computePassGraveyard.erase(
+            pLogicalSwapchain->computePassGraveyard.begin(), pLogicalSwapchain->computePassGraveyard.begin() + excess);
     }
 
     static void
@@ -154,11 +170,7 @@ namespace vkBasalt
         }
         pLogicalSwapchain->computePasses.clear();
 
-        // Cap graveyard size to prevent VRAM leaks during frequent soft reloads/toggles.
-        // The overlay only needs the most recent previous FrameAnalyzer to survive until it updates its texture IDs in the next frame.
-        while (pLogicalSwapchain->computePassGraveyard.size() > 2) {
-            pLogicalSwapchain->computePassGraveyard.erase(pLogicalSwapchain->computePassGraveyard.begin());
-        }
+        trimComputePassGraveyard(pLogicalDevice, pLogicalSwapchain);
 
         pLogicalSwapchain->effects.clear();
         pLogicalSwapchain->nitCalibrationEffect = nullptr;
@@ -305,6 +317,10 @@ namespace vkBasalt
         Config* pConfig,
         OverlayManager& overlayManager)
     {
+        // Wait for GPU to finish executing previous frames before resetting/freeing command buffers.
+        // This prevents VUID-vkResetCommandBuffer-commandBuffer-00045 when the game recreates the swapchain without calling vkDeviceWaitIdle
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
+
         auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
 
         // Append HDR Output Effect (Auto HDR or Nit Calibration)
@@ -628,9 +644,10 @@ namespace vkBasalt
             return;
         }
 
-        if (waitForIdle) {
-            pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
-        }
+        // Always wait for the GPU to finish before freeing or resetting command buffers. Hot reloads already cause a stutter.
+        // QueueWaitIdle is acceptable and prevents VUID-vkFreeCommandBuffers-pCommandBuffers-00047 and VUID-vkResetCommandBuffer-commandBuffer-00045.
+        (void) waitForIdle; // Suppress unused parameter warning if we ignore it
+        pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
 
         uint32_t totalEffectCount       = calculateTotalEffectCount(pConfig, pLogicalSwapchain);
         uint32_t requiredSlices         = getRequiredSlices(totalEffectCount, pLogicalDevice->supportsMutableFormat);
@@ -652,7 +669,23 @@ namespace vkBasalt
             pLogicalSwapchain->forceSwapchainRebuild = true;
             pLogicalSwapchain->passthroughEligible   = false;
 
-            rebuildFallbackChain(pLogicalDevice, pLogicalSwapchain, pConfig);
+            // Clear current effects to prevent using them with the undersized image pool.
+            // Skip rebuildFallbackChain here to avoid QueueWaitIdle deadlocks that can occur when the game is unresponsive
+            // or in a weird state. The game will recreate the swapchain, at which point a fresh, correctly sized chain will be built.
+            pLogicalSwapchain->effects.clear();
+
+            // Move compute passes to the graveyard instead of destroying them immediately.
+            // The overlay may still hold scope texture descriptor sets referencing images owned by the FrameAnalyzer.
+            // Destroying them now would cause use after free when the overlay renders its next frame.
+            for (auto& pass : pLogicalSwapchain->computePasses) {
+                pLogicalSwapchain->computePassGraveyard.push_back(pass);
+            }
+            pLogicalSwapchain->computePasses.clear();
+
+            trimComputePassGraveyard(pLogicalDevice, pLogicalSwapchain);
+
+            pLogicalSwapchain->nitCalibrationEffect = nullptr;
+
             return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR
         }
 
@@ -683,10 +716,7 @@ namespace vkBasalt
             pLogicalSwapchain->computePassGraveyard.push_back(pass);
         }
 
-        // Cap graveyard size to prevent VRAM leaks during frequent soft reloads.
-        while (pLogicalSwapchain->computePassGraveyard.size() > 2) {
-            pLogicalSwapchain->computePassGraveyard.erase(pLogicalSwapchain->computePassGraveyard.begin());
-        }
+        trimComputePassGraveyard(pLogicalDevice, pLogicalSwapchain);
 
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(
