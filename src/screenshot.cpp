@@ -91,6 +91,8 @@ namespace vkBasalt
             return (std::filesystem::path(baseDir) / filename).string();
         }
 
+        // Returns UINT32_MAX when no host visible type satisfies typeBits. Returning 0 would pick a type that
+        // may not be in typeBits at all, turning a clean "unsupported" into an opaque AllocateMemory failure.
         uint32_t findHostVisibleMemoryType(LogicalDevice* pDevice, uint32_t typeBits)
         {
             for (uint32_t i = 0; i < pDevice->memoryProperties.memoryTypeCount; i++) {
@@ -99,7 +101,7 @@ namespace vkBasalt
                     return i;
                 }
             }
-            return 0;
+            return UINT32_MAX;
         }
 
         bool writeImage(
@@ -418,7 +420,11 @@ namespace vkBasalt
         allocInfo.sType                = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize       = memReqs.size;
         allocInfo.memoryTypeIndex      = findHostVisibleMemoryType(pDevice, memReqs.memoryTypeBits);
-
+        if (allocInfo.memoryTypeIndex == UINT32_MAX) {
+            Logger::err("Screenshot: no host visible memory type for staging buffer");
+            cleanupPending();
+            return;
+        }
         if (pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &g_pending.bufferMemory) != VK_SUCCESS) {
             Logger::err("Screenshot: Failed to allocate staging buffer memory");
             cleanupPending();
@@ -446,9 +452,9 @@ namespace vkBasalt
                     pDevice->device, g_pending.stagingBufferBefore, &memReqsBefore);
                 allocInfo.allocationSize  = memReqsBefore.size;
                 allocInfo.memoryTypeIndex = findHostVisibleMemoryType(pDevice, memReqsBefore.memoryTypeBits);
-
-                if (pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &g_pending.bufferMemoryBefore)
-                    == VK_SUCCESS) {
+                if (allocInfo.memoryTypeIndex != UINT32_MAX
+                    && pDevice->vkd.AllocateMemory(pDevice->device, &allocInfo, nullptr, &g_pending.bufferMemoryBefore)
+                           == VK_SUCCESS) {
                     pDevice->vkd.BindBufferMemory(
                         pDevice->device, g_pending.stagingBufferBefore, g_pending.bufferMemoryBefore, 0);
                 } else {
