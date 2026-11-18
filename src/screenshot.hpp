@@ -3,13 +3,10 @@
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
 
-#include <atomic>
 #include <string>
 
 namespace vkBasalt
 {
-    extern std::atomic<bool> g_triggerScreenshot;
-
     // Submits a GPU copy of the current frame. Non-blocking as the actual file
     // write happens on the next frame via processPendingScreenshot().
     // format: "png", "jpg", "bmp", "tga", "hdr", "exr"

@@ -21,7 +21,6 @@
 
 namespace vkBasalt
 {
-    std::atomic<bool> g_configDirty{true};
 
     // Helpers
     static std::string trim(const std::string& s)

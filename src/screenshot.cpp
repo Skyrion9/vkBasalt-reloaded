@@ -21,7 +21,6 @@
 
 namespace vkBasalt
 {
-    std::atomic<bool> g_triggerScreenshot{false};
 
     namespace
     {

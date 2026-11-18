@@ -20,12 +20,6 @@
 namespace vkBasalt
 {
     extern pid_t g_layer_init_pid;
-    // Define the global reload triggers
-    std::atomic<bool> g_effectsEnabled{true};
-    std::atomic<bool> g_triggerHotReload{false};
-    std::atomic<bool> g_triggerSoftReload{false};
-    std::atomic<bool> g_triggerPreviewReload{false};
-    std::atomic<bool> g_triggerRevertReload{false};
 
     OverlayManager::OverlayManager()  = default;
     OverlayManager::~OverlayManager() = default;

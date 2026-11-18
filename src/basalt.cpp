@@ -59,6 +59,7 @@
 #include "format.hpp"
 #include "logger.hpp"
 #include "fake_image_tracker.hpp"
+#include "layer_globals.hpp"
 
 #define VKBASALT_NAME "VK_LAYER_VKBASALT_post_processing"
 
@@ -70,29 +71,10 @@
 
 namespace vkBasalt
 {
-    std::shared_ptr<Config> pConfig = nullptr;
     Logger Logger::s_instance;
     pid_t g_layer_init_pid = 0;
 
-    // layer book-keeping information, to store dispatch tables by key
-    std::unordered_map<void*, InstanceDispatch> instanceDispatchMap;
-    std::unordered_map<void*, VkInstance> instanceMap;
-    std::unordered_map<void*, uint32_t> instanceVersionMap;
-    std::unordered_map<void*, std::shared_ptr<LogicalDevice>> deviceMap;
-    std::unordered_map<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>> swapchainMap;
-
-    std::mutex globalLock;
     static OverlayManager g_overlayManager;
-
-    // Platform surface tracking to map VkSurfaceKHR to physical monitor connectors
-    struct SurfacePlatformInfo
-    {
-        enum class Type { Xlib, Wayland, Unknown } type = Type::Unknown;
-        void* display                                   = nullptr;
-        void* window                                    = nullptr;
-        std::string monitor_name;
-    };
-    std::unordered_map<VkSurfaceKHR, SurfacePlatformInfo> g_surfaceMap;
 
 #ifdef VK_USE_PLATFORM_XLIB_KHR
     static std::string getX11MonitorName(Display* dpy, Window win)
@@ -128,11 +110,6 @@ namespace vkBasalt
         return monitor_name;
     }
 #endif
-
-    // Bypass(effect toggle) VRAM Reclaim Timer State
-    std::chrono::steady_clock::time_point g_effectsDisabledTime;
-    bool g_effectsDisabledTimerActive    = false;
-    bool g_vramReclaimedForCurrentBypass = false;
 
 #ifdef _GCC_
     using scoped_lock __attribute__((unused)) = std::lock_guard<std::mutex>;

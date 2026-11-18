@@ -37,15 +37,10 @@
 #include "frame_analyzer.hpp"
 #include "effect_nit_calibration.hpp"
 #include "effect_hdr_debug.hpp"
+#include "layer_globals.hpp"
 
 namespace vkBasalt
 {
-
-    // Defined in basalt.cpp
-    extern bool g_vramReclaimedForCurrentBypass;
-    extern std::chrono::steady_clock::time_point g_effectsDisabledTime;
-    extern bool g_effectsDisabledTimerActive;
-
     bool isHdrOutputNeeded(Config* pConfig, LogicalSwapchain* pLogicalSwapchain)
     {
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);

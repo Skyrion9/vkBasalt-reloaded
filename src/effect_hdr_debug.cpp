@@ -8,7 +8,6 @@
 
 namespace vkBasalt
 {
-    std::atomic<bool> g_hdrDebugToolActive{false};
 
     std::atomic<float> HdrDebugEffect::s_debugPeakNits{1000.0f};
     std::atomic<float> HdrDebugEffect::s_debugWhiteNits{203.0f};

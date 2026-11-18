@@ -1,10 +1,9 @@
 #pragma once
 
-#include "vulkan_include.hpp"
+#include "layer_globals.hpp"
 #include <unordered_map>
 #include <vector>
 #include <memory>
-#include <atomic>
 
 namespace vkBasalt
 {
@@ -12,13 +11,6 @@ namespace vkBasalt
     struct LogicalSwapchain;
     class Config;
     class ImGuiOverlay;
-
-    // Global reload triggers (accessed by imgui_overlay.cpp via extern)
-    extern std::atomic<bool> g_effectsEnabled;
-    extern std::atomic<bool> g_triggerHotReload;
-    extern std::atomic<bool> g_triggerSoftReload;
-    extern std::atomic<bool> g_triggerPreviewReload;
-    extern std::atomic<bool> g_triggerRevertReload;
 
     class OverlayManager
     {

@@ -2,14 +2,12 @@
 #include "effect.hpp"
 #include "config.hpp"
 #include "logical_device.hpp"
+#include "layer_globals.hpp"
 #include <vulkan/vulkan_core.h>
 #include <vector>
 
 namespace vkBasalt
 {
-
-    extern std::atomic<bool> g_hdrDebugToolActive;
-
     class HdrDebugEffect : public Effect
     {
     public:
