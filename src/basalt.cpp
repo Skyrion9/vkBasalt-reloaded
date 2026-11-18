@@ -731,19 +731,31 @@ namespace vkBasalt
         bool autoHdrEnabled   = (autoHdrOpt == "on" || autoHdrOpt == "true" || autoHdrOpt == "1");
         ColorSpaceMode srcCsm = getColorSpaceMode(pCreateInfo->imageFormat, pCreateInfo->imageColorSpace);
 
-        // For PGO training force HDR mutation even if AutoHDR is disabled in config. Allows HDR compute/fragment shaders during headless CI profiling.
+        // For PGO training force HDR mutation even if AutoHDR is disabled in config.
         bool forceHdrPgo = (std::getenv("VKBASALT_FORCE_HDR_PGO") != nullptr);
         if (forceHdrPgo) {
             Logger::info("PGO Training: Forcing HDR swapchain mutation via VKBASALT_FORCE_HDR_PGO");
         }
 
-        // Auto HDR requires mutable format to bridge SDR fake images and HDR real swapchain images
+        // Auto HDR requires mutable format to bridge SDR fake images and HDR real swapchain images.
+        // Skip HDR mutation on X11/Xwayland surfaces as X11 compositors don't support HDR.
+        bool isX11Surface = (surfIt != g_surfaceMap.end() && surfIt->second.type == SurfacePlatformInfo::Type::Xlib);
+
         Logger::trace(
             "CreateSwapchainKHR: autoHdr config='" + autoHdrOpt + "' forceHdrPgo=" + std::to_string(forceHdrPgo)
-            + " passthroughActive=" + std::to_string(pLogicalSwapchain->passthroughActive));
+            + " passthroughActive=" + std::to_string(pLogicalSwapchain->passthroughActive)
+            + " isX11Surface=" + std::to_string(isX11Surface));
 
+        // Auto HDR: mutate swapchain to HDR format/colorspace if SDR and autoHdr is enabled
+        Logger::debug(
+            "AutoHDR check: srcCsm=" + std::to_string(static_cast<int>(srcCsm)) + " autoHdrEnabled="
+            + std::to_string(autoHdrEnabled) + " forceHdrPgo=" + std::to_string(forceHdrPgo) + " supportsMutableFormat="
+            + std::to_string(pLogicalDevice->supportsMutableFormat) + " isX11Surface=" + std::to_string(isX11Surface));
+
+        // Strictly require the instance extension to be enabled. If it wasn't supported by the driver,
+        // We can't mutate the swapchain to HDR10 without triggering validation errors and game crashes.
         if (((srcCsm == ColorSpaceMode::SDR_SRGB && autoHdrEnabled) || forceHdrPgo)
-            && pLogicalDevice->supportsMutableFormat) {
+            && pLogicalDevice->supportsMutableFormat && pLogicalDevice->supportsSwapchainColorspace && !isX11Surface) {
             uint32_t formatCount = 0;
             pLogicalDevice->vki.GetPhysicalDeviceSurfaceFormatsKHR(
                 pLogicalDevice->physicalDevice, pCreateInfo->surface, &formatCount, nullptr);
@@ -763,35 +775,39 @@ namespace vkBasalt
             for (const auto& f : surfaceFormats) {
                 int prio = 999;
                 // 1. HDR10 PQ (10 bit) - Standard for HDR TVs/Monitors
-                if (f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT
-                    && (f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32
-                        || f.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32)) {
+                // Prefer A2B10G10R10 (Rgb10A2) because our compute shaders (HdrDebugEffect) are compiled expecting this format for storage images.
+                // Using A2R10G10B10 causes Undefined-Value-StorageImage-FormatMismatch-ImageView validation warnings.
+                if (f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT && f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
                     prio = 1;
                 }
-                // 2. scRGB (FP16 linear) - Standard Windows HDR path
+                // 2. HDR 10 PQ (10 bit) - ARGB
+                else if (
+                    f.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT && f.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
+                    prio = 2;
+                }
+                // 3. scRGB (FP16 linear) - Standard Windows HDR path
                 else if (
                     f.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT
                     && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
-                    prio = 2;
+                    prio = 3;
                 }
-                // 3. HLG (10 bit) - Broadcast standard
+                // 4. HLG (10 bit) - Broadcast standard
                 else if (
                     f.colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT
                     && (f.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32
                         || f.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32)) {
-                    prio = 3;
-                }
-                // 4. BT.2020 Linear (FP16 linear) - Wide Gamut Linear
-                else if (
-                    f.colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
                     prio = 4;
                 }
-                // 5. Display P3 Linear (FP16 linear) - Wide Gamut Linear
+                // 5. BT.2020 Linear (FP16 linear) - Wide Gamut Linear
                 else if (
-                    f.colorSpace == VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                    f.colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
                     prio = 5;
                 }
-
+                // 6. Display P3 Linear (FP16 linear) - Wide Gamut Linear
+                else if (
+                    f.colorSpace == VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT && f.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                    prio = 6;
+                }
                 if (prio < bestTarget.priority) {
                     bestTarget = {.format = f.format, .colorSpace = f.colorSpace, .priority = prio};
                 }
@@ -804,10 +820,12 @@ namespace vkBasalt
                 modifiedCreateInfo.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
 
                 addFormat(bestTarget.format);
+                addFormat(getAlternate10BitFormat(bestTarget.format));
 
                 pLogicalSwapchain->destFormat             = modifiedCreateInfo.imageFormat;
                 pLogicalSwapchain->destColorSpace         = modifiedCreateInfo.imageColorSpace;
                 pLogicalSwapchain->autoHdrActive          = true;
+                pLogicalSwapchain->swapchainMutableFormat = true;
 
                 // If mutated to HDR, can't use passthrough mode. Passthrough returns real images to the game.
                 // Force fake image allocation and build the NitCalibrationEffect.
