@@ -54,17 +54,14 @@ namespace vkBasalt
         }
     }
 
-    uint32_t calculateTotalEffectCount(Config* pConfig, LogicalSwapchain* pLogicalSwapchain)
+    // The config parser turns "effects =" into [""], and an empty name otherwise reads as a real effect entry. Left
+    // unfiltered, every consumer that sizes the fake image pool or assigns slices counts a phantom effect.
+    // The pool grows to 2 slices for what is actually a passthrough chain. All call sites share this prune now.
+    void pruneEmptyEffectNames(std::vector<std::string>& effectStrings)
     {
-        auto effectStrings    = pConfig->getOption<std::vector<std::string>>("effects", {});
-        auto totalEffectCount = static_cast<uint32_t>(effectStrings.size());
-        if (isHdrOutputNeeded(pConfig, pLogicalSwapchain)) {
-            totalEffectCount += 1;
-        }
-        if (!g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass) {
-            totalEffectCount = isHdrOutputNeeded(pConfig, pLogicalSwapchain) ? 1 : 0;
-        }
-        return totalEffectCount;
+        effectStrings.erase(
+            std::remove_if(effectStrings.begin(), effectStrings.end(), [](const std::string& s) { return s.empty(); }),
+            effectStrings.end());
     }
 
     // Backstop cap for retired compute passes. QueueWaitIdle makes eviction GPU safe. The cap bounds how many dead FrameAnalyzers
@@ -146,8 +143,9 @@ namespace vkBasalt
 
     void rebuildFallbackChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig)
     {
+        // This path keeps the existing image pool. Sizing decisions are made by rebuildEffectChain before it's called.
         // Wait for GPU to finish executing the previous frame's command buffers before freeing them. Freeing in flight command buffers
-        //  is undefined behavior, causes crashes when AutoHDR is toggled or the last effect is removed.
+        // is undefined behavior, causes crashes when AutoHDR is toggled or the last effect is removed.
         pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
 
         if (!pLogicalSwapchain->commandBuffersEffect.empty()) {
@@ -180,133 +178,201 @@ namespace vkBasalt
         buildDefaultNoEffectChain(pLogicalDevice, pLogicalSwapchain, pConfig);
     }
 
-    // Effect Factory
-    using EffectCreator = std::function<std::shared_ptr<Effect>(
-        LogicalDevice* pLogicalDevice,
-        VkFormat unormFormat,
-        VkFormat srgbFormat,
-        VkExtent2D imageExtent,
-        const std::vector<VkImage>& firstImages,
-        const std::vector<VkImage>& secondImages,
-        Config* pConfig,
-        VkColorSpaceKHR colorSpace,
-        const std::string& name)>;
+    // Effect Factory metadata
+    struct EffectFactoryInfo
+    {
+        using Creator = std::function<std::shared_ptr<Effect>(
+            LogicalDevice* pLogicalDevice,
+            VkFormat unormFormat,
+            VkFormat srgbFormat,
+            VkExtent2D imageExtent,
+            const std::vector<VkImage>& firstImages,
+            const std::vector<VkImage>& secondImages,
+            Config* pConfig,
+            VkColorSpaceKHR colorSpace,
+            const std::string& name)>;
 
-    static const std::unordered_map<std::string, EffectCreator> builtinEffects = {
-        {"fxaa", [](LogicalDevice* dev,
-                    VkFormat uf,
-                    VkFormat /*sf*/,
-                    VkExtent2D ext,
-                    const std::vector<VkImage>& in,
-                    const std::vector<VkImage>& out,
-                    Config* cfg,
-                    VkColorSpaceKHR cs,
-                    const std::string&) { return std::make_shared<FxaaEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"cas", [](LogicalDevice* dev,
-                   VkFormat uf,
-                   VkFormat /*sf*/,
-                   VkExtent2D ext,
-                   const std::vector<VkImage>& in,
-                   const std::vector<VkImage>& out,
-                   Config* cfg,
-                   VkColorSpaceKHR cs,
-                   const std::string&) { return std::make_shared<CasEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"deband", [](LogicalDevice* dev,
-                      VkFormat uf,
-                      VkFormat /*sf*/,
-                      VkExtent2D ext,
-                      const std::vector<VkImage>& in,
-                      const std::vector<VkImage>& out,
-                      Config* cfg,
-                      VkColorSpaceKHR cs,
-                      const std::string&) { return std::make_shared<DebandEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"smaa", [](LogicalDevice* dev,
-                    VkFormat uf,
-                    VkFormat /*sf*/,
-                    VkExtent2D ext,
-                    const std::vector<VkImage>& in,
-                    const std::vector<VkImage>& out,
-                    Config* cfg,
-                    VkColorSpaceKHR cs,
-                    const std::string&) { return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"lut", [](LogicalDevice* dev,
-                   VkFormat uf,
-                   VkFormat /*sf*/,
-                   VkExtent2D ext,
-                   const std::vector<VkImage>& in,
-                   const std::vector<VkImage>& out,
-                   Config* cfg,
-                   VkColorSpaceKHR cs,
-                   const std::string&) { return std::make_shared<LutEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"dls", [](LogicalDevice* dev,
-                   VkFormat uf,
-                   VkFormat /*sf*/,
-                   VkExtent2D ext,
-                   const std::vector<VkImage>& in,
-                   const std::vector<VkImage>& out,
-                   Config* cfg,
-                   VkColorSpaceKHR cs,
-                   const std::string&) { return std::make_shared<DlsEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"clarity", [](LogicalDevice* dev,
-                       VkFormat uf,
-                       VkFormat /*sf*/,
-                       VkExtent2D ext,
-                       const std::vector<VkImage>& in,
-                       const std::vector<VkImage>& out,
-                       Config* cfg,
-                       VkColorSpaceKHR cs,
-                       const std::string&) { return std::make_shared<ClarityEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"clarityrcas",
-         [](LogicalDevice* dev,
-            VkFormat uf,
-            VkFormat /*sf*/,
-            VkExtent2D ext,
-            const std::vector<VkImage>& in,
-            const std::vector<VkImage>& out,
-            Config* cfg,
-            VkColorSpaceKHR cs,
-            const std::string&) { return std::make_shared<ClarityRcasEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"crystalclear",
-         [](LogicalDevice* dev,
-            VkFormat uf,
-            VkFormat /*sf*/,
-            VkExtent2D ext,
-            const std::vector<VkImage>& in,
-            const std::vector<VkImage>& out,
-            Config* cfg,
-            VkColorSpaceKHR cs,
-            const std::string&) { return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs); }},
-        {"cmaa2", [](LogicalDevice* dev,
-                     VkFormat uf,
-                     VkFormat sf,
-                     VkExtent2D ext,
-                     const std::vector<VkImage>& in,
-                     const std::vector<VkImage>& out,
-                     Config* cfg,
-                     VkColorSpaceKHR cs,
-                     const std::string&) { return std::make_shared<Cmaa2Effect>(dev, uf, ext, in, out, cfg, cs); }},
+        Creator creator;
+        bool requiresStorageBit; // effect writes into an image that must carry VK_IMAGE_USAGE_STORAGE_BIT
+        bool supportsInPlace;    // effect may read and write the same image buffer (needs no second fake slice)
     };
 
-    // Tracks the final active slice accounting for in-place effects that don't flip the ping-pong buffer.
-    static uint32_t
-    getFinalSlice(const std::vector<std::string>& effectStrings, bool supportsMutable, bool shouldAppendHdrOutput)
+    static const std::unordered_map<std::string, EffectFactoryInfo> builtinEffects = {
+        {"fxaa",
+         {.creator = [](LogicalDevice* dev,
+                        VkFormat uf,
+                        VkFormat /*sf*/,
+                        VkExtent2D ext,
+                        const std::vector<VkImage>& in,
+                        const std::vector<VkImage>& out,
+                        Config* cfg,
+                        VkColorSpaceKHR cs,
+                        const std::string&) { return std::make_shared<FxaaEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"cas",
+         {.creator = [](LogicalDevice* dev,
+                        VkFormat uf,
+                        VkFormat /*sf*/,
+                        VkExtent2D ext,
+                        const std::vector<VkImage>& in,
+                        const std::vector<VkImage>& out,
+                        Config* cfg,
+                        VkColorSpaceKHR cs,
+                        const std::string&) { return std::make_shared<CasEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"deband",
+         {.creator = [](LogicalDevice* dev,
+                        VkFormat uf,
+                        VkFormat /*sf*/,
+                        VkExtent2D ext,
+                        const std::vector<VkImage>& in,
+                        const std::vector<VkImage>& out,
+                        Config* cfg,
+                        VkColorSpaceKHR cs,
+                        const std::string&) { return std::make_shared<DebandEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"smaa",
+         {.creator = [](LogicalDevice* dev,
+                        VkFormat uf,
+                        VkFormat /*sf*/,
+                        VkExtent2D ext,
+                        const std::vector<VkImage>& in,
+                        const std::vector<VkImage>& out,
+                        Config* cfg,
+                        VkColorSpaceKHR cs,
+                        const std::string&) { return std::make_shared<SmaaEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"lut",
+         {.creator = [](LogicalDevice* dev,
+                        VkFormat uf,
+                        VkFormat /*sf*/,
+                        VkExtent2D ext,
+                        const std::vector<VkImage>& in,
+                        const std::vector<VkImage>& out,
+                        Config* cfg,
+                        VkColorSpaceKHR cs,
+                        const std::string&) { return std::make_shared<LutEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"dls",
+         {.creator = [](LogicalDevice* dev,
+                        VkFormat uf,
+                        VkFormat /*sf*/,
+                        VkExtent2D ext,
+                        const std::vector<VkImage>& in,
+                        const std::vector<VkImage>& out,
+                        Config* cfg,
+                        VkColorSpaceKHR cs,
+                        const std::string&) { return std::make_shared<DlsEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"clarity",
+         {.creator = [](LogicalDevice* dev,
+                        VkFormat uf,
+                        VkFormat /*sf*/,
+                        VkExtent2D ext,
+                        const std::vector<VkImage>& in,
+                        const std::vector<VkImage>& out,
+                        Config* cfg,
+                        VkColorSpaceKHR cs,
+                        const std::string&) { return std::make_shared<ClarityEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"clarityrcas",
+         {.creator =
+              [](LogicalDevice* dev,
+                 VkFormat uf,
+                 VkFormat /*sf*/,
+                 VkExtent2D ext,
+                 const std::vector<VkImage>& in,
+                 const std::vector<VkImage>& out,
+                 Config* cfg,
+                 VkColorSpaceKHR cs,
+                 const std::string&) { return std::make_shared<ClarityRcasEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"crystalclear",
+         {.creator =
+              [](LogicalDevice* dev,
+                 VkFormat uf,
+                 VkFormat /*sf*/,
+                 VkExtent2D ext,
+                 const std::vector<VkImage>& in,
+                 const std::vector<VkImage>& out,
+                 Config* cfg,
+                 VkColorSpaceKHR cs,
+                 const std::string&) { return std::make_shared<CrystalClearEffect>(dev, uf, ext, in, out, cfg, cs); },
+          .requiresStorageBit = false}},
+        {"cmaa2",
+         {
+             .creator =
+                 [](LogicalDevice* dev,
+                    VkFormat uf,
+                    VkFormat sf,
+                    VkExtent2D ext,
+                    const std::vector<VkImage>& in,
+                    const std::vector<VkImage>& out,
+                    Config* cfg,
+                    VkColorSpaceKHR cs,
+                    const std::string&) { return std::make_shared<Cmaa2Effect>(dev, uf, ext, in, out, cfg, cs); },
+             .requiresStorageBit = true, // needs STORAGE_BIT on the image it writes
+             .supportsInPlace    = true  // its deferred apply pass writes back into the image it sampled
+         }},
+    };
+
+    bool effectRequiresStorageBit(const std::string& name)
     {
-        uint32_t currentSlice = 0;
-        for (uint32_t i = 0; i < effectStrings.size(); i++) {
-            bool isInPlace           = (effectStrings[i] == "cmaa2");
-            bool isLastWritingToReal = (i == effectStrings.size() - 1 && supportsMutable && !shouldAppendHdrOutput);
-            if (isLastWritingToReal)
-                isInPlace = false; // In-place requires input == output, which isn't true when writing to real swapchain
-            if (!isInPlace) currentSlice = 1 - currentSlice;
-        }
-        return currentSlice;
+        auto it = builtinEffects.find(name);
+        return (it != builtinEffects.end()) ? it->second.requiresStorageBit : false;
     }
 
-    // Ping pong buffering: slices 0 and 1 strictly alternate. Slice 0 is the game's initial render target.
-    static uint32_t getRequiredSlices(uint32_t effectCount, bool supportsMutable)
+    bool effectSupportsInPlace(const std::string& name)
     {
-        if (effectCount == 0) return 1;
-        if (effectCount == 1) return supportsMutable ? 1 : 2;
+        auto it = builtinEffects.find(name);
+        return (it != builtinEffects.end()) ? it->second.supportsInPlace : false;
+    }
+
+    bool scopesActivelyViewed()
+    {
+        // 60 frames of hysteresis: bridges the 1-2 frames where renderOverlay is skipped during an
+        // OUT_OF_DATE rebuild, and tolerates games that take a few frames to recreate the swapchain.
+        constexpr uint64_t ACTIVE_WINDOW = 60;
+        uint64_t current                 = g_globalFrameCounter.load(std::memory_order_relaxed);
+        uint64_t lastViewed              = g_scopesLastViewedFrame.load(std::memory_order_relaxed);
+        return lastViewed != 0 && (current - lastViewed) < ACTIVE_WINDOW;
+    }
+
+    // Whether the last normal effect may render straight into the real swapchain images, skipping the final transfer.
+    // Render pass effects only need COLOR_ATTACHMENT_BIT, which every swapchain format supports.
+    bool
+    canWriteDirectToRealSwapchain(LogicalDevice* pLogicalDevice, VkFormat realSwapchainFormat, const std::string& name)
+    {
+        if (effectRequiresStorageBit(name)) return false;
+
+        // The effect renders through its UNORM output view. CreateSwapchainKHR only adds that view format when the device supports mutable format.
+        // So without it an SRGB real swapchain can't expose the view and the write is invalid. Fall back to a fake slice plus the trailing transfer.
+        if (!pLogicalDevice || !pLogicalDevice->supportsMutableFormat) return false;
+
+        (void) realSwapchainFormat;
+        return true;
+    }
+
+    // Ping pong buffering: fake slices 0 and 1 strictly alternate, slice 0 being the game's initial render target.
+    // One slice suffices when nothing has to be ping-ponged into a second buffer:
+    // - no normal effects at all (chain is a transfer, or HDR output reads slice 0 and writes the real images)
+    // - one normal effect that can direct write the real images (graphics effect with no HDR output appended)
+    // - one normal effect that works in place (reads and writes slice 0; transfer/HDR then reads slice 0)
+    uint32_t getRequiredFakeSlices(
+        LogicalDevice* pLogicalDevice,
+        VkFormat realSwapchainFormat,
+        const std::vector<std::string>& effectStrings,
+        bool hdrOutputNeeded,
+        bool effectsBypassed)
+    {
+        if (effectsBypassed || effectStrings.empty()) return 1;
+
+        if (effectStrings.size() == 1) {
+            const std::string& name = effectStrings[0];
+            if (!hdrOutputNeeded && canWriteDirectToRealSwapchain(pLogicalDevice, realSwapchainFormat, name)) return 1;
+            if (effectSupportsInPlace(name)) return 1;
+            return 2;
+        }
         return 2;
     }
 
@@ -322,6 +388,7 @@ namespace vkBasalt
         pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
 
         auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+        pruneEmptyEffectNames(effectStrings);
 
         // Append HDR Output Effect (Auto HDR or Nit Calibration)
         auto autoHdrOpt       = pConfig->getOption<std::string>("autoHdr", "on");
@@ -344,32 +411,40 @@ namespace vkBasalt
             srgbFormat  = pLogicalSwapchain->sourceFormat;
         }
 
-        // Determine which slice compute passes read from. With mutable format the last effect writes to real swapchain images. Otherwise it writes to the last fake slice.
-        pLogicalSwapchain->computeSrcSlice =
-            pLogicalDevice->supportsMutableFormat
-                ? 0
-                : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
+        // computeSrcSlice is set after the effect loop using pLogicalSwapchain->lastEffectWroteToReal and finalFakeSlice.
+        // We initialize it to 0 here; it will be updated below after the loop completes.
+        pLogicalSwapchain->computeSrcSlice = 0;
+
+        // These two are written inside the effect loop below, which is skipped entirely when the chain is bypassed.
+        // The per effect body never runs for an empty chain. LogicalSwapchain outlives an in place rebuild. And without this reset,
+        // they carry the previous chain's values into the new one. Downstream, hdrInputImages, transferSrcSlice and computeSrcSlice all index
+        // fakeImages as begin() + imageCount * slice. A stale finalFakeSlice of 1 against a pool that shrunk to one slice reads past the end of the vector.
+        pLogicalSwapchain->lastEffectWroteToReal = false;
+        pLogicalSwapchain->finalFakeSlice        = 0;
 
         bool bypassedAndReclaimed = !g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass;
 
         if (!bypassedAndReclaimed) {
-            uint32_t currentSlice = 0;
+            uint32_t currentFakeSlice = 0;
             for (uint32_t i = 0; i < effectStrings.size(); i++) {
                 Logger::debug("current effectString " + effectStrings[i]);
+                bool isLast    = (i == effectStrings.size() - 1);
+                bool isInPlace = effectSupportsInPlace(effectStrings[i]);
 
-                uint32_t srcSlice = currentSlice;
-                uint32_t dstSlice = 0;
-
-                bool isInPlace = (effectStrings[i] == "cmaa2");
-                bool isLastWritingToReal =
-                    (i == effectStrings.size() - 1 && pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput);
-                if (isLastWritingToReal) isInPlace = false; // In-place requires input == output
-
-                if (isInPlace) {
-                    dstSlice = srcSlice; // Read and write to the same slice
-                } else {
-                    dstSlice = 1 - srcSlice; // Ping-pong
+                // Direct write is only safe for the last effect. A mid-chain write would clobber the presentable image before the chain finished.
+                // The next effect would have to sample a real image in destFormat while the chain works in sourceFormat. It's also skipped when
+                // an HDR output effect follows, since that effect reads a fake slice.
+                // canWriteDirectToRealSwapchain documents why compute effects are excluded even on storage bit capable formats.
+                bool canDirectWrite = false;
+                if (isLast && !shouldAppendHdrOutput) {
+                    canDirectWrite =
+                        canWriteDirectToRealSwapchain(pLogicalDevice, pLogicalSwapchain->format, effectStrings[i]);
                 }
+
+                if (canDirectWrite) isInPlace = false; // Direct write means input (fake) != output (real)
+
+                uint32_t srcSlice = currentFakeSlice;
+                uint32_t dstSlice = isInPlace ? srcSlice : (1 - srcSlice); // Ping-pong
 
                 std::vector<VkImage> firstImages(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * srcSlice,
@@ -379,7 +454,7 @@ namespace vkBasalt
                     + ")");
 
                 std::vector<VkImage> secondImages;
-                if (isLastWritingToReal) {
+                if (canDirectWrite) {
                     secondImages = pLogicalSwapchain->images;
                     Logger::debug("using swapchain images as second images");
                 } else {
@@ -393,7 +468,7 @@ namespace vkBasalt
                 // Dispatch via factory map
                 auto it = builtinEffects.find(effectStrings[i]);
                 if (it != builtinEffects.end()) {
-                    auto effect = it->second(
+                    auto effect = it->second.creator(
                         pLogicalDevice, unormFormat, srgbFormat, pLogicalSwapchain->imageExtent, firstImages,
                         secondImages, pConfig, pLogicalSwapchain->sourceColorSpace, effectStrings[i]);
                     effect->setInPlace(isInPlace);
@@ -426,9 +501,16 @@ namespace vkBasalt
 
                 // Advance slice for the next effect, unless the current effect was in-place
                 if (!isInPlace) {
-                    currentSlice = dstSlice;
+                    currentFakeSlice = dstSlice;
+                }
+
+                // Save state for the final effect
+                if (isLast) {
+                    pLogicalSwapchain->lastEffectWroteToReal = canDirectWrite;
                 }
             }
+            // Save the final fake slice for HDR input and TransferEffect fallback
+            pLogicalSwapchain->finalFakeSlice = currentFakeSlice;
         }
 
         // Append HDR Output Effect (Auto HDR / Nit Calibration)
@@ -440,9 +522,9 @@ namespace vkBasalt
                     pLogicalSwapchain->fakeImages.begin(),
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount);
             } else {
-                uint32_t lastSlice =
-                    getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
-                hdrInputImages = std::vector<VkImage>(
+                // Use the state tracked during the effect loop
+                uint32_t lastSlice = pLogicalSwapchain->finalFakeSlice;
+                hdrInputImages     = std::vector<VkImage>(
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * lastSlice,
                     pLogicalSwapchain->fakeImages.begin() + pLogicalSwapchain->imageCount * (lastSlice + 1));
             }
@@ -467,12 +549,10 @@ namespace vkBasalt
             Logger::debug("Appended HDR Output Effect");
         }
 
-        // Non-mutable format add a final transfer from the last fake slice to real swapchain images. Skip when HDR output effect is present it already writes to real swapchain images.
-        if (!pLogicalDevice->supportsMutableFormat && !shouldAppendHdrOutput) {
+        // Add a final transfer from the last fake slice to real swapchain images when the last effect didn't write directly to real images.
+        if (!pLogicalSwapchain->lastEffectWroteToReal && !shouldAppendHdrOutput) {
             uint32_t transferSrcSlice =
-                (bypassedAndReclaimed || effectStrings.empty())
-                    ? 0
-                    : getFinalSlice(effectStrings, pLogicalDevice->supportsMutableFormat, shouldAppendHdrOutput);
+                (bypassedAndReclaimed || effectStrings.empty()) ? 0 : pLogicalSwapchain->finalFakeSlice;
             pLogicalSwapchain->effects.push_back(
                 std::shared_ptr<Effect>(new TransferEffect(
                     pLogicalDevice, pLogicalSwapchain->format, pLogicalSwapchain->imageExtent,
@@ -540,7 +620,11 @@ namespace vkBasalt
             VkFormat analyzerFormat;
             VkColorSpaceKHR analyzerColorSpace;
 
-            if (pLogicalDevice->supportsMutableFormat) {
+            // Now that the loop is done, set computeSrcSlice based on the tracked state
+            pLogicalSwapchain->computeSrcSlice =
+                pLogicalSwapchain->lastEffectWroteToReal ? 0 : pLogicalSwapchain->finalFakeSlice;
+
+            if (pLogicalSwapchain->lastEffectWroteToReal) {
                 // Reading from real swapchain images (already in destFormat/destColorSpace)
                 computeSrcImages   = pLogicalSwapchain->images;
                 analyzerFormat     = pLogicalSwapchain->format;
@@ -623,6 +707,10 @@ namespace vkBasalt
     {
         Logger::debug("Rebuilding effects for swapchain...");
 
+        // Whether the configured chain is inert right now (effects toggled off and VRAM already reclaimed). getRequiredFakeSlices
+        // needs it. While bypassed, the active chain is just a slice 0 transfer regardless of what "effects" holds.
+        bool bypassedAndReclaimed = !g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass;
+
         // Detect AutoHDR config changes that require a full swapchain rebuild. The real swapchain format is fixed at creation time, so toggling AutoHDR must too.
         ColorSpaceMode srcCsm = getColorSpaceMode(pLogicalSwapchain->sourceFormat, pLogicalSwapchain->sourceColorSpace);
         auto autoHdrOpt       = pConfig->getOption<std::string>("autoHdr", "on");
@@ -649,8 +737,12 @@ namespace vkBasalt
         (void) waitForIdle; // Suppress unused parameter warning if we ignore it
         pLogicalDevice->vkd.QueueWaitIdle(pLogicalDevice->queue);
 
-        uint32_t totalEffectCount       = calculateTotalEffectCount(pConfig, pLogicalSwapchain);
-        uint32_t requiredSlices         = getRequiredSlices(totalEffectCount, pLogicalDevice->supportsMutableFormat);
+        auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+        pruneEmptyEffectNames(effectStrings);
+        bool hdrOutputNeeded = isHdrOutputNeeded(pConfig, pLogicalSwapchain);
+
+        uint32_t requiredSlices = getRequiredFakeSlices(
+            pLogicalDevice, pLogicalSwapchain->format, effectStrings, hdrOutputNeeded, bypassedAndReclaimed);
         uint32_t requiredFakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 
         // If the fake image pool is empty (e.g., passthrough mode reclaimed VRAM), Can't build any command buffers. Force a swapchain rebuild to reallocate the pool.
@@ -697,7 +789,10 @@ namespace vkBasalt
                     "Effect chain shrunk, wasting " + std::to_string(currentSlices - requiredSlices)
                     + " slices. Forcing swapchain rebuild to reclaim VRAM...");
                 pLogicalSwapchain->forceSwapchainRebuild = true;
-                pLogicalSwapchain->passthroughEligible   = (requiredSlices == 1 && totalEffectCount == 0);
+                // Passthrough is safe only when nothing at all needs doing: one slice, no normal effects and no HDR output.
+                // The old totalEffectCount == 0 test folded HDR in through calculateTotalEffectCount; keep that meaning explicit.
+                pLogicalSwapchain->passthroughEligible =
+                    (requiredSlices == 1 && effectStrings.empty() && !hdrOutputNeeded);
 
                 rebuildFallbackChain(pLogicalDevice, pLogicalSwapchain, pConfig);
                 return; // Wait for the game to handle VK_ERROR_OUT_OF_DATE_KHR

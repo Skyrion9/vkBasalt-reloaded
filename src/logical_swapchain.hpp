@@ -74,10 +74,12 @@ namespace vkBasalt
         bool pendingRebuild  = false;
 
         std::vector<std::shared_ptr<ComputePass>> computePasses;
-        // Graveyard for deferred destruction. Keeps old FrameAnalyzers alive until the swapchain  is destroyed.
+        // Graveyard for deferred destruction. Keeps old FrameAnalyzers alive until the swapchain is destroyed.
         // This prevents the GPU from reading freed memory if a soft reload occurs, while  the previous frame's overlay command buffer is still in flight.
         std::vector<std::shared_ptr<ComputePass>> computePassGraveyard;
-        uint32_t computeSrcSlice     = 0; // which slice compute passes read from
+        uint32_t computeSrcSlice     = 0;     // Which slice compute passes read from
+        uint32_t finalFakeSlice      = 0;     // Tracks the final active fake slice after all effects have run
+        bool lastEffectWroteToReal   = false; // True if the last effect wrote directly to real swapchain images
         Effect* nitCalibrationEffect = nullptr;
         std::string monitorName; // Platform detected physical connector (e.g., "DP-1")
 

@@ -996,16 +996,16 @@ namespace vkBasalt
             return *pCount < pLogicalSwapchain->imageCount ? VK_INCOMPLETE : VK_SUCCESS;
         }
 
-        uint32_t totalEffectCount = calculateTotalEffectCount(pConfig.get(), pLogicalSwapchain);
+        auto effectStrings = pConfig->getOption<std::vector<std::string>>("effects", {});
+        pruneEmptyEffectNames(effectStrings);
+        bool hdrOutputNeeded = isHdrOutputNeeded(pConfig.get(), pLogicalSwapchain);
 
-        // Ping pong cap at 2 slices (game input + 1 working buffer) regardless of chain length
-        uint32_t requiredSlices = 0;
-        if (totalEffectCount == 0)
-            requiredSlices = 1;
-        else if (totalEffectCount == 1)
-            requiredSlices = pLogicalDevice->supportsMutableFormat ? 1 : 2;
-        else
-            requiredSlices = 2;
+        // For pool allocation slice count has to agree with buildEffectChain's slice assignment.
+        // Mismatch here means the chain indexes past fakeImages.end().
+        // getRequiredFakeSlices is now shared by this site and rebuildEffectChain.
+        bool bypassedAndReclaimed = !g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass;
+        uint32_t requiredSlices   = getRequiredFakeSlices(
+            pLogicalDevice, pLogicalSwapchain->format, effectStrings, hdrOutputNeeded, bypassedAndReclaimed);
 
         uint32_t fakeImageCount = pLogicalSwapchain->imageCount * requiredSlices;
 

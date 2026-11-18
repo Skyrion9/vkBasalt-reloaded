@@ -99,47 +99,23 @@ namespace vkBasalt
                 effect->applyEffect(i, commandBuffers[i]);
             }
 
-            // Record compute passes after all effects. Compute passes read from the final output slice (real swapchain or last fake slice) and write to their own resources.
             if (pLogicalSwapchain && !pLogicalSwapchain->computePasses.empty() && !effects.empty()) {
-                // Barrier: transition source images to SHADER_READ_ONLY for compute sampling.  When mutable format is used, effects leave real swapchain images in
-                // PRESENT_SRC_KHR. Otherwise they leave fake slices in SHADER_READ_ONLY.
-                if (pLogicalDevice->supportsMutableFormat) {
-                    VkImageMemoryBarrier barrier = {};
-                    barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    barrier.srcAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-                    barrier.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
-                    barrier.oldLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                    barrier.newLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    barrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.image                = pLogicalSwapchain->images[i];
-                    barrier.subresourceRange     = {
-                        .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                        .baseMipLevel   = 0,
-                        .levelCount     = 1,
-                        .baseArrayLayer = 0,
-                        .layerCount     = 1};
-
-                    pLogicalDevice->vkd.CmdPipelineBarrier(
-                        commandBuffers[i],
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+                bool anyComputePassEnabled = false;
+                for (auto& pass : pLogicalSwapchain->computePasses) {
+                    if (pass->isEnabled()) {
+                        anyComputePassEnabled = true;
+                        break;
+                    }
                 }
 
-                for (auto& pass : pLogicalSwapchain->computePasses)
-                    pass->recordCommands(commandBuffers[i], i);
-
-                // Barrier: restore real swapchain images to PRESENT_SRC_KHR if we transitioned them.
-                if (pLogicalDevice->supportsMutableFormat) {
+                // Only transition the source images for compute passes. If lastEffectWroteToReal is false, FrameAnalyzer reads from fake images
+                // which are already in SHADER_READ_ONLY_OPTIMAL (left by the previous effect), so no transition is needed.
+                // If true, it reads from real images which are in COLOR_ATTACHMENT_OPTIMAL (left by the graphics pass).
+                if (anyComputePassEnabled) {
                     VkImageMemoryBarrier barrier = {};
                     barrier.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    barrier.srcAccessMask        = VK_ACCESS_SHADER_READ_BIT;
-                    barrier.dstAccessMask        = VK_ACCESS_MEMORY_READ_BIT;
-                    barrier.oldLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    barrier.newLayout            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
                     barrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
                     barrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-                    barrier.image                = pLogicalSwapchain->images[i];
                     barrier.subresourceRange     = {
                         .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
                         .baseMipLevel   = 0,
@@ -147,9 +123,67 @@ namespace vkBasalt
                         .baseArrayLayer = 0,
                         .layerCount     = 1};
 
+                    if (pLogicalSwapchain->lastEffectWroteToReal) {
+                        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                        barrier.oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                        barrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        barrier.image         = pLogicalSwapchain->images[i];
+                    } else {
+                        // Reading from fake images. If the only effect was Transfer or NitCalibration, it left the image in PRESENT_SRC_KHR.
+                        // Otherwise, the last graphics effect left it in SHADER_READ_ONLY_OPTIMAL.
+                        bool expectPresentSrc = false;
+                        if (!pLogicalSwapchain->effects.empty() && pLogicalSwapchain->effects.size() == 1) {
+                            std::string name = pLogicalSwapchain->effects.back()->getName();
+                            if (name == "transfer" || name == "nitcalibration") {
+                                expectPresentSrc = true;
+                            }
+                        }
+                        barrier.srcAccessMask =
+                            expectPresentSrc ? VK_ACCESS_MEMORY_READ_BIT : VK_ACCESS_SHADER_WRITE_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                        barrier.oldLayout     = expectPresentSrc ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                                                                 : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        barrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                        uint32_t srcSlice = pLogicalSwapchain->computeSrcSlice;
+                        barrier.image     = pLogicalSwapchain->fakeImages[pLogicalSwapchain->imageCount * srcSlice + i];
+                    }
+
                     pLogicalDevice->vkd.CmdPipelineBarrier(
-                        commandBuffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                        0, 0, nullptr, 0, nullptr, 1, &barrier);
+                        commandBuffers[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+                        0, nullptr, 0, nullptr, 1, &barrier);
+
+                    for (auto& pass : pLogicalSwapchain->computePasses) {
+                        if (pass->isEnabled()) {
+                            pass->recordCommands(commandBuffers[i], i);
+                        }
+                    }
+
+                    // Restore layouts after compute pass
+                    if (pLogicalSwapchain->lastEffectWroteToReal) {
+                        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+                        barrier.oldLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        barrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                        barrier.image         = pLogicalSwapchain->images[i];
+                        pLogicalDevice->vkd.CmdPipelineBarrier(
+                            commandBuffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+                    } else {
+                        // Restore fake image to PRESENT_SRC_KHR (the final restore barrier at the end of writeCommandBuffers
+                        // uses UNDEFINED -> PRESENT_SRC_KHR, so we just need to ensure it's not in a conflicting state).
+                        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+                        barrier.oldLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        barrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+                        uint32_t srcSlice = pLogicalSwapchain->computeSrcSlice;
+                        barrier.image     = pLogicalSwapchain->fakeImages[pLogicalSwapchain->imageCount * srcSlice + i];
+                        pLogicalDevice->vkd.CmdPipelineBarrier(
+                            commandBuffers[i], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+                    }
                 }
             }
 
@@ -174,9 +208,8 @@ namespace vkBasalt
                     .layerCount     = 1};
 
                 pLogicalDevice->vkd.CmdPipelineBarrier(
-                    commandBuffers[i],
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &restoreBarrier);
+                    commandBuffers[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
+                    nullptr, 0, nullptr, 1, &restoreBarrier);
             }
 
             // Prepare the second barrier to transition depth back to the game
