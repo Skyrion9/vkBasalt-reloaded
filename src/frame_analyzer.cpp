@@ -80,7 +80,7 @@ namespace vkBasalt
             vkd.AllocateMemory(dev, &allocInfo, nullptr, &m_activeMemory);
             vkd.BindBufferMemory(dev, m_activeBuffer, m_activeMemory, 0);
             vkd.MapMemory(dev, m_activeMemory, 0, 16, 0, reinterpret_cast<void**>(&m_mappedActive));
-            *m_mappedActive = m_enabled ? 1 : 0;
+            *m_mappedActive = (m_enabled && m_overlayVisible) ? 1 : 0;
         }
 
         // Output images
