@@ -29,7 +29,7 @@ jobs:
             mesa vulkan-swrast llvm lld clang \
             libx11 libxrandr libxi libxcb wayland wayland-protocols libxkbcommon \
             zstd glslang spirv-tools spirv-headers \
-            xorg-server-xvfb
+            xorg-server-xvfb xdotool
 
           # Build with clang + lld + ThinLTO
           export CC=clang
@@ -45,20 +45,21 @@ jobs:
 
           # Verify layer loads
           echo "=== File exists ==="
-          ls -la builddir/src/libvkbasalt.so
+          ls -la builddir/src/libVkLayer_Basalt_reloaded.so
 
           echo "=== Symbol check ==="
-          llvm-nm -D builddir/src/libvkbasalt.so | grep -c "vkBasalt_GetInstanceProcAddr" || exit 1
-          llvm-nm -D builddir/src/libvkbasalt.so | grep -c "vkBasalt_GetDeviceProcAddr" || exit 1
+          llvm-nm -D builddir/src/libVkLayer_Basalt_reloaded.so | grep -c "vkBasalt_GetInstanceProcAddr" || exit 1
+          llvm-nm -D builddir/src/libVkLayer_Basalt_reloaded.so | grep -c "vkBasalt_GetDeviceProcAddr" || exit 1
 
           echo "=== No undefined critical symbols ==="
-          llvm-nm -D --undefined-only builddir/src/libvkbasalt.so | grep -v "vk\|GLIBC\|libstdc\|libm\|libgcc\|libpthread" | head -20 || true
+          llvm-nm -D --undefined-only builddir/src/libVkLayer_Basalt_reloaded.so | grep -v "vk\|GLIBC\|libstdc\|libm\|libgcc\|libpthread" | head -20 || true
 
           # Runtime smoke test setup
           export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           export VK_LOADER_DEBUG=warn
           # Force HDR swapchain mutation on llvmpipe so HDR hot paths are exercised to match PGO training pipeline.
           export VKBASALT_FORCE_HDR_PGO=1
+          FORCE_HDR_PGO=true
 
           # Install layer manifest so the Vulkan loader actually injects vkBasalt
           mkdir -p ~/.local/share/vulkan/implicit_layer.d
@@ -66,12 +67,12 @@ jobs:
           {
               "file_format_version": "1.0.0",
               "layer": {
-                  "name": "VK_LAYER_VKBASALT_post_processing",
-                  "type": "GLOBAL",
-                  "library_path": "$(pwd)/builddir/src/libvkbasalt.so",
+                  "name": "VK_LAYER_VKBASALT_RELOADED_post_processing",
+                  "type": "INSTANCE",
+                  "library_path": "$(pwd)/builddir/src/libVkLayer_Basalt_reloaded.so",
                   "api_version": "1.3.223",
                   "implementation_version": "1",
-                  "description": "a post processing layer",
+                  "description": "vkBasalt Reloaded post processing layer",
                   "functions": {
                       "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
                       "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
@@ -206,6 +207,31 @@ jobs:
           enableOnLaunch=true
           CONF
           run_smoke_test "Depth Capture"
+          # ---------------------------------------------------------------
+          # Config 6: Mega Chain without HDR
+          # Only runs when HDR enforcement is active. Just to ensure SDR codepath also works fine.
+          # ---------------------------------------------------------------
+          if [ "$FORCE_HDR_PGO" = true ]; then
+              cat > "$CONFIG_PATH" << 'CONF'
+          effects=fxaa:smaa:cmaa2:deband:dls:cas:clarity:clarityrcas:crystalclear
+          scopesEnabled=true
+          autoHdr=false
+          hdrCalibrationMode=off
+          sdrWhitePointNits=203
+          hdrPeakNits=1000
+          casSharpness=0.5
+          clarityStrength=0.6
+          crystalclearPreset=devfav
+          debandRange=16.0
+          dlsSharpen=0.5
+          cmaa2QualityPreset=2
+          enableOnLaunch=true
+          CONF
+              unset VKBASALT_FORCE_HDR_PGO
+              run_smoke_test "Mega Chain SDR (no HDR enforcement)" 5
+              export VKBASALT_FORCE_HDR_PGO=1
+              echo "✓ HDR enforcement restored"
+          fi
 
           # ---------------------------------------------------------------
           # Final verdict
@@ -216,8 +242,16 @@ jobs:
               echo "SMOKE TEST FAILED: $FAILURES config(s) failed"
               exit 1
           fi
-          echo "✓ All 5 smoke tests passed"
+          echo "✓ All smoke tests passed"
           echo "========================================="
+
+          # ---------------------------------------------------------------
+          # Runtime Transition Fuzzing
+          # ---------------------------------------------------------------
+          echo ""
+          echo "=== Runtime Transition Fuzzing ==="
+          chmod +x test_runtime_transitions.sh
+          ./test_runtime_transitions.sh
 
           # ---------------------------------------------------------------
           # Generate build info (inside container to avoid host permission issues)
@@ -249,6 +283,6 @@ jobs:
         with:
           name: vkbasalt-reloaded-ci-test-unoptimized
           path: |
-            builddir/src/libvkbasalt.so
+            builddir/src/libVkLayer_Basalt_reloaded.so
             builddir/BUILD_INFO.txt
           retention-days: 7

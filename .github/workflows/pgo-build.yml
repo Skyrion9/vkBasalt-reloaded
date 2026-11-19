@@ -69,6 +69,7 @@ jobs:
 
           # Generate PGO profiles
           export VKBASALT_FORCE_HDR_PGO=1
+          FORCE_HDR_PGO=true
           mkdir -p $(pwd)/pgo-data
           mkdir -p /tmp/pgo
           export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
@@ -87,18 +88,18 @@ jobs:
           echo "=== Baseline complete ==="
           echo ""
 
-          LAYER_SO_PATH="$(pwd)/builddir-gen/src/libvkbasalt.so"
+          LAYER_SO_PATH="$(pwd)/builddir-gen/src/libVkLayer_Basalt_reloaded.so"
           mkdir -p /root/.local/share/vulkan/implicit_layer.d
           cat > /root/.local/share/vulkan/implicit_layer.d/vkBasalt.json << MANIFEST
           {
               "file_format_version": "1.0.0",
               "layer": {
-                  "name": "VK_LAYER_VKBASALT_post_processing",
-                  "type": "GLOBAL",
+                  "name": "VK_LAYER_VKBASALT_RELOADED_post_processing",
+                  "type": "INSTANCE",
                   "library_path": "$LAYER_SO_PATH",
                   "api_version": "1.3.223",
                   "implementation_version": "1",
-                  "description": "a post processing layer",
+                  "description": "vkBasalt Reloaded post processing layer",
                   "functions": {
                       "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
                       "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
@@ -234,7 +235,30 @@ jobs:
           enableOnLaunch=true
           EOF
           run_profile 15
-
+          # Config 6: Mega Chain without HDR (SDR direct-write path)
+          # Only runs when HDR enforcement is active. Just to ensure SDR codepath is also exercised.
+          if [ "$FORCE_HDR_PGO" = true ]; then
+              echo "=== Config 6: Mega Chain WITHOUT HDR (SDR direct-write path) ==="
+              cat > "$CONFIG_PATH" << 'EOF'
+          effects=fxaa:smaa:cmaa2:deband:dls:cas:clarity:clarityrcas:crystalclear
+          scopesEnabled=true
+          autoHdr=false
+          hdrCalibrationMode=off
+          sdrWhitePointNits=203
+          hdrPeakNits=1000
+          casSharpness=0.5
+          clarityStrength=0.6
+          crystalclearPreset=devfav
+          debandRange=16.0
+          dlsSharpen=0.5
+          cmaa2QualityPreset=2
+          enableOnLaunch=true
+          EOF
+              unset VKBASALT_FORCE_HDR_PGO
+              run_profile 60 /tmp/pgo/config6.log
+              export VKBASALT_FORCE_HDR_PGO=1
+              echo "✓ HDR enforcement restored for remaining phases"
+          fi
           echo "Profile files generated:"
           ls -la $(pwd)/pgo-data/*.profraw 2>/dev/null || echo "WARNING: No profile files found"
 
@@ -261,18 +285,18 @@ jobs:
           # Verify PGO build
           export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           export ENABLE_VKBASALT_RELOADED=1
-          LAYER_SO_PATH="$(pwd)/builddir-pgo/src/libvkbasalt.so"
+          LAYER_SO_PATH="$(pwd)/builddir-pgo/src/libVkLayer_Basalt_reloaded.so"
           mkdir -p /root/.local/share/vulkan/implicit_layer.d
           cat > /root/.local/share/vulkan/implicit_layer.d/vkBasalt.json << MANIFEST
           {
               "file_format_version": "1.0.0",
               "layer": {
-                  "name": "VK_LAYER_VKBASALT_post_processing",
-                  "type": "GLOBAL",
+                  "name": "VK_LAYER_VKBASALT_RELOADED_post_processing",
+                  "type": "INSTANCE",
                   "library_path": "$LAYER_SO_PATH",
                   "api_version": "1.3.223",
                   "implementation_version": "1",
-                  "description": "a post processing layer",
+                  "description": "vkBasalt Reloaded post processing layer",
                   "functions": {
                       "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
                       "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
@@ -310,14 +334,14 @@ jobs:
 
           # Compare binary sizes
           echo "=== Binary size comparison ==="
-          echo "Instrumented: $(stat -c%s builddir-gen/src/libvkbasalt.so) bytes"
-          echo "PGO optimized: $(stat -c%s builddir-pgo/src/libvkbasalt.so) bytes"
+          echo "Instrumented: $(stat -c%s builddir-gen/src/libVkLayer_Basalt_reloaded.so) bytes"
+          echo "PGO optimized: $(stat -c%s builddir-pgo/src/libVkLayer_Basalt_reloaded.so) bytes"
           echo ""
           echo "=== Section sizes ==="
           echo "--- Instrumented ---"
-          llvm-size builddir-gen/src/libvkbasalt.so
+          llvm-size builddir-gen/src/libVkLayer_Basalt_reloaded.so
           echo "--- PGO Optimized ---"
-          llvm-size builddir-pgo/src/libvkbasalt.so
+          llvm-size builddir-pgo/src/libVkLayer_Basalt_reloaded.so
 
           # Generate build info and package installer
           cat > builddir-pgo/BUILD_INFO.txt << INFO
@@ -326,14 +350,14 @@ jobs:
           Branch: $GITHUB_REF_NAME
           Build type: release, ThinLTO, PGO (use)
           Profiling source: llvmpipe (software rasterizer, CI container)
-          Profiling configs: CMAA2, CrystalClear, Mega Chain+HDR, Passthrough, Depth Capture
-          HDR enforcement: VKBASALT_FORCE_HDR_PGO=1
-          Optimized, but for best performance, build & profile locally on real GPU using buildpgo_vkbasalt_local_*.sh
+          Profiling configs: CMAA2, CrystalClear, Mega Chain+HDR, Passthrough, Depth Capture, Mega Chain SDR
+          HDR enforcement: VKBASALT_FORCE_HDR_PGO=1 (Config 6 runs with enforcement lifted to cover SDR)
+          Optimized, but for best performance, build & profile locally on real GPU using build_pgo.sh
           Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
           INFO
           
           # Flatten the .so and ship the installer
-          cp builddir-pgo/src/libvkbasalt.so builddir-pgo/libvkbasalt.so
+          cp builddir-pgo/src/libVkLayer_Basalt_reloaded.so builddir-pgo/libVkLayer_Basalt_reloaded.so
           cp install.sh builddir-pgo/install.sh
           chmod +x builddir-pgo/install.sh
           SCRIPT
@@ -356,7 +380,7 @@ jobs:
           VERSION="${{ inputs.version }}"
           ARCHIVE_DIR="vkbasalt-reloaded-${VERSION}-linux-x86_64"
           mkdir -p "$ARCHIVE_DIR"
-          cp builddir-pgo/libvkbasalt.so "$ARCHIVE_DIR/"
+          cp builddir-pgo/libVkLayer_Basalt_reloaded.so "$ARCHIVE_DIR/"
           cp builddir-pgo/BUILD_INFO.txt "$ARCHIVE_DIR/"
           cp builddir-pgo/install.sh "$ARCHIVE_DIR/"
           chmod +x "$ARCHIVE_DIR/install.sh"
@@ -369,7 +393,7 @@ jobs:
         with:
           name: vkbasalt-reloaded-pgo-llvmpipe-profiled
           path: |
-            builddir-pgo/libvkbasalt.so
+            builddir-pgo/libVkLayer_Basalt_reloaded.so
             builddir-pgo/BUILD_INFO.txt
             builddir-pgo/install.sh
           retention-days: 90
@@ -394,7 +418,7 @@ jobs:
             ## ⚠️ Beta Build (CI-profiled on llvmpipe)
 
             This is an automated optimized build profiled on **llvmpipe** (software rasterizer) in CI.
-            It's functional and optimized, but for best performance, use a locally profiled build from `buildpgo_vkbasalt_local_*.sh`.
+            It's functional and optimized, but for best performance, use a locally profiled build from `build_pgo.sh`.
             Use the latest non-Beta release for stability.
 
             ### Installation
