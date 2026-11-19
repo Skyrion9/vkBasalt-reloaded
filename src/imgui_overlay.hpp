@@ -154,6 +154,15 @@ namespace vkBasalt
         std::vector<VkImageView> m_imageViews;
         std::vector<std::string> m_cachedChainList;
         std::vector<std::string> m_cachedAllEffects;
+        std::string m_selectedEffectName;
+
+        // Chain edits are applied once at end of frame. Enter/Space are nav activation keys and the
+        // X11 backend reports them as held, so a mutation that moves the row under the nav cursor
+        // would otherwise be reactivated on the next key repeat and toggle straight back.
+        bool m_hasPendingChainEdit     = false;
+        bool m_chainEditKeyLatch       = false;
+        float m_chainEditCooldownUntil = 0.0f;
+        std::vector<std::string> m_pendingChainList;
 
         std::unordered_map<std::string, double> m_uiParamCache;
         bool m_pendingCacheClear      = false;

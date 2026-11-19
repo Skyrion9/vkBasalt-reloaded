@@ -246,6 +246,16 @@ namespace vkBasalt
         drawChainPanel();
         ImGui::SameLine();
         drawEffectParamsPanel();
+
+        // Single apply point. Mutating the chain changed widget IDs under the nav cursor and let Enter immediately undo the edit.
+        if (m_hasPendingChainEdit) {
+            m_hasPendingChainEdit    = false;
+            m_chainEditKeyLatch      = true;
+            m_chainEditCooldownUntil = static_cast<float>(ImGui::GetTime()) + 0.20f;
+            setConfigImmediate("effects", serializeChain(m_pendingChainList), true);
+            g_triggerPreviewReload = true;
+            m_chainCacheDirty      = true;
+        }
     }
 
     void ImGuiOverlay::drawChainPanel()
@@ -257,19 +267,22 @@ namespace vkBasalt
             m_cachedChainList = m_pConfig->getOption<std::vector<std::string>>("effects", {});
             // Filter out empty strings that might result from parsing an empty "effects=" key
             std::erase_if(m_cachedChainList, [](const std::string& s) { return s.empty(); });
+            // Keep previously listed non-builtin names so removing a ReShade effect from the chain
+            // doesn't drop it from the picker and shift every index after it.
+            auto previousAll = m_cachedAllEffects;
             m_cachedAllEffects.clear();
             for (const char* b : kBuiltInEffects)
                 m_cachedAllEffects.emplace_back(b);
-            for (auto& name : m_cachedChainList) {
-                bool isBuiltin = false;
-                for (const char* b : kBuiltInEffects) {
-                    if (name == b) {
-                        isBuiltin = true;
-                        break;
-                    }
-                }
-                if (!isBuiltin) m_cachedAllEffects.push_back(name);
-            }
+            auto appendIfNew = [&](const std::string& name) {
+                for (const char* b : kBuiltInEffects)
+                    if (name == b) return;
+                if (std::ranges::find(m_cachedAllEffects, name) == m_cachedAllEffects.end())
+                    m_cachedAllEffects.push_back(name);
+            };
+            for (auto& name : m_cachedChainList)
+                appendIfNew(name);
+            for (auto& name : previousAll)
+                appendIfNew(name);
             m_chainCacheDirty = false;
         }
 
@@ -278,10 +291,25 @@ namespace vkBasalt
 
         auto isInChain = [&](const std::string& name) { return std::ranges::find(chainList, name) != chainList.end(); };
 
+        // Ignore chain activations until Enter/Space are released, plus a short cooldown.
+        // Without this, pressing Enter reactivates whichever row moved under the nav cursor and undoes the edit.
+        bool activationDown = ImGui::IsKeyDown(ImGuiKey_Enter) || ImGui::IsKeyDown(ImGuiKey_KeypadEnter)
+                              || ImGui::IsKeyDown(ImGuiKey_Space);
+        if (!activationDown) m_chainEditKeyLatch = false;
+        bool allowChainEdit = !m_chainEditKeyLatch && (ImGui::GetTime() >= m_chainEditCooldownUntil);
+
         if (m_selectedEffectIndex >= allEffects.size()) m_selectedEffectIndex = 0;
 
-        // Default to the first active chain effect
-        if (!isInChain(allEffects[m_selectedEffectIndex]) && !chainList.empty()) {
+        // Resolve selection by name. Index based selection drifts when a chain edit rebuilds the picker,
+        // and the old default block force jumped to chainList[0] whenever the selection left the chain.
+        if (!m_selectedEffectName.empty()) {
+            for (size_t i = 0; i < allEffects.size(); i++) {
+                if (allEffects[i] == m_selectedEffectName) {
+                    m_selectedEffectIndex = i;
+                    break;
+                }
+            }
+        } else if (!chainList.empty()) {
             for (size_t i = 0; i < allEffects.size(); i++) {
                 if (allEffects[i] == chainList[0]) {
                     m_selectedEffectIndex = i;
@@ -289,6 +317,12 @@ namespace vkBasalt
                 }
             }
         }
+        if (!allEffects.empty()) m_selectedEffectName = allEffects[m_selectedEffectIndex];
+
+        auto queueChainEdit = [&](std::vector<std::string> next) {
+            m_pendingChainList    = std::move(next);
+            m_hasPendingChainEdit = true;
+        };
 
         // Master effects toggle indicator/button
         bool effectsEnabled = g_effectsEnabled.load();
@@ -324,16 +358,13 @@ namespace vkBasalt
                     break;
                 }
             }
-            ImGui::PushID(static_cast<int>(allIdx));
+            ImGui::PushID(chainList[ci].c_str());
 
             bool checked = true;
-            if (ImGui::Checkbox("##en", &checked)) {
-                chainList.erase(chainList.begin() + ci);
-                setConfigImmediate("effects", serializeChain(chainList), true);
-                g_triggerPreviewReload = true;
-                m_chainCacheDirty      = true;
-                ImGui::PopID();
-                break; // List mutated, stop iterating
+            if (ImGui::Checkbox("##en", &checked) && allowChainEdit) {
+                auto next = chainList;
+                next.erase(next.begin() + ci);
+                queueChainEdit(std::move(next));
             }
             ImGui::SameLine();
 
@@ -344,28 +375,28 @@ namespace vkBasalt
 
             bool is_selected = (m_selectedEffectIndex == allIdx);
             if (ImGui::Selectable(
-                    chainList[ci].c_str(), is_selected, 0, ImVec2(selectableWidth, ImGui::GetFrameHeight())))
+                    chainList[ci].c_str(), is_selected, 0, ImVec2(selectableWidth, ImGui::GetFrameHeight()))) {
                 m_selectedEffectIndex = allIdx;
+                m_selectedEffectName  = chainList[ci];
+            }
 
             // Up arrow
             ImGui::SameLine(0, spacing);
             ImGui::BeginDisabled(ci == 0);
-            if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
-                std::iter_swap(chainList.begin() + ci, chainList.begin() + ci - 1);
-                setConfigImmediate("effects", serializeChain(chainList), true);
-                g_triggerPreviewReload = true;
-                m_chainCacheDirty      = true;
+            if (ImGui::ArrowButton("##up", ImGuiDir_Up) && allowChainEdit) {
+                auto next = chainList;
+                std::iter_swap(next.begin() + ci, next.begin() + ci - 1);
+                queueChainEdit(std::move(next));
             }
             ImGui::EndDisabled();
 
             // Down arrow
             ImGui::SameLine();
             ImGui::BeginDisabled(ci == chainList.size() - 1);
-            if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
-                std::iter_swap(chainList.begin() + ci, chainList.begin() + ci + 1);
-                setConfigImmediate("effects", serializeChain(chainList), true);
-                g_triggerPreviewReload = true;
-                m_chainCacheDirty      = true;
+            if (ImGui::ArrowButton("##down", ImGuiDir_Down) && allowChainEdit) {
+                auto next = chainList;
+                std::iter_swap(next.begin() + ci, next.begin() + ci + 1);
+                queueChainEdit(std::move(next));
             }
             ImGui::EndDisabled();
 
@@ -378,15 +409,13 @@ namespace vkBasalt
         // Inactive effects (not in chain)
         for (size_t i = 0; i < allEffects.size(); i++) {
             if (isInChain(allEffects[i])) continue;
-            ImGui::PushID(static_cast<int>(i));
+            ImGui::PushID(allEffects[i].c_str());
 
             bool checked = false;
-            if (ImGui::Checkbox("##en", &checked)) {
-                // Add to chain
-                chainList.push_back(allEffects[i]);
-                setConfigImmediate("effects", serializeChain(chainList), true);
-                g_triggerPreviewReload = true;
-                m_chainCacheDirty      = true;
+            if (ImGui::Checkbox("##en", &checked) && allowChainEdit) {
+                auto next = chainList;
+                next.push_back(allEffects[i]);
+                queueChainEdit(std::move(next));
             }
             ImGui::SameLine();
 
@@ -394,8 +423,10 @@ namespace vkBasalt
             ImVec4 col(0.5f, 0.5f, 0.5f, 1.0f);
             ImGui::PushStyleColor(ImGuiCol_Text, col);
             float selWidth = ImGui::GetContentRegionAvail().x;
-            if (ImGui::Selectable(allEffects[i].c_str(), is_selected, 0, ImVec2(selWidth, ImGui::GetFrameHeight())))
+            if (ImGui::Selectable(allEffects[i].c_str(), is_selected, 0, ImVec2(selWidth, ImGui::GetFrameHeight()))) {
                 m_selectedEffectIndex = i;
+                m_selectedEffectName  = allEffects[i];
+            }
             ImGui::PopStyleColor();
 
             ImGui::PopID();
@@ -403,13 +434,12 @@ namespace vkBasalt
 
         ImGui::Separator();
 
-        if (ImGui::Button("Auto-Sort (AA > Deband > Color > Contrast > Sharpen)")) {
-            std::ranges::stable_sort(chainList, [](const std::string& a, const std::string& b) {
+        if (ImGui::Button("Auto-Sort (AA > Deband > Color > Contrast > Sharpen)") && allowChainEdit) {
+            auto next = chainList;
+            std::ranges::stable_sort(next, [](const std::string& a, const std::string& b) {
                 return getEffectSortPriority(a) < getEffectSortPriority(b);
             });
-            setConfigImmediate("effects", serializeChain(chainList), true);
-            g_triggerPreviewReload = true;
-            m_chainCacheDirty      = true;
+            queueChainEdit(std::move(next));
         }
 
         ImGui::EndChild();
