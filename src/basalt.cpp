@@ -58,7 +58,7 @@
 #include "fake_image_tracker.hpp"
 #include "layer_globals.hpp"
 
-#define VKBASALT_NAME "VK_LAYER_VKBASALT_post_processing"
+#define VKBASALT_NAME "VK_LAYER_VKBASALT_RELOADED_post_processing"
 
 #if defined(__GNUC__) && __GNUC__ >= 4
 #define VK_BASALT_EXPORT __attribute__((visibility("default")))

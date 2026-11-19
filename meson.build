@@ -1,4 +1,4 @@
-project('vkBasalt', ['c', 'cpp'],
+project('VkLayer_Basalt_reloaded', ['c', 'cpp'],
     meson_version: '>=1.1.0',
     default_options: [
         'c_std=c17', 

@@ -138,7 +138,7 @@ keyboard_input_x11_lib = static_library('keyboard_input_x11',
     dependencies: [imgui_dep],
 )
 
-shared_library(meson.project_name().to_lower(), 
+shared_library(meson.project_name(), 
     vkBasalt_src, shader_include, texture_data_cpp,
     link_with: [keyboard_input_x11_lib],
     include_directories : vkBasalt_include_path,
