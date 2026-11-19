@@ -3,14 +3,14 @@ set -euo pipefail
 
 # ============================================================================
 # vkBasalt Reloaded - Standalone Installer
-# Ships alongside pre-built libvkbasalt.so binaries.
+# Ships alongside pre-built libVkLayer_Basalt_reloaded.so binaries.
 # Usage: ./install.sh [--prefix=/usr] [--uninstall]
 # ============================================================================
 
 INSTALL_LIB_DIR="/usr/lib"
 INSTALL_MANIFEST_DIR="/usr/share/vulkan/implicit_layer.d"
-MANIFEST_NAME="vkBasalt.json"
-LIB_NAME="libvkbasalt.so"
+MANIFEST_NAME="VkLayer_Basalt_reloaded.json"
+LIB_NAME="libVkLayer_Basalt_reloaded.so"
 
 # Parse arguments
 PREFIX="/usr"
@@ -163,12 +163,12 @@ cat << MANIFEST | $SUDO tee "$INSTALL_MANIFEST_DIR/$MANIFEST_NAME" > /dev/null
 {
     "file_format_version": "1.0.0",
     "layer": {
-        "name": "VK_LAYER_VKBASALT_post_processing",
-        "type": "GLOBAL",
+        "name": "VK_LAYER_VKBASALT_RELOADED_post_processing",
+        "type": "INSTANCE",
         "library_path": "$INSTALL_LIB_DIR/$LIB_NAME",
         "api_version": "1.3.223",
         "implementation_version": "1",
-        "description": "a post processing layer",
+        "description": "vkBasalt Reloaded post processing layer",
         "functions": {
             "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
             "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
