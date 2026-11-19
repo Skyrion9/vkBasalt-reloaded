@@ -5,6 +5,7 @@
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_wayland.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include "vulkan_include.hpp"
@@ -1044,6 +1045,14 @@ namespace vkBasalt
         std::vector<std::pair<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>>> localSwapchains;
         {
             std::unique_lock<std::mutex> l(globalLock);
+
+            // CI/Test script reload trigger. Alternative to SIGUSR1 (which breaks runtime Proton/Wine). Touching this file triggers a hot reload.
+            struct stat st;
+            if (stat("/tmp/vkbasalt_reload_trigger", &st) == 0) {
+                unlink("/tmp/vkbasalt_reload_trigger"); // Consume the trigger
+                g_triggerHotReload.store(true);
+            }
+
             g_globalFrameCounter.fetch_add(1, std::memory_order_relaxed);
             if (processHotkeysAndReloads(pConfig, swapchainMap, g_overlayManager)) {
                 LogicalDevice* pDev = deviceMap[GetKey(queue)].get();
