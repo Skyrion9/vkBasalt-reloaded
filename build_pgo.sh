@@ -25,7 +25,7 @@ fi
 
 CONFIG_DIR="$HOME/.config/vkBasalt-reloaded"
 CONFIG_PATH="$CONFIG_DIR/vkBasalt-reloaded.conf"
-MANIFEST_PATH="$HOME/.local/share/vulkan/implicit_layer.d/vkBasalt.json"
+MANIFEST_PATH="$HOME/.local/share/vulkan/implicit_layer.d/VkLayer_Basalt_reloaded.json"
 BACKUP_DIR=$(mktemp -d)
 
 cleanup() {
@@ -38,8 +38,8 @@ cleanup() {
         rm -f "$CONFIG_PATH"
         echo "✓ Removed config (did not exist before)"
     fi
-    if [ -f "$BACKUP_DIR/vkBasalt.json.bak" ]; then
-        cp "$BACKUP_DIR/vkBasalt.json.bak" "$MANIFEST_PATH"
+    if [ -f "$BACKUP_DIR/VkLayer_Basalt_reloaded.json.bak" ]; then
+        cp "$BACKUP_DIR/VkLayer_Basalt_reloaded.json.bak" "$MANIFEST_PATH"
         echo "✓ Restored manifest"
     elif [ -f "$BACKUP_DIR/manifest_did_not_exist" ]; then
         rm -f "$MANIFEST_PATH"
@@ -56,7 +56,7 @@ else
     touch "$BACKUP_DIR/config_did_not_exist"
 fi
 if [ -f "$MANIFEST_PATH" ]; then
-    cp "$MANIFEST_PATH" "$BACKUP_DIR/vkBasalt.json.bak"
+    cp "$MANIFEST_PATH" "$BACKUP_DIR/VkLayer_Basalt_reloaded.json.bak"
 else
     touch "$BACKUP_DIR/manifest_did_not_exist"
 fi
@@ -127,49 +127,60 @@ case "$hdr_force_confirm" in
 esac
 echo ""
 
-# Phase 1: Build instrumented binary
+read -p "Optimize for this specific CPU (-march=native)? [Y/n]: " march_confirm
+USE_MARCH=true
+case "$march_confirm" in
+    n|N|no|No|NO) USE_MARCH=false ;;
+esac
+
+MESON_ARGS_GEN=(
+    --prefix=/usr
+    --buildtype=release
+    -Db_lto=true
+    -Db_lto_mode=thin
+    -Doptimization=2
+    -Dpgo=generate
+    -Dpgo_dir=$(pwd)/pgo-data
+)
+if [ "$USE_MARCH" = true ]; then
+    MESON_ARGS_GEN+=(-Dc_args='-march=native' -Dcpp_args='-march=native')
+    echo "✓ Targeting native CPU architecture."
+fi
+
 echo "Phase 1: Building instrumented binary..."
-meson setup builddir-gen \
-  --prefix=/usr \
-  --buildtype=release \
-  -Db_lto=true \
-  -Db_lto_mode=thin \
-  -Doptimization=2 \
-  -Dpgo=generate \
-  -Dpgo_dir=$(pwd)/pgo-data \
-  -Dc_args='-march=native' \
-  -Dcpp_args='-march=native'
+meson setup builddir-gen "${MESON_ARGS_GEN[@]}"
 meson compile -C builddir-gen
 echo "✓ Instrumented build complete"
 echo ""
 
 # Phase 2: Install layer temporarily for profiling
 echo "Phase 2: Installing layer for profiling..."
-LAYER_SO_PATH="$(pwd)/builddir-gen/src/libvkbasalt.so"
+LAYER_SO_PATH="$(pwd)/builddir-gen/src/libVkLayer_Basalt_reloaded.so"
 mkdir -p ~/.local/share/vulkan/implicit_layer.d
 
 cat > "$MANIFEST_PATH" << MANIFEST
 {
-    "file_format_version": "1.0.0",
-    "layer": {
-        "name": "VK_LAYER_VKBASALT_post_processing",
-        "type": "GLOBAL",
+    "file_format_version" : "1.0.0",
+    "layer" : {
+        "name": "VK_LAYER_VKBASALT_RELOADED_post_processing",
+        "type": "INSTANCE",
         "library_path": "$LAYER_SO_PATH",
         "api_version": "1.3.223",
         "implementation_version": "1",
-        "description": "a post processing layer",
+        "description": "vkBasalt Reloaded post processing layer",
         "functions": {
-            "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
-            "vkGetDeviceProcAddr": "vkBasalt_GetDeviceProcAddr"
+        "vkGetInstanceProcAddr": "vkBasalt_GetInstanceProcAddr",
+        "vkGetDeviceProcAddr":   "vkBasalt_GetDeviceProcAddr"
         },
         "enable_environment": {
-            "ENABLE_VKBASALT_RELOADED": "1"
+        "ENABLE_VKBASALT_RELOADED": "1"
         },
         "disable_environment": {
-            "DISABLE_VKBASALT_RELOADED": "1"
+        "DISABLE_VKBASALT_RELOADED": "1"
         }
     }
 }
+
 MANIFEST
 
 export ENABLE_VKBASALT_RELOADED=1
@@ -306,6 +317,32 @@ enableOnLaunch=true
 EOF
 run_profile 15
 
+# Config 6: Mega Chain without HDR
+# Only runs when HDR enforcement is active. Just to ensure SDR codepath is also exercised.
+if [ "$FORCE_HDR_PGO" = true ]; then
+echo ""
+echo "=== Config 6: Mega Chain WITHOUT HDR (SDR direct-write path) ==="
+unset VKBASALT_FORCE_HDR_PGO
+cat > "$CONFIG_PATH" << 'EOF'
+effects=fxaa:smaa:cmaa2:deband:dls:cas:clarity:clarityrcas:crystalclear
+scopesEnabled=true
+autoHdr=false
+hdrCalibrationMode=off
+sdrWhitePointNits=203
+hdrPeakNits=1000
+casSharpness=0.5
+clarityStrength=0.6
+crystalclearPreset=devfav
+debandRange=16.0
+dlsSharpen=0.5
+cmaa2QualityPreset=2
+enableOnLaunch=true
+EOF
+run_profile 60 /tmp/pgo-local/config6.log
+export VKBASALT_FORCE_HDR_PGO=1
+echo "✓ HDR enforcement restored for remaining phases"
+fi
+
 echo ""
 echo "✓ Profiling complete"
 echo ""
@@ -326,26 +363,29 @@ llvm-profdata merge -output=pgo-data/default.profdata pgo-data/*.profraw
 echo "✓ Merged profile: $(stat -c%s pgo-data/default.profdata) bytes"
 echo ""
 
-# Phase 8: Build optimized binary
+MESON_ARGS_PGO=(
+    --prefix=/usr
+    --buildtype=release
+    -Db_lto=true
+    -Db_lto_mode=thin
+    -Doptimization=2
+    -Dpgo=use
+    -Dpgo_dir=$(pwd)/pgo-data
+)
+if [ "$USE_MARCH" = true ]; then
+    MESON_ARGS_PGO+=(-Dc_args='-march=native' -Dcpp_args='-march=native')
+fi
+
 echo "Phase 8: Building optimized binary..."
-meson setup builddir-pgo \
-  --prefix=/usr \
-  --buildtype=release \
-  -Db_lto=true \
-  -Db_lto_mode=thin \
-  -Doptimization=2 \
-  -Dpgo=use \
-  -Dpgo_dir=$(pwd)/pgo-data \
-  -Dc_args='-march=native' \
-  -Dcpp_args='-march=native'
+meson setup builddir-pgo "${MESON_ARGS_PGO[@]}"
 meson compile -C builddir-pgo
 echo "✓ Optimized build complete"
 echo ""
 
 # Phase 9: Compare sizes
 echo "Phase 9: Binary size comparison"
-echo "Instrumented: $(stat -c%s builddir-gen/src/libvkbasalt.so) bytes"
-echo "PGO optimized: $(stat -c%s builddir-pgo/src/libvkbasalt.so) bytes"
+echo "Instrumented: $(stat -c%s builddir-gen/src/libVkLayer_Basalt_reloaded.so) bytes"
+echo "PGO optimized: $(stat -c%s builddir-pgo/src/libVkLayer_Basalt_reloaded.so) bytes"
 if [ "$FORCE_HDR_PGO" = true ]; then
     echo "Profiled with: HDR enforcement ACTIVE (VKBASALT_FORCE_HDR_PGO=1)"
 else
@@ -353,9 +393,9 @@ else
 fi
 echo ""
 echo "--- Instrumented ---"
-llvm-size builddir-gen/src/libvkbasalt.so
+llvm-size builddir-gen/src/libVkLayer_Basalt_reloaded.so
 echo "--- PGO Optimized ---"
-llvm-size builddir-pgo/src/libvkbasalt.so
+llvm-size builddir-pgo/src/libVkLayer_Basalt_reloaded.so
 echo ""
 
 # Phase 10: Remove temporary profiling manifest before system install
@@ -376,6 +416,8 @@ case "$confirm" in
         if [[ ! "$strip_confirm" =~ ^[Nn] ]]; then
             INSTALL_ARGS="$INSTALL_ARGS --strip"
             echo "Installation will strip debug symbols."
+        else
+            echo "Installation will keep debug symbols."
         fi
 
         echo "Running system installation..."
@@ -383,24 +425,52 @@ case "$confirm" in
         sudo ldconfig
 
         # Remove backup so cleanup doesn't restore old manifest over system install
-        rm -f "$BACKUP_DIR/vkBasalt.json.bak"
+        rm -f "$BACKUP_DIR/VkLayer_Basalt_reloaded.json.bak"
         touch "$BACKUP_DIR/manifest_did_not_exist"
 
-        JSON_PATH="/usr/share/vulkan/implicit_layer.d/vkBasalt.json"
+        JSON_PATH="/usr/share/vulkan/implicit_layer.d/VkLayer_Basalt_reloaded.json"
+        INSTALLED_SO="/usr/lib/libVkLayer_Basalt_reloaded.so"
+        OLD_JSON="/usr/share/vulkan/implicit_layer.d/vkBasalt.json"
+
+        if [ -f "$OLD_JSON" ]; then
+            sudo rm -f "$OLD_JSON"
+            echo "✓ Removed old conflicting manifest: $OLD_JSON"
+        fi
+
         if [ -f "$JSON_PATH" ]; then
-            sudo sed -i 's|"library_path":.*|"library_path": "/usr/lib/libvkbasalt.so",|g' "$JSON_PATH"
+            sudo sed -i 's|"library_path":.*|"library_path": "/usr/lib/libVkLayer_Basalt_reloaded.so",|g' "$JSON_PATH"
             echo "✓ Patched Vulkan manifest"
+        else
+            echo "✗ ERROR: Vulkan manifest not found at $JSON_PATH"
+            exit 1
         fi
 
-        INSTALLED_SO="/usr/lib/libvkbasalt.so"
-        if [ -f "$INSTALLED_SO" ]; then
-            echo ""
-            echo "Installed: $INSTALLED_SO ($(du -h "$INSTALLED_SO" | cut -f1))"
-            if file "$INSTALLED_SO" | grep -q 'stripped'; then
-                echo "Status: symbols stripped ✓"
-            fi
+        # Verification checks
+        echo ""
+        echo "========================================="
+        echo "    Running Verification Checks"
+        echo "========================================="
+        echo ""
+
+        if [ -r "$JSON_PATH" ]; then echo "✓ Vulkan manifest exists and is readable"; else echo "✗ ERROR: Cannot read Vulkan manifest"; exit 1; fi
+        if grep -q "VK_LAYER_VKBASALT_RELOADED_post_processing" "$JSON_PATH"; then echo "✓ Correct layer name"; else echo "✗ ERROR: Wrong layer name"; exit 1; fi
+        if grep -q "/usr/lib/libVkLayer_Basalt_reloaded.so" "$JSON_PATH"; then echo "✓ Correct library path"; else echo "✗ ERROR: Wrong library path"; exit 1; fi
+        if python3 -c "import json; json.load(open('$JSON_PATH'))" 2>/dev/null; then echo "✓ Valid JSON"; else echo "✗ WARNING: JSON syntax errors"; fi
+        if [ -f "$INSTALLED_SO" ]; then echo "✓ Library binary exists"; else echo "✗ ERROR: Binary not found"; exit 1; fi
+        if file "$INSTALLED_SO" | grep -q "shared object"; then echo "✓ Valid shared object"; else echo "✗ ERROR: Not a shared object"; exit 1; fi
+
+        echo ""
+        echo "Installed: $INSTALLED_SO ($(du -h "$INSTALLED_SO" | cut -f1))"
+        if file "$INSTALLED_SO" | grep -q 'stripped'; then
+            echo "Status: symbols stripped ✓"
+        else
+            echo "Status: debug symbols retained"
         fi
 
+        echo ""
+        echo "========================================="
+        echo "    All Checks Passed!"
+        echo "========================================="
         echo ""
         echo "Restart Steam fully (tray → Exit) so Proton re-reads the manifest."
         ;;
@@ -409,3 +479,4 @@ case "$confirm" in
         echo "Install later: sudo meson install -C builddir-pgo --strip"
         ;;
 esac
+
