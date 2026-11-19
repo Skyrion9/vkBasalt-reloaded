@@ -582,19 +582,38 @@ namespace vkBasalt
                 }
             }
 
-            // If the analyzer was just recreated during a rebuild while on this tab & user didn't disable scopes this session, ensure on.
-            if (analyzer && !m_userDisabledScopes && !analyzer->isEnabled()) {
-                analyzer->setEnabled(true);
+            // Re-enable on every entry unless the user explicitly turned scopes off. Guarding on !g_frameAnalyzerRequested would skip re-enabling
+            // after a tab switch disabled the analyzer, leaving the checkbox unchecked and the heartbeat stale while the tab is on screen.
+            if (!g_scopesUserDisabled.load()) {
+                g_frameAnalyzerRequested.store(true);
+                if (analyzer && !analyzer->isEnabled()) {
+                    analyzer->setEnabled(true);
+                }
             }
 
-            // If the analyzer was just recreated (e.g. during a save/rebuild),
-            // respect the user's explicit disable choice for this session. Otherwise read live state.
-            bool scopesEnabledCfg = analyzer ? analyzer->isEnabled() : !m_userDisabledScopes;
+            // Read current state: prefer analyzer's live state if it exists, otherwise use the global flag.
+            bool scopesEnabledCfg = analyzer ? analyzer->isEnabled() : g_frameAnalyzerRequested.load();
+
             if (ImGui::Checkbox("Enable Scopes (GPU)", &scopesEnabledCfg)) {
-                m_userDisabledScopes = !scopesEnabledCfg;
+                g_scopesUserDisabled.store(!scopesEnabledCfg);
+                g_frameAnalyzerRequested.store(scopesEnabledCfg);
                 if (analyzer) {
-                    this->setScopesEnabled(scopesEnabledCfg);
+                    analyzer->setEnabled(scopesEnabledCfg);
                 }
+                g_triggerSoftReload = true;
+            }
+
+            // Heartbeat: while this tab is on screen with scopes enabled, mark scopes as actively viewed to keep the fake pool alive.
+            // When the tab closes the record goes stale and passthrough is allowed to reclaim the pool (see scopesActivelyViewed()).
+            if (scopesEnabledCfg) {
+                g_scopesLastViewedFrame.store(
+                    g_globalFrameCounter.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            }
+
+            // Repopulate: if scopes are enabled but the analyzer doesn't exist (passthrough, or a rebuild just cleared it), force a rebuild
+            // so the fake pool and FrameAnalyzer come back. Guarded by forceSwapchainRebuild so we don't re-trigger while a rebuild is already in flight.
+            if (m_pSwapchain && !analyzer && scopesEnabledCfg && !m_pSwapchain->forceSwapchainRebuild) {
+                g_triggerSoftReload = true;
             }
 
             if (analyzer && scopesEnabledCfg) {

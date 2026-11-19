@@ -613,9 +613,11 @@ namespace vkBasalt
                 + " for swapchain (rebuild)");
         }
 
-        // Always create compute passes & FrameAnalyzer so it's available when the AutoHDR tab is opened.
-        // FrameAnalyzer starts disabled to save GPU cycles until the user opens the tab.
-        {
+        // Gate on both the request flag and the view heartbeat. A FrameAnalyzer costs device memory:
+        // (4 KiB histogram + 2x256 KiB waveform/vectorscope SSBOs + 3x256 KiB scope images) plus two compute pipelines.
+        // The accumulate dispatch runs every frame.
+        // Creating it unconditionally would pay that on every swapchain, including boot, for a tab most users never open.
+        if (g_frameAnalyzerRequested.load() && scopesActivelyViewed()) {
             std::vector<VkImage> computeSrcImages;
             VkFormat analyzerFormat;
             VkColorSpaceKHR analyzerColorSpace;
@@ -641,10 +643,11 @@ namespace vkBasalt
 
             auto fa = std::make_shared<FrameAnalyzer>(
                 pLogicalDevice, pLogicalSwapchain->imageExtent, computeSrcImages, analyzerFormat, analyzerColorSpace);
-            // Start disabled. The overlay UI will enable it when the Auto HDR tab is opened.
-            fa->setEnabled(false);
+            fa->setEnabled(true); // Start enabled since user explicitly requested it
             pLogicalSwapchain->computePasses.push_back(fa);
             Logger::debug("created compute passes (FrameAnalyzer)");
+        } else {
+            Logger::debug("FrameAnalyzer not created (scopes not requested)");
         }
 
         writeCommandBuffers(
@@ -680,9 +683,12 @@ namespace vkBasalt
                 + convertToString(pLogicalSwapchain->commandBuffersNoEffect[i]));
         }
 
-        // Passthrough eligible when no real processing is needed: No effects configured, OR effects are bypassed and VRAM was reclaimed (chain is just a fallback transfer)& no HDR output effect is needed
+        // Passthrough means handing the game its real images and skipping the fake pool entirely, only eligible when
+        // nothing needs that pool: no configured effects (or effects bypassed with VRAM already reclaimed, leaving just a slice 0 transfer),
+        // no HDR output effect, scopes not being viewed. The scopes term uses the heartbeat rather than g_frameAnalyzerRequested on purpose: the
+        // checkbox stays on after the tab closes, so keying off the request flag would pin the whole pool for the rest of the session.
         pLogicalSwapchain->passthroughEligible =
-            (effectStrings.empty() || bypassedAndReclaimed) && !shouldAppendHdrOutput;
+            (effectStrings.empty() || bypassedAndReclaimed) && !shouldAppendHdrOutput && !scopesActivelyViewed();
 
         // Initialize ImGui Overlay eagerly while the queue is idle, the overlay renders on top of the real swapchain images, so it must use destFormat (HDR), not sourceFormat (SDR).
         if (swapchain != VK_NULL_HANDLE) {

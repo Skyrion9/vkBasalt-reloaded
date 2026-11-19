@@ -951,6 +951,24 @@ namespace vkBasalt
             registerFakeImageUsage(pLogicalSwapchain->images[i], pLogicalSwapchain->actualImageUsage);
         }
 
+        // A rebuild creates a fresh LogicalSwapchain with passthroughActive=false, which would  re-allocate the fake pool.
+        // Derive again the passthrough decision here so the rebuilt swapchain goes straight to zero overhead mode.
+        // Two cases qualify:
+        //  1. No effects configured at all - nothing to re-enable, skip the idle timeout (15s).
+        //  2. Effects bypassed/toggled off and VRAM reclaimed.
+        // Doesn't qualify: if scopes are requested, we need fake images for FrameAnalyzer to read from.
+        {
+            bool hdrNeeded               = isHdrOutputNeeded(pConfig.get(), pLogicalSwapchain);
+            auto passthroughCheckEffects = pConfig->getOption<std::vector<std::string>>("effects", {});
+            pruneEmptyEffectNames(passthroughCheckEffects);
+            bool noEffectsConfigured  = passthroughCheckEffects.empty();
+            bool bypassedAndReclaimed = !g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass;
+
+            if (!hdrNeeded && (noEffectsConfigured || bypassedAndReclaimed) && !scopesActivelyViewed()) {
+                pLogicalSwapchain->passthroughActive = true;
+            }
+        }
+
         // Passthrough mode: return real images directly, skip fake image allocation entirely
         Logger::trace(
             "GetSwapchainImagesKHR: passthroughActive=" + std::to_string(pLogicalSwapchain->passthroughActive)
@@ -1034,6 +1052,7 @@ namespace vkBasalt
         std::vector<std::pair<VkSwapchainKHR, std::shared_ptr<LogicalSwapchain>>> localSwapchains;
         {
             std::unique_lock<std::mutex> l(globalLock);
+            g_globalFrameCounter.fetch_add(1, std::memory_order_relaxed);
             if (processHotkeysAndReloads(pConfig, swapchainMap, g_overlayManager)) {
                 LogicalDevice* pDev = deviceMap[GetKey(queue)].get();
                 l.unlock(); // Release lock before blocking GPU work to prevent deadlock with CreateSwapchainKHR
@@ -1105,6 +1124,27 @@ namespace vkBasalt
                         lsc->forceSwapchainRebuild = true;
                     }
                 }
+            }
+
+            // When scopes stop being actively viewed (tab closed/navigated away), the pool they  becomes reclaimable.
+            // Re-arm passthroughEligible here because buildEffectChain (the only other writer) won't run again until the next rebuild.
+            // The 15s timer above then handles the actual reclaim, giving a grace period in case the tab is reopened quickly.
+            {
+                static bool prevScopesViewed = false;
+                bool currScopesViewed        = scopesActivelyViewed();
+                if (prevScopesViewed && !currScopesViewed) {
+                    for (auto& [sc, lsc] : swapchainMap) {
+                        if (lsc->passthroughActive || lsc->fakeImages.empty()) continue;
+                        bool hdrNeeded = isHdrOutputNeeded(pConfig.get(), lsc.get());
+                        auto effStrs   = pConfig->getOption<std::vector<std::string>>("effects", {});
+                        pruneEmptyEffectNames(effStrs);
+                        bool bypassedAndReclaimed = !g_effectsEnabled.load() && g_vramReclaimedForCurrentBypass;
+                        if (!hdrNeeded && (effStrs.empty() || bypassedAndReclaimed)) {
+                            lsc->passthroughEligible = true;
+                        }
+                    }
+                }
+                prevScopesViewed = currScopesViewed;
             }
 
             pLogicalDevice = deviceMap[GetKey(queue)];
