@@ -1,13 +1,11 @@
 #include "vkdispatch.hpp"
 #include <X11/X.h>
-#include <algorithm>
-#include <cstdint>
-#include <iterator>
 #include <sys/types.h>
 #include <vulkan/vk_layer.h>
 #include <vulkan/vk_platform.h>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_wayland.h>
+#include <unistd.h>
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include "vulkan_include.hpp"
 
@@ -23,7 +21,8 @@
 #undef True
 #undef False
 
-#include <memory>
+#include <cstdint>
+#include <iterator>
 #include <mutex>
 #include <vector>
 #include <unordered_map>
@@ -32,24 +31,21 @@
 #include <memory>
 #include <cstring>
 #include <algorithm>
-#include <unistd.h>
-
-#include "util.hpp"
+#include <cstdlib>
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
 #include "keyboard_input_wayland.hpp"
 #endif
 
+#include "util.hpp"
 #include "keyboard_input.hpp"
 #include "keyboard_input_x11.hpp"
 #include "hotkey_manager.hpp"
 #include "imgui_overlay.hpp"
 #include "overlay_manager.hpp"
 #include "effect_chain.hpp"
-
 #include "logical_device.hpp"
 #include "logical_swapchain.hpp"
-
 #include "image_view.hpp"
 #include "pipeline_cache.hpp"
 #include "command_buffer.hpp"
@@ -579,11 +575,7 @@ namespace vkBasalt
         VkSwapchainKHR* pSwapchain)
     {
         std::scoped_lock l(globalLock);
-
-        Logger::trace("vkCreateSwapchainKHR");
-
-        LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
-
+        LogicalDevice* pLogicalDevice               = deviceMap[GetKey(device)].get();
         VkSwapchainCreateInfoKHR modifiedCreateInfo = *pCreateInfo;
 
         VkFormat format = modifiedCreateInfo.imageFormat;
@@ -893,7 +885,7 @@ namespace vkBasalt
         modifiedCreateInfo.pNext = newPNextHead;
 
         // Store the actual usage flags the images will be created with, so that
-        // fake image tracker correctly stripsSTORAGE_BIT for SRGB views on real swapchain images.
+        // fake image tracker correctly strips STORAGE_BIT for SRGB views on real swapchain images.
         pLogicalSwapchain->actualImageUsage = modifiedCreateInfo.imageUsage;
 
         VkResult result = pLogicalDevice->vkd.CreateSwapchainKHR(device, &modifiedCreateInfo, pAllocator, pSwapchain);
@@ -1622,7 +1614,6 @@ namespace vkBasalt
     vkBasalt_BindImageMemory(VkDevice device, VkImage image, VkDeviceMemory memory, VkDeviceSize memoryOffset)
     {
         std::scoped_lock l(globalLock);
-
         LogicalDevice* pLogicalDevice = deviceMap[GetKey(device)].get();
 
         VkResult result = pLogicalDevice->vkd.BindImageMemory(device, image, memory, memoryOffset);
@@ -1769,10 +1760,13 @@ extern "C"
 
     VK_BASALT_EXPORT PFN_vkVoidFunction VKAPI_CALL vkBasalt_GetInstanceProcAddr(VkInstance instance, const char* pName)
     {
+        if (pName != nullptr) {
+            vkBasalt::Logger::trace(std::string("GIPA requested: ") + pName);
+        } else {
+            vkBasalt::Logger::trace("GIPA requested: nullptr");
+        }
         vkBasalt::ensureConfig();
-
         INTERCEPT_CALLS
-
         {
             std::scoped_lock l(vkBasalt::globalLock);
             return vkBasalt::instanceDispatchMap[vkBasalt::GetKey(instance)].GetInstanceProcAddr(instance, pName);
