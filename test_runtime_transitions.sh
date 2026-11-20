@@ -297,11 +297,15 @@ fi
 COMBINED_LOG=$(mktemp)
 [ -f "$VAL_LOG" ]    && cat "$VAL_LOG"    >> "$COMBINED_LOG" || true
 [ -f "$STDERR_LOG" ] && cat "$STDERR_LOG" >> "$COMBINED_LOG" || true
+# VK_LOADER_DEBUG output is the only place the loader prints the layer name, and it goes to
+# vkcube's stdout, not stderr. Without this the guard below fails on a perfectly clean run.
+[ -f /tmp/vkcube_stdout.log ] && cat /tmp/vkcube_stdout.log >> "$COMBINED_LOG" || true
 
 if ! grep -qi "khronos_validation" "$COMBINED_LOG"; then
-    echo "WARNING: No evidence the Khronos validation layer loaded."
-    rm -f "$COMBINED_LOG"
-    exit 1
+  echo "WARNING: No evidence the Khronos validation layer loaded."
+  echo "Checked: $VAL_LOG, $STDERR_LOG, /tmp/vkcube_stdout.log"
+  rm -f "$COMBINED_LOG"
+  exit 1
 fi
 
 if grep -qE "Validation Error|Validation Warning|VK_ERROR_DEVICE_LOST|Device lost" "$COMBINED_LOG"; then
