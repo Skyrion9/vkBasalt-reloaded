@@ -21,13 +21,13 @@ jobs:
   pgo-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
       - name: Create PGO build script
         run: |
-          cat > build_pgo.sh << 'SCRIPT'
+          cat > ci_pgo_build.sh << 'SCRIPT'
           #!/bin/bash
           set -euo pipefail
 
@@ -361,7 +361,7 @@ jobs:
           cp install.sh builddir-pgo/install.sh
           chmod +x builddir-pgo/install.sh
           SCRIPT
-          chmod +x build_pgo.sh
+          chmod +x ci_pgo_build.sh
 
       - name: Run PGO build in Arch Linux container
         run: |
@@ -371,7 +371,7 @@ jobs:
             -e GITHUB_SHA=${{ github.sha }} \
             -e GITHUB_REF_NAME=${{ github.ref_name }} \
             archlinux:base-devel \
-            ./build_pgo.sh
+            ./ci_pgo_build.sh
 
       # Package all release files into a single tar.gz archive when Beta release requested
       - name: Package release archive
@@ -389,7 +389,7 @@ jobs:
           echo "ARCHIVE_PATH=${ARCHIVE_DIR}.tar.gz" >> $GITHUB_ENV
 
       - name: Upload PGO artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vkbasalt-reloaded-pgo-llvmpipe-profiled
           path: |
@@ -399,7 +399,7 @@ jobs:
           retention-days: 90
 
       - name: Upload profile data
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vkbasalt-reloaded-profdata-llvmpipe
           path: pgo-data/default.profdata
