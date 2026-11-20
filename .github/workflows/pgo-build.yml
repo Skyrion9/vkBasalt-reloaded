@@ -408,7 +408,7 @@ jobs:
       # Conditionally create a GitHub Release marked as pre-release if "Create a Beta Release" checked during manual dispatch.
       - name: Create Beta Release
         if: inputs.create_release == true && inputs.version != ''
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.version }}
           name: "Beta ${{ inputs.version }} (CI PGO Build)"
