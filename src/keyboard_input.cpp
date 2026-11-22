@@ -147,7 +147,6 @@ namespace vkBasalt
     bool isKeyPressed(uint32_t ks)
     {
         init_input_backend();
-
 #if VKBASALT_WAYLAND
         if (is_wayland) {
             if (isKeyPressedWayland(ks)) return true;
@@ -155,11 +154,18 @@ namespace vkBasalt
 #if VKBASALT_X11
             return isKeyPressedX11(ks);
 #endif
+            return false;
         }
 #endif
-
 #if VKBASALT_X11
-        return isKeyPressedX11(ks);
+        if (isKeyPressedX11(ks)) return true;
+#endif
+#if VKBASALT_WAYLAND
+        // Wine/Proton forces the X11 backend to avoid winewayland roundtrip deadlocks, but CEF
+        // frontends can still deliver keyboard events to our private Wayland queue.
+        // Hotkeys are processed before ImGui's updateInput, so feedWaylandKeyEventsToImGui() never runs
+        // while the overlay is closed. Poll the pending Wayland queue as a fallback, safe under Wine.
+        if (isWaylandInputActive() && isKeyPressedWayland(ks)) return true;
 #endif
         return false;
     }
