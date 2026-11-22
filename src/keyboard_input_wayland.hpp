@@ -17,6 +17,7 @@ namespace vkBasalt
     float getWaylandUIScale();
     float consumeWaylandMouseWheel();
     bool isWaylandInputActive();
+    bool isWaylandPointerActive();
     void shutdownWaylandInput();
     void clearWaylandInputQueues();
     uint32_t convertToKeySymWayland(const std::string& key);

@@ -51,10 +51,16 @@ namespace vkBasalt
         std::set<xkb_keysym_t> wl_pressed_keys;
 
         float mouse_x = 0.0f, mouse_y = 0.0f;
-        bool mouse_down[5]  = {false, false, false, false, false};
-        float mouse_wheel   = 0.0f;
-        bool mouse_valid    = false;
-        bool pointer_locked = false; // True when game has locked cursor (FPS mode)
+        bool mouse_down[5] = {false, false, false, false, false};
+        float mouse_wheel  = 0.0f;
+        bool mouse_valid   = false;
+
+        // Covers both a real pointer lock (no absolute coords at all) and
+        // CEF frontends that keep wl_pointer.enter valid but never delivers wl_pointer.motion.
+        bool relative_only          = false;
+        bool have_absolute_time     = false;
+        bool pointer_seen           = false;
+        uint32_t last_absolute_time = 0;
 
         std::vector<uint32_t> typed_chars;
         std::vector<std::pair<xkb_keysym_t, bool>> key_events; // (keysym, is_pressed)
@@ -87,6 +93,11 @@ namespace vkBasalt
     static std::map<struct wl_display*, wayland_display> displays;
     static int g_outputScale      = 1; // Tracks the maximum scale across all displays
     static bool g_winePointerOnly = false;
+
+    // Absolute motion older than this while relative motion keeps arriving means
+    // the compositor is delivering relative only movement. Both streams share the compositor clock,
+    // so normal desktop use is indifferent, this never trips.
+    static constexpr uint32_t kAbsoluteStaleMs = 100;
 
     // wl_output listener for integer scale fallback
     static void wl_output_geometry(
@@ -148,21 +159,50 @@ namespace vkBasalt
         return !displays.empty();
     }
 
+    bool isWaylandPointerActive()
+    {
+        for (const auto& display_pair : displays) {
+            const wayland_display& wayland = display_pair.second;
+
+            // A registered display alone isn't enough when CEF/launcher surfaces can register Wayland while
+            // the game mouse is X11. Require real pointer data, either live absolute coords, a confirmed
+            // relative only stream, or a position we actually received at some point.
+            if (wayland.mouse_valid || wayland.relative_only || wayland.pointer_seen) return true;
+        }
+        return false;
+    }
+
     // Relative pointer listener provides mouse deltas during pointer lock
     static void relative_pointer_motion(
         void* data,
         struct zwp_relative_pointer_v1* /*pointer*/,
         uint32_t /*time_hi*/,
-        uint32_t /*time_lo*/,
-        wl_fixed_t /*dx*/,
-        wl_fixed_t /*dy*/,
+        uint32_t time_lo,
+        wl_fixed_t dx,
+        wl_fixed_t dy,
         wl_fixed_t dx_unaccel,
         wl_fixed_t dy_unaccel)
     {
         auto* wayland = static_cast<wayland_display*>(data);
-        // Apply deltas to internal position. Clamped in updateWaylandImGuiIO.
-        wayland->mouse_x += wl_fixed_to_double(dx_unaccel);
-        wayland->mouse_y += wl_fixed_to_double(dy_unaccel);
+
+        // Absolute coordinates stay authoritative whenever they are being refreshed. Ignoring the
+        // deltas here keeps ordinary Wayland and XWayland games on the exact path they use today,
+        // even though the relative pointer object is now always bound.
+        if (wayland->mouse_valid && wayland->have_absolute_time) {
+            const uint32_t age = time_lo - wayland->last_absolute_time; // unsigned, wrap safe
+            if (age < kAbsoluteStaleMs) {
+                wayland->relative_only = false;
+                return;
+            }
+        }
+
+        wayland->relative_only = true;
+
+        // No absolute coords at all means a real pointer lock, which wants raw deltas. A stalled
+        // absolute stream still tracks the compositor cursor, so use accelerated deltas there.
+        const bool rawLocked = !wayland->mouse_valid;
+        wayland->mouse_x += wl_fixed_to_double(rawLocked ? dx_unaccel : dx);
+        wayland->mouse_y += wl_fixed_to_double(rawLocked ? dy_unaccel : dy);
     }
 
     static const struct zwp_relative_pointer_v1_listener relative_pointer_listener = {relative_pointer_motion};
@@ -403,11 +443,12 @@ namespace vkBasalt
         wl_fixed_t surface_x,
         wl_fixed_t surface_y)
     {
-        auto* wayland           = static_cast<wayland_display*>(data);
-        wayland->mouse_x        = wl_fixed_to_double(surface_x);
-        wayland->mouse_y        = wl_fixed_to_double(surface_y);
-        wayland->mouse_valid    = true;
-        wayland->pointer_locked = false;
+        auto* wayland          = static_cast<wayland_display*>(data);
+        wayland->mouse_x       = wl_fixed_to_double(surface_x);
+        wayland->mouse_y       = wl_fixed_to_double(surface_y);
+        wayland->mouse_valid   = true;
+        wayland->pointer_seen  = true;
+        wayland->relative_only = false;
     }
 
     static void
@@ -415,17 +456,19 @@ namespace vkBasalt
     {
         auto* wayland        = static_cast<wayland_display*>(data);
         wayland->mouse_valid = false;
-        // If relative pointer is active, the game locked the cursor (FPS mode). Otherwise the pointer simply left the surface (user moved to another window).
-        wayland->pointer_locked = (wayland->relative_pointer != nullptr);
     }
 
     static void wl_pointer_motion(
-        void* data, struct wl_pointer* /*wl_pointer*/, uint32_t /*time*/, wl_fixed_t surface_x, wl_fixed_t surface_y)
+        void* data, struct wl_pointer* /*wl_pointer*/, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y)
     {
-        auto* wayland        = static_cast<wayland_display*>(data);
-        wayland->mouse_x     = wl_fixed_to_double(surface_x);
-        wayland->mouse_y     = wl_fixed_to_double(surface_y);
-        wayland->mouse_valid = true;
+        auto* wayland               = static_cast<wayland_display*>(data);
+        wayland->mouse_x            = wl_fixed_to_double(surface_x);
+        wayland->mouse_y            = wl_fixed_to_double(surface_y);
+        wayland->mouse_valid        = true;
+        wayland->pointer_seen       = true;
+        wayland->last_absolute_time = time;
+        wayland->have_absolute_time = true;
+        wayland->relative_only      = false;
     }
 
     static void wl_pointer_button(
@@ -484,9 +527,9 @@ namespace vkBasalt
             wl_pointer_add_listener(wayland->pointer, &pointer_listener, data);
             Logger::debug("Bound pointer to custom queue");
 
-            // Create relative pointer for FPS games that lock the cursor.
-            // Skip it in Wine pointer only mode to minimize protocol surface.
-            if (!g_winePointerOnly && wayland->relative_manager && !wayland->relative_pointer) {
+            // Always bind. The object stays inert unless relative_pointer_motion sees deltas arriving
+            // without absolute motion, so games that use absolute coordinates are unaffected.
+            if (wayland->relative_manager && !wayland->relative_pointer) {
                 wayland->relative_pointer =
                     zwp_relative_pointer_manager_v1_get_relative_pointer(wayland->relative_manager, wayland->pointer);
                 // Route relative pointer events to our custom queue
@@ -514,7 +557,7 @@ namespace vkBasalt
             wl_seat_add_listener(wayland->seat, &seat_listener, data);
             Logger::debug("Bound wl_seat to custom queue");
         }
-        if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0 && !g_winePointerOnly) {
+        if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0) {
             wayland->relative_manager = static_cast<struct zwp_relative_pointer_manager_v1*>(
                 wl_registry_bind(registry, name, &zwp_relative_pointer_manager_v1_interface, 1));
             // Route manager events to our custom queue
@@ -787,40 +830,67 @@ namespace vkBasalt
     void updateWaylandImGuiIO(float scale)
     {
         if (!ImGui::GetCurrentContext()) return;
+        if (displays.empty()) return;
         ImGuiIO& io = ImGui::GetIO();
+
+        // Dispatch every connection before reading. CEF front ends can register more than one
+        // wl_display, and std::map orders by pointer address, so the first entry is not necessarily
+        // the live one. Single display games keep the same behavior.
         for (auto& display_pair : displays) {
-            wayland_display& wayland = display_pair.second;
-
-            // Clamp to screen bounds only when pointer is locked by the game (FPS mode). Otherwise (valid or left surface), keep last known position without clamping.
-            if (!wayland.mouse_valid && wayland.pointer_locked) {
-                if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0) {
-                    float maxX = io.DisplaySize.x / scale;
-                    float maxY = io.DisplaySize.y / scale;
-                    if (wayland.mouse_x < 0) wayland.mouse_x = 0;
-                    if (wayland.mouse_y < 0) wayland.mouse_y = 0;
-                    if (wayland.mouse_x > maxX) wayland.mouse_x = maxX;
-                    if (wayland.mouse_y > maxY) wayland.mouse_y = maxY;
-                }
-            }
-            io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
-
-            // Feed buttons unconditionally they still fire during pointer lock
-            for (int i = 0; i < 5; i++)
-                io.MouseDown[i] = wayland.mouse_down[i];
-            io.MouseWheel += wayland.mouse_wheel;
-            wayland.mouse_wheel = 0.0f;
-
-            // Gamescope and other nested compositors may not forward all pointer buttons via wl_pointer. Supplement with X11 state (XQueryPointer is server-wide).
-            supplementX11MouseButtons();
-            break;
+            if (display_pair.second.queue)
+                wl_display_dispatch_queue_pending(display_pair.first, display_pair.second.queue);
         }
+
+        wayland_display* live = nullptr;
+        for (auto& display_pair : displays) {
+            wayland_display& w = display_pair.second;
+            if (w.mouse_valid || w.relative_only) {
+                live = &w;
+                break;
+            }
+        }
+        wayland_display& wayland = live ? *live : displays.begin()->second;
+
+        // Clamp only while integrating relative deltas. Absolute only paths keep last known position behavior.
+        if (wayland.relative_only) {
+            if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0) {
+                float maxX = io.DisplaySize.x / scale;
+                float maxY = io.DisplaySize.y / scale;
+                if (wayland.mouse_x < 0) wayland.mouse_x = 0;
+                if (wayland.mouse_y < 0) wayland.mouse_y = 0;
+                if (wayland.mouse_x > maxX) wayland.mouse_x = maxX;
+                if (wayland.mouse_y > maxY) wayland.mouse_y = maxY;
+            }
+        }
+
+        static uint32_t s_wlPtrLogCounter = 0;
+        if ((s_wlPtrLogCounter++ % 60) == 0) {
+            Logger::debug(
+                "Wayland pointer: displays=" + std::to_string(displays.size()) + " live=" + (live ? "1" : "0")
+                + " valid=" + (wayland.mouse_valid ? "1" : "0") + " relOnly=" + (wayland.relative_only ? "1" : "0")
+                + " absTime=" + (wayland.have_absolute_time ? "1" : "0")
+                + " rel=" + (wayland.relative_pointer ? "1" : "0") + " queue=" + (wayland.queue ? "1" : "0")
+                + " pos=" + std::to_string(wayland.mouse_x) + "," + std::to_string(wayland.mouse_y)
+                + " scale=" + std::to_string(scale));
+        }
+
+        io.MousePos = ImVec2(wayland.mouse_x * scale, wayland.mouse_y * scale);
+
+        // Feed buttons unconditionally, they still fire during pointer lock.
+        for (int i = 0; i < 5; i++)
+            io.MouseDown[i] = wayland.mouse_down[i];
+
+        io.MouseWheel += wayland.mouse_wheel;
+        wayland.mouse_wheel = 0.0f;
+
+        // Nested compositors may not forward all buttons via wl_pointer. Supplement with X11 state (XQueryPointer is server-wide).
+        supplementX11MouseButtons();
     }
 
     bool updateWaylandPointerImGuiIO(float scale)
     {
         if (!ImGui::GetCurrentContext()) return false;
         if (displays.empty()) return false;
-
         ImGuiIO& io = ImGui::GetIO();
 
         for (auto& display_pair : displays) {
@@ -830,10 +900,10 @@ namespace vkBasalt
             // Non-blocking dispatch of the Wine safe private queue.
             wl_display_dispatch_queue_pending(display_pair.first, wayland.queue);
 
-            if (!wayland.mouse_valid && !wayland.pointer_locked) continue;
+            if (!wayland.mouse_valid && !wayland.relative_only) continue;
 
-            // Clamp only when pointer locked, same as the full Wayland path.
-            if (!wayland.mouse_valid && wayland.pointer_locked) {
+            // Clamp only while integrating relative deltas, same as the full Wayland path.
+            if (wayland.relative_only) {
                 if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0) {
                     float maxX = io.DisplaySize.x / scale;
                     float maxY = io.DisplaySize.y / scale;
@@ -857,7 +927,6 @@ namespace vkBasalt
             wayland.mouse_wheel = 0.0f;
             return true;
         }
-
         return false;
     }
 
