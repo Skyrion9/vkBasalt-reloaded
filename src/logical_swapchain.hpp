@@ -83,6 +83,11 @@ namespace vkBasalt
         Effect* nitCalibrationEffect = nullptr;
         std::string monitorName; // Platform detected physical connector (e.g., "DP-1")
 
+        // X11 input target for the surface this swapchain renders into. CEF games create several
+        // surfaces on different windows, so the last created global window is not necessarily ours.
+        void* surfaceDisplay = nullptr;
+        void* surfaceWindow  = nullptr;
+
         void destroy();
     };
 } // namespace vkBasalt

@@ -27,6 +27,8 @@ namespace vkBasalt
 {
     static Display* g_gameDisplay     = nullptr;
     static Window g_gameWindow        = 0;
+    static Display* g_targetDisplay   = nullptr;
+    static Window g_targetWindow      = 0;
     static Display* g_fallbackDisplay = nullptr; // Cached for Wayland games in Gamescope
 
     // XInput2 dynamic loading for scroll wheel polling
@@ -96,6 +98,17 @@ namespace vkBasalt
         g_gameDisplay = static_cast<Display*>(display_ptr);
         g_gameWindow  = static_cast<Window>((uintptr_t) window_ptr);
         Logger::debug("X11 Input: Piggybacked on game's Display and Window successfully.");
+    }
+
+    void setX11InputTarget(void* display_ptr, void* window_ptr)
+    {
+        g_targetDisplay = static_cast<Display*>(display_ptr);
+        g_targetWindow  = static_cast<Window>((uintptr_t) window_ptr);
+    }
+
+    bool isX11PointerAvailable()
+    {
+        return g_targetDisplay || g_gameDisplay || g_fallbackDisplay || getenv("DISPLAY");
     }
 
     uint32_t convertToKeySymX11(const std::string& key)
@@ -176,7 +189,7 @@ namespace vkBasalt
     {
         if (!ImGui::GetCurrentContext()) return;
         ImGuiIO& io  = ImGui::GetIO();
-        Display* dpy = g_gameDisplay;
+        Display* dpy = g_targetDisplay ? g_targetDisplay : g_gameDisplay;
         if (!dpy) {
             if (!g_fallbackDisplay) {
                 const char* disVar = getenv("DISPLAY");
@@ -230,8 +243,8 @@ namespace vkBasalt
 #endif
 
         ImGuiIO& io  = ImGui::GetIO();
-        Display* dpy = g_gameDisplay;
-        Window win   = g_gameWindow;
+        Display* dpy = g_targetDisplay ? g_targetDisplay : g_gameDisplay;
+        Window win   = g_targetWindow ? g_targetWindow : g_gameWindow;
 
         if (!dpy) {
             if (!g_fallbackDisplay) {
@@ -268,28 +281,32 @@ namespace vkBasalt
         int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
         unsigned int mask = 0;
 
-        if (XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
-            float mx = static_cast<float>(win_x);
-            float my = static_cast<float>(win_y);
+        bool useRootCoords = (win == DefaultRootWindow(dpy));
+        bool havePointer   = XQueryPointer(dpy, win, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
 
-            // Under winewayland.drv (Wayland mode), no real X11 window exists.
-            // We fell back to root window above, so use absolute screen coordinates.
-            // Under winex11.drv (X11 mode), g_gameWindow is set and win_x/win_y are
-            // already window relative, so we use them directly.
-            bool useRootCoords = (isWineEnv && g_gameWindow == 0) || win == DefaultRootWindow(dpy) || win == root
-                                 || (child == 0 && win_x == 0 && win_y == 0);
-            if (useRootCoords) {
-                mx = static_cast<float>(root_x);
-                my = static_cast<float>(root_y);
-            } else if (child != 0 && child != win) {
-                int translated_x = 0, translated_y = 0;
-                Window translated_child = 0;
-                if (XTranslateCoordinates(
-                        dpy, root, win, root_x, root_y, &translated_x, &translated_y, &translated_child)) {
-                    mx = static_cast<float>(translated_x);
-                    my = static_cast<float>(translated_y);
-                }
-            }
+        if (!havePointer) {
+            // XQueryPointer fails if the window died (CEF recreates its host windows) or lives on
+            // another screen. Root is serverwide and always queryable, so fall back to it rather
+            // than leaving io.MousePos at -FLT_MAX, which makes ImGui drop the cursor entirely.
+            Window rootChild = 0;
+            havePointer =
+                XQueryPointer(dpy, DefaultRootWindow(dpy), &root, &rootChild, &root_x, &root_y, &win_x, &win_y, &mask);
+            useRootCoords = true;
+        }
+
+        static uint32_t s_ptrLogCounter = 0;
+        if ((s_ptrLogCounter++ % 60) == 0) {
+            Logger::trace(
+                "X11 pointer: win=" + std::to_string(win) + " have=" + (havePointer ? "1" : "0")
+                + " root=" + std::to_string(root_x) + "," + std::to_string(root_y) + " winxy=" + std::to_string(win_x)
+                + "," + std::to_string(win_y) + " useRoot=" + (useRootCoords ? "1" : "0"));
+        }
+
+        if (havePointer) {
+            // XQueryPointer already reports win_x/win_y relative to the queried window.
+            // Only the root fallback needs absolute coordinates.
+            float mx = static_cast<float>(useRootCoords ? root_x : win_x);
+            float my = static_cast<float>(useRootCoords ? root_y : win_y);
 
             io.MousePos     = ImVec2(mx * scale, my * scale);
             io.MouseDown[0] = (mask & Button1Mask) != 0; // Left

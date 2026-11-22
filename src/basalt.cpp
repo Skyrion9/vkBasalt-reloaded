@@ -706,7 +706,9 @@ namespace vkBasalt
         // Platform monitor detection: Map surface to physical connector name
         auto surfIt = g_surfaceMap.find(pCreateInfo->surface);
         if (surfIt != g_surfaceMap.end()) {
-            pLogicalSwapchain->monitorName = surfIt->second.monitor_name;
+            pLogicalSwapchain->monitorName    = surfIt->second.monitor_name;
+            pLogicalSwapchain->surfaceDisplay = surfIt->second.display;
+            pLogicalSwapchain->surfaceWindow  = surfIt->second.window;
 #ifdef VK_USE_PLATFORM_XLIB_KHR
             // Re-evaluate X11 position in case window moved since surface creation
             if (surfIt->second.type == SurfacePlatformInfo::Type::Xlib) {
