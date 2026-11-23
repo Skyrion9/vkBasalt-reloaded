@@ -31,6 +31,7 @@ namespace vkBasalt
             case ImGuiKey_End: return "End";
             case ImGuiKey_Home: return "Home";
             case ImGuiKey_Insert: return "Insert";
+            case ImGuiKey_Pause: return "Pause";
             case ImGuiKey_Delete: return "Delete";
             case ImGuiKey_Backspace: return "BackSpace";
             case ImGuiKey_Space: return "space";
@@ -90,15 +91,16 @@ namespace vkBasalt
 
     void ImGuiOverlay::applyKeybind(int field, ImGuiKey key)
     {
-        const char* configKeys[]     = {"toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey"};
-        const char* configDefaults[] = {"Insert", "End", "Home", "Delete"};
+        const char* configKeys[] = {
+            "toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey", "autoHdrToggleKey"};
+        const char* configDefaults[] = {"Insert", "End", "Home", "Delete", "Pause"};
         std::string newName          = imguiKeyToConfigName(key);
         if (newName.empty()) return;
 
         auto myOldKey = m_pConfig->getOption<std::string>(configKeys[field], configDefaults[field]);
 
         int otherField = -1;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             if (i == field) continue;
             if (m_pConfig->getOption<std::string>(configKeys[i], configDefaults[i]) == newName) {
                 otherField = i;
@@ -168,11 +170,12 @@ namespace vkBasalt
         ImGui::TextDisabled("Click a binding, then press a key. Esc cancels.");
         ImGui::Spacing();
 
-        const char* kbLabels[]   = {"Toggle Effects", "Reload Config", "Open Overlay", "Screenshot"};
-        const char* kbConfigs[]  = {"toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey"};
-        const char* kbDefaults[] = {"Insert", "End", "Home", "Delete"};
+        const char* kbLabels[]  = {"Toggle Effects", "Reload Config", "Open Overlay", "Screenshot", "Toggle Auto HDR"};
+        const char* kbConfigs[] = {
+            "toggleKey", "reloadConfigKey", "overlayToggleKey", "screenshotKey", "autoHdrToggleKey"};
+        const char* kbDefaults[] = {"Insert", "End", "Home", "Delete", "Pause"};
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             auto current = m_pConfig->getOption<std::string>(kbConfigs[i], kbDefaults[i]);
             ImGui::AlignTextToFramePadding();
             ImGui::Text("%s", kbLabels[i]);

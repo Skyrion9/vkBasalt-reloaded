@@ -505,6 +505,7 @@ namespace vkBasalt
                 io.AddKeyEvent(ImGuiKey_End, checkKey(0xFF57));
                 io.AddKeyEvent(ImGuiKey_PageUp, checkKey(0xFF55));
                 io.AddKeyEvent(ImGuiKey_PageDown, checkKey(0xFF56));
+                io.AddKeyEvent(ImGuiKey_Pause, checkKey(0xFF13));
                 io.AddKeyEvent(ImGuiKey_LeftShift, checkKey(0xFFE1));
                 io.AddKeyEvent(ImGuiKey_RightShift, checkKey(0xFFE2));
                 io.AddKeyEvent(ImGuiKey_LeftCtrl, checkKey(0xFFE3));
@@ -837,6 +838,7 @@ namespace vkBasalt
         auto kbReload     = m_pConfig->getOption<std::string>("reloadConfigKey", "End");
         auto kbOverlay    = m_pConfig->getOption<std::string>("overlayToggleKey", "Home");
         auto kbScreenshot = m_pConfig->getOption<std::string>("screenshotKey", "Delete");
+        auto kbAutoHdr    = m_pConfig->getOption<std::string>("autoHdrToggleKey", "Pause");
 
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         // Show global effects state in legend (always reserve the line height to prevent layout shift)
@@ -852,6 +854,7 @@ namespace vkBasalt
         ImGui::Text(
             "[Space]Toggle checkbox  [Esc]Close  [%s]Toggle  [%s]Reload  [%s]Overlay  [%s]Screenshot  [/] Search",
             kbToggle.c_str(), kbReload.c_str(), kbOverlay.c_str(), kbScreenshot.c_str());
+        ImGui::Text("[%s]AutoHDR  (SDR source only, forces a swapchain rebuild)", kbAutoHdr.c_str());
         ImGui::PopStyleColor();
     }
 
@@ -893,11 +896,11 @@ namespace vkBasalt
             if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) pendingTab = (m_activeTab >= 5) ? 0 : m_activeTab + 1;
         }
 
-        // Footer height = separator + single button row + bypass status line + 2 legend lines.
+        // Footer height = separator + single button row + bypass status line + 3 legend lines.
         float footerHeight = 1.0f                                          // separator line
                              + style.ItemSpacing.y * 2                     // spacing around separator
                              + ImGui::GetFrameHeightWithSpacing()          // button row
-                             + (ImGui::GetTextLineHeightWithSpacing() * 3) // bypass status + 2 legend lines
+                             + (ImGui::GetTextLineHeightWithSpacing() * 4) // bypass status + 3 legend lines
                              + style.ItemSpacing.y;                        // bottom padding
 
         ImGui::BeginChild("##content_area", ImVec2(0, -footerHeight), false);

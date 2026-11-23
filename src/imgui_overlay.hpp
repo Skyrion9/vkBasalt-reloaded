@@ -132,8 +132,9 @@ namespace vkBasalt
         char m_searchFilter[256]     = {};
         int m_activeTab              = 0;
         bool m_forceSelectTab        = false;
-        int m_bindingField           = -1; // -1=none, 0=toggle, 1=reload, 2=overlay
-        bool m_showBrowser           = false;
+        // -1=none, 0=toggle, 1=reload, 2=overlay, 3=screenshot, 4=autoHdr
+        int m_bindingField = -1;
+        bool m_showBrowser = false;
         std::string m_browserDir;
         bool m_showDirBrowser = false;
         std::string m_dirBrowserDir;

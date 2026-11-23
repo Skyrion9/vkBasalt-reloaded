@@ -165,6 +165,7 @@ namespace vkBasalt
         out << "reloadConfigKey = End\n";
         out << "overlayToggleKey = Home\n";
         out << "screenshotKey = Delete\n";
+        out << "autoHdrToggleKey = Pause\n";
         out << "# HDR Calibration\n";
         out << "# Default: KDE plasma calibrated value, in absence of it, fallback to sensible numbers.\n";
         out << "sdrWhitePointNits = " << std::to_string(static_cast<int>(defaultDetected.sdrWhitePointNits)) << "\n";

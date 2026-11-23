@@ -30,10 +30,13 @@ namespace vkBasalt
         static uint32_t overlayKeySymbol = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
         static uint32_t screenshotKeySymbol =
             convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
-        static std::string cachedToggleKey, cachedReloadKey, cachedOverlayKey, cachedScreenshotKey;
+        static uint32_t autoHdrKeySymbol =
+            convertToKeySym(pConfig->getOption<std::string>("autoHdrToggleKey", "Pause"));
+        static std::string cachedToggleKey, cachedReloadKey, cachedOverlayKey, cachedScreenshotKey, cachedAutoHdrKey;
         static bool pressed         = false;
         static bool reloadPressed   = false;
         static bool overlayPressed  = false;
+        static bool autoHdrPressed  = false;
         static bool skipNextPresent = false;
 
         // Read enableOnLaunch from config only once upon init, so runtime toggles don't conflict with it.
@@ -50,12 +53,14 @@ namespace vkBasalt
             reloadKeySymbol     = convertToKeySym(pConfig->getOption<std::string>("reloadConfigKey", "End"));
             overlayKeySymbol    = convertToKeySym(pConfig->getOption<std::string>("overlayToggleKey", "Home"));
             screenshotKeySymbol = convertToKeySym(pConfig->getOption<std::string>("screenshotKey", "Delete"));
+            autoHdrKeySymbol    = convertToKeySym(pConfig->getOption<std::string>("autoHdrToggleKey", "Pause"));
 
             // Sync caches to prevent the refresh block below from desync
             cachedToggleKey     = pConfig->getOption<std::string>("toggleKey", "Insert");
             cachedReloadKey     = pConfig->getOption<std::string>("reloadConfigKey", "End");
             cachedOverlayKey    = pConfig->getOption<std::string>("overlayToggleKey", "Home");
             cachedScreenshotKey = pConfig->getOption<std::string>("screenshotKey", "Delete");
+            cachedAutoHdrKey    = pConfig->getOption<std::string>("autoHdrToggleKey", "Pause");
 
             // Consume the dirty flag since we just manually synced everything
             g_configDirty = false;
@@ -73,6 +78,7 @@ namespace vkBasalt
             auto rk = pConfig->getOption<std::string>("reloadConfigKey", "End");
             auto ok = pConfig->getOption<std::string>("overlayToggleKey", "Home");
             auto sk = pConfig->getOption<std::string>("screenshotKey", "Delete");
+            auto ak = pConfig->getOption<std::string>("autoHdrToggleKey", "Pause");
 
             if (tk != cachedToggleKey) {
                 keySymbol       = convertToKeySym(tk);
@@ -89,6 +95,10 @@ namespace vkBasalt
             if (sk != cachedScreenshotKey) {
                 screenshotKeySymbol = convertToKeySym(sk);
                 cachedScreenshotKey = sk;
+            }
+            if (ak != cachedAutoHdrKey) {
+                autoHdrKeySymbol = convertToKeySym(ak);
+                cachedAutoHdrKey = ak;
             }
         }
 
@@ -130,6 +140,22 @@ namespace vkBasalt
 
         if (!anyBinding && isKeyPressed(screenshotKeySymbol)) {
             g_triggerScreenshot = true;
+        }
+
+        // rebuildEffectChain already detects the autoHdr flip against autoHdrActive and forces the
+        // swapchain rebuild plus passthrough reset, so we only write the config here.
+        if (!anyBinding && isKeyPressed(autoHdrKeySymbol)) {
+            if (!autoHdrPressed) {
+                autoHdrPressed = true;
+                bool cur       = pConfig->getOption<bool>("autoHdr", true);
+                pConfig->setOption("autoHdr", cur ? "off" : "on");
+                pConfig->savePerGame();
+                Logger::debug(std::string("AutoHDR toggled ") + (cur ? "off" : "on") + " via hotkey");
+                rebuildAll();
+                overlayManager.updateAllOverlays(pConfig.get(), false);
+            }
+        } else {
+            autoHdrPressed = false;
         }
 
         // Skip present (from End key reload)
