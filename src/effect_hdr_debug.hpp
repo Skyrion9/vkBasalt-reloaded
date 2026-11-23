@@ -20,7 +20,7 @@ namespace vkBasalt
         ~HdrDebugEffect() override;
 
         void applyEffect(uint32_t imageIndex, VkCommandBuffer commandBuffer) override;
-
+        std::string getName() const override { return "hdrdebug"; }
         static std::atomic<float> s_debugPeakNits;
         static std::atomic<float> s_debugWhiteNits;
         static std::atomic<float> s_windowSize;
