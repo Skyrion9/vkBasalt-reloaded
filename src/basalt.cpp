@@ -1278,12 +1278,37 @@ namespace vkBasalt
                 // Update effects and compute passes even when main effects are bypassed,
                 // HDR related effects (NitCalibration, HdrDebug) and FrameAnalyzer still need their
                 // UBOs and state updated per frame if they are part of the active "effects bypassed" chain.
-                for (auto& effect : pLogicalSwapchain->effects) {
-                    effect->updateEffect();
+                // CPU attribution only maps to the main chain's slot names. The bypass chain records
+                // noEffectChain, whose slots do not correspond to pLogicalSwapchain->effects.
+                ChainTiming& cpuTiming = pLogicalSwapchain->timingMain;
+                const bool sampleCpu   = g_effectsEnabled.load() && cpuTiming.active();
+
+                for (size_t ei = 0; ei < pLogicalSwapchain->effects.size(); ei++) {
+                    auto t0 = std::chrono::steady_clock::now();
+                    pLogicalSwapchain->effects[ei]->updateEffect();
+                    if (sampleCpu) {
+                        cpuTiming.addCpuSample(
+                            static_cast<uint32_t>(ei),
+                            std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                    }
                 }
-                for (auto& pass : pLogicalSwapchain->computePasses) {
-                    pass->updatePass();
+                for (size_t pj = 0; pj < pLogicalSwapchain->computePasses.size(); pj++) {
+                    auto t0 = std::chrono::steady_clock::now();
+                    pLogicalSwapchain->computePasses[pj]->updatePass();
+                    if (sampleCpu) {
+                        cpuTiming.addCpuSample(
+                            static_cast<uint32_t>(pLogicalSwapchain->effects.size() + pj),
+                            std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                    }
                 }
+
+                // Read the previous execution of this image index. The submit below resets the range,
+                // so this gives one frame of latency and no stall. Both chains are read because either
+                // may be the one submitted, and an inactive chain returns immediately.
+                if (pLogicalSwapchain->timingMain.active())
+                    pLogicalSwapchain->timingMain.read(pLogicalDevice.get(), index);
+                if (pLogicalSwapchain->timingBypass.active())
+                    pLogicalSwapchain->timingBypass.read(pLogicalDevice.get(), index);
                 // Use the correct NitCalibrationEffect based on bypass state.
                 // Main chain's effect reads from the last processed slice (correct when effects are enabled).
                 // Bypassed effect chain's effect reads from slice 0.
@@ -1435,9 +1460,11 @@ namespace vkBasalt
                 allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
             Logger::debug("allocated CommandBuffers for swapchain " + convertToString(it_swap.first));
 
+            ChainTiming* timing = resolveTiming(
+                pLogicalDevice, pLogicalSwapchain->timingMain, pConfig->getOption<bool>("effectTiming", true));
             writeCommandBuffers(
                 pLogicalDevice, pLogicalSwapchain, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat,
-                pLogicalSwapchain->commandBuffersEffect);
+                pLogicalSwapchain->commandBuffersEffect, timing);
             Logger::debug("wrote CommandBuffers");
         }
     }

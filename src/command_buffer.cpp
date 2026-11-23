@@ -45,8 +45,30 @@ namespace vkBasalt
         VkImage depthImage,
         VkImageView depthImageView,
         VkFormat depthFormat,
-        std::vector<VkCommandBuffer> commandBuffers)
+        std::vector<VkCommandBuffer> commandBuffers,
+        ChainTiming* timing)
     {
+        // Slot layout must match exactly what gets recorded below. Any slot left unwritten makes
+        // GetQueryPoolResults return VK_NOT_READY, so compute passes are only given slots
+        // when the block that records them will actually run.
+        if (timing) {
+            std::vector<std::string> names;
+            for (const auto& e : effects)
+                names.push_back(e->getName());
+            if (pLogicalSwapchain && !effects.empty()) {
+                bool anyPassEnabled = false;
+                for (const auto& p : pLogicalSwapchain->computePasses)
+                    if (p->isEnabled()) {
+                        anyPassEnabled = true;
+                        break;
+                    }
+                if (anyPassEnabled)
+                    for (const auto& p : pLogicalSwapchain->computePasses)
+                        names.push_back(p->getName());
+            }
+            timing->ensure(pLogicalDevice, names, static_cast<uint32_t>(commandBuffers.size()));
+        }
+
         VkCommandBufferBeginInfo beginInfo = {};
 
         beginInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -65,6 +87,7 @@ namespace vkBasalt
         for (uint32_t i = 0; i < commandBuffers.size(); i++) {
             VkResult result = pLogicalDevice->vkd.BeginCommandBuffer(commandBuffers[i], &beginInfo);
             ASSERT_VULKAN(result);
+            if (timing) timing->recordBegin(pLogicalDevice, commandBuffers[i], i);
 
             VkImageMemoryBarrier memoryBarrier;
             memoryBarrier.sType     = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -94,9 +117,12 @@ namespace vkBasalt
                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &memoryBarrier);
             }
 
-            for (const auto& effect : effects) {
-                Logger::debug("before applying effect " + convertToString(effect));
-                effect->applyEffect(i, commandBuffers[i]);
+            for (size_t ei = 0; ei < effects.size(); ei++) {
+                Logger::debug("before applying effect " + convertToString(effects[ei]));
+                const uint32_t slot = static_cast<uint32_t>(ei);
+                if (timing) timing->recordSlot(pLogicalDevice, commandBuffers[i], i, slot, true);
+                effects[ei]->applyEffect(i, commandBuffers[i]);
+                if (timing) timing->recordSlot(pLogicalDevice, commandBuffers[i], i, slot, false);
             }
 
             if (pLogicalSwapchain && !pLogicalSwapchain->computePasses.empty() && !effects.empty()) {
@@ -154,10 +180,13 @@ namespace vkBasalt
                         commandBuffers[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
                         0, nullptr, 0, nullptr, 1, &barrier);
 
-                    for (auto& pass : pLogicalSwapchain->computePasses) {
-                        if (pass->isEnabled()) {
-                            pass->recordCommands(commandBuffers[i], i);
-                        }
+                    for (size_t pj = 0; pj < pLogicalSwapchain->computePasses.size(); pj++) {
+                        auto& pass          = pLogicalSwapchain->computePasses[pj];
+                        const uint32_t slot = static_cast<uint32_t>(effects.size() + pj);
+                        // Timestamps are written even for a disabled pass so every allocated slot is filled.
+                        if (timing) timing->recordSlot(pLogicalDevice, commandBuffers[i], i, slot, true);
+                        if (pass->isEnabled()) pass->recordCommands(commandBuffers[i], i);
+                        if (timing) timing->recordSlot(pLogicalDevice, commandBuffers[i], i, slot, false);
                     }
 
                     // Restore layouts after compute pass

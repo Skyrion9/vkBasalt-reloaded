@@ -25,6 +25,7 @@ vkBasalt_src = [
     'effect_hdr_debug.cpp',
     'effect_transfer.cpp',
     'effect_chain.cpp',
+    'effect_timing.cpp',
     'simple_compute_pass.cpp',
     'compute_test_pass.cpp',
     'frame_analyzer.cpp',

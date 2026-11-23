@@ -8,10 +8,10 @@
 #include <memory>
 
 #include "vulkan_include.hpp"
-
 #include "logical_device.hpp"
-
+#include "effect_timing.hpp"
 #include "effect.hpp"
+
 namespace vkBasalt
 {
 
@@ -22,11 +22,12 @@ namespace vkBasalt
     void writeCommandBuffers(
         LogicalDevice* pLogicalDevice,
         LogicalSwapchain* pLogicalSwapchain,
-        const std::vector<std::shared_ptr<vkBasalt::Effect>>& effects,
+        const std::vector<std::shared_ptr<Effect>>& effects,
         VkImage depthImage,
         VkImageView depthImageView,
         VkFormat depthFormat,
-        std::vector<VkCommandBuffer> commandBuffers);
+        std::vector<VkCommandBuffer> commandBuffers,
+        ChainTiming* timing = nullptr);
 
     std::vector<VkSemaphore> createSemaphores(LogicalDevice* pLogicalDevice, uint32_t count);
 } // namespace vkBasalt

@@ -136,9 +136,11 @@ namespace vkBasalt
 
         pLogicalSwapchain->commandBuffersNoEffect =
             allocateCommandBuffer(pLogicalDevice, pLogicalSwapchain->imageCount);
+        ChainTiming* timing = resolveTiming(
+            pLogicalDevice, pLogicalSwapchain->timingBypass, pConfig->getOption<bool>("effectTiming", true));
         writeCommandBuffers(
             pLogicalDevice, pLogicalSwapchain, noEffectChain, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_FORMAT_UNDEFINED,
-            pLogicalSwapchain->commandBuffersNoEffect);
+            pLogicalSwapchain->commandBuffersNoEffect, timing);
     }
 
     void rebuildFallbackChain(LogicalDevice* pLogicalDevice, LogicalSwapchain* pLogicalSwapchain, Config* pConfig)
@@ -650,9 +652,16 @@ namespace vkBasalt
             Logger::debug("FrameAnalyzer not created (scopes not requested)");
         }
 
+        ChainTiming* timing = resolveTiming(
+            pLogicalDevice, pLogicalSwapchain->timingMain, pConfig->getOption<bool>("effectTiming", true));
+        auto tBuild = std::chrono::steady_clock::now();
         writeCommandBuffers(
             pLogicalDevice, pLogicalSwapchain, pLogicalSwapchain->effects, depthImage, depthImageView, depthFormat,
-            pLogicalSwapchain->commandBuffersEffect);
+            pLogicalSwapchain->commandBuffersEffect, timing);
+        if (timing) {
+            timing->buildMs =
+                std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - tBuild).count();
+        }
         Logger::debug("wrote CommandBuffers");
 
         // Only create semaphores on initial setup. Rebuilds preserve them as imageCount is fixed for a given swapchain.

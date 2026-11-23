@@ -13,6 +13,9 @@ namespace vkBasalt
         defaultHdrDebugEffect.reset();
         nitCalibrationEffect = nullptr;
 
+        timingMain.destroy(pLogicalDevice);
+        timingBypass.destroy(pLogicalDevice);
+
         if (!commandBuffersEffect.empty()) {
             pLogicalDevice->vkd.FreeCommandBuffers(
                 pLogicalDevice->device, pLogicalDevice->commandPool, commandBuffersEffect.size(),

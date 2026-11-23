@@ -14,6 +14,7 @@
 #include "vulkan_include.hpp"
 #include "logical_device.hpp"
 #include "compute_pass.hpp"
+#include "effect_timing.hpp"
 
 namespace vkBasalt
 {
@@ -87,6 +88,11 @@ namespace vkBasalt
         // surfaces on different windows, so the last created global window is not necessarily ours.
         void* surfaceDisplay = nullptr;
         void* surfaceWindow  = nullptr;
+
+        // Two chains because the bypass fallback records a different effect list than the main
+        // chain, so their query layouts differ.
+        ChainTiming timingMain;
+        ChainTiming timingBypass;
 
         void destroy();
     };
