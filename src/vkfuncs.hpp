@@ -32,6 +32,8 @@
     FORVKFUNC(CmdPipelineBarrier) \
     FORVKFUNC(CmdCopyImageToBuffer) \
     FORVKFUNC(CmdPushConstants) \
+    FORVKFUNC(CmdResetQueryPool) \
+    FORVKFUNC(CmdWriteTimestamp) \
     FORVKFUNC(CreateBuffer) \
     FORVKFUNC(CreateCommandPool) \
     FORVKFUNC(CreateDescriptorPool) \
@@ -44,6 +46,7 @@
     FORVKFUNC(CreateImage) \
     FORVKFUNC(CreateImageView) \
     FORVKFUNC(CreatePipelineLayout) \
+    FORVKFUNC(CreateQueryPool) \
     FORVKFUNC(CreateRenderPass) \
     FORVKFUNC(CreateSampler) \
     FORVKFUNC(CreateSemaphore) \
@@ -61,6 +64,7 @@
     FORVKFUNC(DestroyImageView) \
     FORVKFUNC(DestroyPipeline) \
     FORVKFUNC(DestroyPipelineLayout) \
+    FORVKFUNC(DestroyQueryPool) \
     FORVKFUNC(DestroyRenderPass) \
     FORVKFUNC(DestroySampler) \
     FORVKFUNC(DestroySemaphore) \
@@ -76,6 +80,7 @@
     FORVKFUNC(GetDeviceQueue2) \
     FORVKFUNC(GetImageMemoryRequirements) \
     FORVKFUNC(GetPipelineCacheData) \
+    FORVKFUNC(GetQueryPoolResults) \
     FORVKFUNC(GetSwapchainImagesKHR) \
     FORVKFUNC(SetHdrMetadataEXT) \
     FORVKFUNC(MapMemory) \

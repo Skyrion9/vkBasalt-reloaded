@@ -434,6 +434,13 @@ namespace vkBasalt
                     pLogicalDevice->device, &commandPoolCreateInfo, nullptr, &pLogicalDevice->commandPool);
                 pLogicalDevice->queueFamilyIndex = queueInfo.queueFamilyIndex;
 
+                // Cache timestamp capabilities from the queue we actually submit to. deviceProps was
+                // already fetched above, so timestampPeriod needs no extra driver call.
+                pLogicalDevice->timestampValidBits = queueProperties[queueInfo.queueFamilyIndex].timestampValidBits;
+                pLogicalDevice->timestampPeriod    = deviceProps.limits.timestampPeriod;
+                Logger::debug(
+                    "Timestamp queries: validBits=" + std::to_string(pLogicalDevice->timestampValidBits)
+                    + " period=" + std::to_string(pLogicalDevice->timestampPeriod) + " ns/tick");
                 initializeDispatchTable(pLogicalDevice->queue, pLogicalDevice->device);
 
                 break;

@@ -18,6 +18,12 @@ namespace vkBasalt
         VkQueue queue{};
         uint32_t queueFamilyIndex{};
         VkCommandPool commandPool{};
+
+        // Timestamp query support, cached at device creation. timestampValidBits == 0 means the queue
+        // can't write timestamps at all, so every GPU timing path must gate on it.
+        // timestampPeriod is nanoseconds per tick, used to convert query deltas into milliseconds.
+        uint32_t timestampValidBits = 0;
+        float timestampPeriod       = 0.0f;
         bool supportsMutableFormat{};
         bool supportsSwapchainColorspace = false;
         bool supportsHdrMetadata         = false;
