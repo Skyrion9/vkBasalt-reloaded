@@ -85,12 +85,18 @@ namespace vkBasalt
             (detected.detected && detected.peakBrightnessNits > 0.0f) ? detected.peakBrightnessNits : 1000.0f;
 
         m_redSpecData = {
-            // adaptationSpeed acts as the rate (1/tau). A value of 3.0 adapts in ~0.3s, 5.0 in ~0.2s.
-            .adaptationSpeed = std::clamp(pConfig->getOption<float>("hdrAdaptiveSpeed", 3.0f), 0.05f, 15.0f),
-            .targetWhite     = pConfig->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
-            .targetPeak      = pConfig->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
-            .peakScale       = std::clamp(pConfig->getOption<float>("hdrAdaptivePeakScale", 1.0f), 0.0f, 1.0f),
-            .midtoneRange    = std::clamp(pConfig->getOption<float>("hdrAdaptiveMidtoneRange", 0.05f), 0.0f, 0.2f),
+            // adaptationSpeed acts as the rate (1/tau). 15.0 is effectively instant.
+            .adaptationSpeed = std::clamp(
+                pConfig->getOption<float>("hdrAdaptiveSpeed", kAdaptiveSpeed.defaultVal), kAdaptiveSpeed.minVal,
+                kAdaptiveSpeed.maxVal),
+            .targetWhite = pConfig->getOption<float>("sdrWhitePointNits", fallbackWhite) * 0.01f,
+            .targetPeak  = pConfig->getOption<float>("hdrPeakNits", fallbackPeak) * 0.01f,
+            .peakScale   = std::clamp(
+                pConfig->getOption<float>("hdrAdaptivePeakScale", kAdaptivePeakScale.defaultVal),
+                kAdaptivePeakScale.minVal, kAdaptivePeakScale.maxVal),
+            .midtoneRange = std::clamp(
+                pConfig->getOption<float>("hdrAdaptiveMidtoneRange", kAdaptiveMidtoneRange.defaultVal),
+                kAdaptiveMidtoneRange.minVal, kAdaptiveMidtoneRange.maxVal),
             .calibrationMode = calibrationMode};
         m_redSpecMapEntries = {
             {.constantID = 10, .offset = offsetof(ReduceSpecData, adaptationSpeed), .size = sizeof(float)},

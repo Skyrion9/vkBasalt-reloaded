@@ -10,6 +10,19 @@ namespace vkBasalt
     class AutoHdrAnalyzer
     {
     public:
+        struct AdaptiveRange
+        {
+            float defaultVal;
+            float minVal;
+            float maxVal;
+        };
+
+        // Defaults are max adaptation at fastest rate, full scene based peak reduction, full midtone bias.
+        // peakScale is inverted: 1.0 means fixed display peak (no adaptation), 0.0 means full.
+        static constexpr AdaptiveRange kAdaptiveSpeed{15.0f, 0.05f, 15.0f};
+        static constexpr AdaptiveRange kAdaptivePeakScale{0.0f, 0.0f, 1.0f};
+        static constexpr AdaptiveRange kAdaptiveMidtoneRange{0.2f, 0.0f, 0.2f};
+
         AutoHdrAnalyzer(
             LogicalDevice* pDevice,
             VkExtent2D extent,

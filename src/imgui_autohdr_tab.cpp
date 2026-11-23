@@ -369,24 +369,30 @@ namespace vkBasalt
             if (hdrAdaptive) {
                 ImGui::Indent(kIndentWidth);
                 drawAdaptiveSlider(
-                    "hdrAdaptiveSpeed", "Adaptation Speed", "hdrAdaptiveSpeed", 3.0f, 0.05f, 15.0f, "%.2f",
+                    "hdrAdaptiveSpeed", "Adaptation Speed", "hdrAdaptiveSpeed",
+                    AutoHdrAnalyzer::kAdaptiveSpeed.defaultVal, AutoHdrAnalyzer::kAdaptiveSpeed.minVal,
+                    AutoHdrAnalyzer::kAdaptiveSpeed.maxVal, "%.2f",
                     "How quickly the adaptation responds to scene changes.\n"
-                    "0.05 = very slow (~20s, cinematic), 0.5 = moderate (~2s), 3.0 = fast (~0.3s), 15.0 = instant.\n"
+                    "0.05 = very slow (~20s, cinematic), 0.5 = moderate (~2s), 3.0 = fast (~0.3s),\n"
+                    "15.0 = instant (default).\n"
                     "Lower values prevent visible 'brightness pumping' but respond slower to scene transitions.",
                     perGameCalib);
                 drawAdaptiveSlider(
-                    "hdrAdaptivePeakScale", "Peak Stability", "hdrAdaptivePeakScale", 0.0f, 0.0f, 1.0f, "%.2f",
+                    "hdrAdaptivePeakScale", "Peak Stability", "hdrAdaptivePeakScale",
+                    AutoHdrAnalyzer::kAdaptivePeakScale.defaultVal, AutoHdrAnalyzer::kAdaptivePeakScale.minVal,
+                    AutoHdrAnalyzer::kAdaptivePeakScale.maxVal, "%.2f",
                     "1.0 = fixed display peak (no 'eye adaptation').\n"
-                    "0.0 = aggressive scene-based peak reduction (causes visible adaptation).\n"
+                    "0.0 = aggressive scene-based peak reduction (default, causes visible adaptation).\n"
                     "Intermediate values blend between the two.",
                     perGameCalib);
                 drawAdaptiveSlider(
-                    "hdrAdaptiveMidtoneRange", "Midtone Bias Range", "hdrAdaptiveMidtoneRange", 0.05f, 0.0f, 0.2f,
-                    "%.3f",
+                    "hdrAdaptiveMidtoneRange", "Midtone Bias Range", "hdrAdaptiveMidtoneRange",
+                    AutoHdrAnalyzer::kAdaptiveMidtoneRange.defaultVal, AutoHdrAnalyzer::kAdaptiveMidtoneRange.minVal,
+                    AutoHdrAnalyzer::kAdaptiveMidtoneRange.maxVal, "%.3f",
                     "How much midtones are biased based on scene brightness.\n"
                     "0.0 = no bias (fixed white point).\n"
-                    "0.05 = subtle +/-5%% bias (default).\n"
-                    "0.2 = aggressive +/-20%% bias.",
+                    "0.05 = subtle +/-5%% bias.\n"
+                    "0.2 = aggressive +/-20%% bias (default).",
                     perGameCalib);
                 ImGui::Unindent(kIndentWidth);
             }

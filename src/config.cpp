@@ -170,6 +170,10 @@ namespace vkBasalt
         out << "# Default: KDE plasma calibrated value, in absence of it, fallback to sensible numbers.\n";
         out << "sdrWhitePointNits = " << std::to_string(static_cast<int>(defaultDetected.sdrWhitePointNits)) << "\n";
         out << "hdrPeakNits = " << std::to_string(static_cast<int>(defaultDetected.peakBrightnessNits)) << "\n";
+        out << "# Adaptive HDR analysis. Unset = AutoHdrAnalyzer max-adaptation defaults.\n";
+        out << "# hdrAdaptiveSpeed = 15.0\n";
+        out << "# hdrAdaptivePeakScale = 0.0\n";
+        out << "# hdrAdaptiveMidtoneRange = 0.2\n";
         out << "# Screenshot format: png, jpg, bmp, tga, hdr\n";
         out << "screenshotFormat = png\n";
         out << "screenshotQuality = 95\n";
