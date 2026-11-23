@@ -445,15 +445,42 @@ namespace vkBasalt
         io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
         io.DeltaTime   = 1.0f / 60.0f;
 
-        bool isWayland = false;
+        // Pin X11 queries to this swapchain's surface window. CEF front ends create surfaces for the
+        // browser host and the game window. initX11Input records whichever came last.
+        if (m_pSwapchain) {
+            setX11InputTarget(m_pSwapchain->surfaceDisplay, m_pSwapchain->surfaceWindow);
+        }
+
+        bool waylandKeys    = false;
+        bool waylandPointer = false;
+        bool x11Available   = isX11PointerAvailable();
+        bool x11Surface     = m_pSwapchain && m_pSwapchain->surfaceWindow != nullptr;
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
         if (getenv("WAYLAND_DISPLAY") && isWaylandInputActive()) {
-            isWayland = true;
+            waylandKeys = true;
+            // The swapchain's surface decides the pointer source. A known X11 surface must not be
+            // overridden by stale Wayland pointer state from a CEF/launcher surface.
+            // If there is no X server to fall back on, use Wayland even without a pointer enter yet.
+            if (x11Surface) {
+                waylandPointer = false;
+            } else {
+                waylandPointer = isWaylandPointerActive() || !x11Available;
+            }
         }
 #endif
 
+        static bool s_loggedInputRoute = false;
+        if (!s_loggedInputRoute) {
+            Logger::debug(
+                std::string("input route: waylandKeys=") + (waylandKeys ? "1" : "0")
+                + " waylandPointer=" + (waylandPointer ? "1" : "0") + " x11Available=" + (x11Available ? "1" : "0")
+                + " surfaceWindow=" + (m_pSwapchain && m_pSwapchain->surfaceWindow ? "set" : "null")
+                + " DISPLAY=" + (getenv("DISPLAY") ? getenv("DISPLAY") : "unset"));
+            s_loggedInputRoute = true;
+        }
+
         if (m_isOpen) {
-            if (isWayland) {
+            if (waylandKeys) {
                 // Event-based: feed queued key events directly to ImGui
                 feedWaylandKeyEventsToImGui();
                 if (wasSlashTypedWayland()) m_focusSearch = true;
@@ -529,7 +556,7 @@ namespace vkBasalt
             }
         }
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
-        if (isWayland) {
+        if (waylandPointer) {
             updateWaylandImGuiIO(m_cursorScale);
             return;
         }

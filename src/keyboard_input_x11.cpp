@@ -233,7 +233,7 @@ namespace vkBasalt
              || getenv("STEAM_COMPAT_DATA_PATH") != nullptr);
 
 #if VKBASALT_WAYLAND
-        if (isWineEnv) {
+        if (isWineEnv && !g_targetWindow && isWaylandPointerActive()) {
             float waylandScale = getWaylandUIScale();
             if (waylandScale < 0.5f) waylandScale = scale;
             if (updateWaylandPointerImGuiIO(waylandScale)) {
