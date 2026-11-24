@@ -83,6 +83,7 @@ namespace vkBasalt
         void drawPresetsTab();
         void drawStyleTab();
         void drawStatsTab();
+        void drawPerformanceSection();
         void drawChainPanel();
         void drawEffectParamsPanel();
         void drawParamWidget(const EffectParamDesc* p, Effect* selectedEffect);

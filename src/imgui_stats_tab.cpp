@@ -10,6 +10,7 @@
 #include "imgui_impl_vulkan.h"
 
 #include "logical_device.hpp"
+#include "layer_globals.hpp"
 #include "logical_swapchain.hpp"
 #include "game_detect.hpp"
 #include "frame_analyzer.hpp"
@@ -23,6 +24,7 @@ namespace vkBasalt
 
     void ImGuiOverlay::drawStatsTab()
     {
+        drawPerformanceSection();
         ImGui::Text("System & Display Statistics");
         ImGui::Separator();
         ImGui::Spacing();
@@ -213,6 +215,84 @@ namespace vkBasalt
             statRow("UI Scale", uiBuf);
             statRow("Cursor Scale", curBuf);
             statRow("Font Scale", fontBuf);
+        }
+    }
+
+    void ImGuiOverlay::drawPerformanceSection()
+    {
+        if (!ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) return;
+
+        bool timingOn = m_pConfig->getOption<bool>("effectTiming", true);
+        if (ImGui::Checkbox("Per-effect timing", &timingOn)) {
+            m_pConfig->setOption("effectTiming", timingOn ? "true" : "false");
+            m_pConfig->savePerGame();
+            // Timestamps are baked at record time, so the chain has to be re-recorded.
+            g_triggerSoftReload = true;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Writes a timestamp pair around each effect when the command buffer is recorded.\n"
+                "Toggling rebuilds the effect chain. Costs roughly 5-20 us per frame.");
+        }
+
+        if (!m_pSwapchain || !m_pSwapchain->pLogicalDevice) {
+            ImGui::TextDisabled("No swapchain.");
+            return;
+        }
+
+        LogicalDevice* dev = m_pSwapchain->pLogicalDevice;
+        if (dev->timestampValidBits == 0) {
+            ImGui::TextDisabled("GPU timestamps unsupported on this driver (timestampValidBits = 0).");
+            return;
+        }
+        if (!timingOn) {
+            ImGui::TextDisabled("Timing disabled.");
+            return;
+        }
+
+        const bool mainActive = g_effectsEnabled.load();
+        ChainTiming& t        = mainActive ? m_pSwapchain->timingMain : m_pSwapchain->timingBypass;
+
+        ImGui::TextDisabled("%s chain", mainActive ? "Main" : "Bypass");
+
+        if (!t.active() || t.slots.empty()) {
+            ImGui::TextDisabled("Waiting for the first measured frame...");
+            return;
+        }
+
+        ImGui::TextUnformatted("Effect");
+        ImGui::SameLine(260);
+        ImGui::TextUnformatted("GPU ms");
+        ImGui::SameLine(350);
+        ImGui::TextUnformatted("Peak");
+        ImGui::SameLine(440);
+        ImGui::TextUnformatted("CPU ms");
+        ImGui::Separator();
+
+        float slotSum = 0.0f;
+        for (size_t i = 0; i < t.slots.size(); i++) {
+            const TimingSlot& s = t.slots[i];
+            slotSum += s.gpuMs;
+            ImGui::Text("%02d %s", static_cast<int>(i), s.name.c_str());
+            ImGui::SameLine(260);
+            ImGui::Text("%.3f", s.gpuMs);
+            ImGui::SameLine(350);
+            ImGui::Text("%.3f", s.gpuPeakMs);
+            ImGui::SameLine(440);
+            ImGui::Text("%.3f", s.cpuMs);
+        }
+
+        ImGui::Separator();
+        ImGui::TextUnformatted("Total (measured)");
+        ImGui::SameLine(260);
+        ImGui::Text("%.3f", t.totalGpuMs);
+        ImGui::SameLine(440);
+        ImGui::Text("%.3f", t.totalCpuMs);
+
+        ImGui::TextDisabled("Slot sum %.3f ms   |   chain build %.1f ms (one-off)", slotSum, t.buildMs);
+        ImGui::TextDisabled("Passes overlap on the GPU, so the slot sum can exceed the measured total.");
+        if (!mainActive) {
+            ImGui::TextDisabled("CPU is zero here: bypass slots do not map to the updated effect list.");
         }
     }
 } // namespace vkBasalt
